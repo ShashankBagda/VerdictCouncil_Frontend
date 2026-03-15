@@ -20,16 +20,10 @@ function BuildingSimulationPage({
 
   const activeSet = useMemo(() => new Set(activeRooms), [activeRooms])
   const doneSet = useMemo(() => new Set(completedRooms), [completedRooms])
-
-  const displayFloor = floors.find((floor) => floor.id === displayFloorId) || floors[0]
   const isSwitching = fadePhase !== 'idle'
-
-  useEffect(() => {
-    if (fadePhase !== 'idle') {
-      return
-    }
-    setDisplayFloorId(selectedFloorId)
-  }, [fadePhase, selectedFloorId])
+  const effectiveFloorId = isSwitching ? displayFloorId : selectedFloorId
+  const displayFloor = floors.find((floor) => floor.id === effectiveFloorId) || floors[0]
+  const pendingFloor = floors.find((floor) => floor.id === pendingFloorId) || null
 
   useEffect(() => {
     if (fadePhase === 'fade_out' && pendingFloorId) {
@@ -53,9 +47,10 @@ function BuildingSimulationPage({
   }, [fadePhase, pendingFloorId, setSelectedFloorId])
 
   const requestFloor = (floorId) => {
-    if (isSwitching || floorId === displayFloorId) {
+    if (isSwitching || floorId === selectedFloorId) {
       return
     }
+    setDisplayFloorId(selectedFloorId)
     setPendingFloorId(floorId)
     setFadePhase('fade_out')
   }
@@ -95,7 +90,11 @@ function BuildingSimulationPage({
           <div className="floor-indicator">
             <span>Viewing</span>
             <strong>{displayFloor.title}</strong>
-            <small>{isSwitching ? 'Switching...' : 'Ready'}</small>
+            <small>
+              {isSwitching && pendingFloor
+                ? `Switching to ${pendingFloor.title}`
+                : 'Ready'}
+            </small>
           </div>
           <div className="floor-menu-list">
             {floors
@@ -105,7 +104,12 @@ function BuildingSimulationPage({
                 <button
                   type="button"
                   key={floor.id}
-                  className={floor.id === displayFloor.id ? 'active' : ''}
+                  className={[
+                    floor.id === displayFloor.id ? 'active' : '',
+                    floor.id === pendingFloorId ? 'pending' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   disabled={isSwitching}
                   onClick={() => requestFloor(floor.id)}
                   aria-label={`Go to ${floor.title}`}

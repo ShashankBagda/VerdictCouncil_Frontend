@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 const MAP_WIDTH = 640
 const MAP_HEIGHT = 384
+const LABEL_FONT = '"Press Start 2P", monospace'
+const LABEL_PAD_X = 8
+const LABEL_WIDTH = 16
 
 const ROOM_THEME = {
   intake: { floor: '#8e7248', wall: '#3e2f20', accent: '#e2be89' },
@@ -59,39 +62,49 @@ const useSpriteCache = (rooms) => {
   return cache
 }
 
-const floorLayout = (template) => {
+const floorLayout = (template, roomCount) => {
   if (template === 'split_wings') {
     return {
       shell: { x: 20, y: 18, w: 540, h: 346 },
-      corridor: { x: 40, y: 170, w: 500, h: 24 },
-      core: { x: 260, y: 202, w: 60, h: 50 },
+      corridor: { x: 32, y: 172, w: 516, h: 22 },
+      core: { x: 246, y: 206, w: 88, h: 46 },
       rooms: [
-        { x: 40, y: 34, w: 150, h: 124 },
-        { x: 205, y: 34, w: 150, h: 124 },
-        { x: 370, y: 34, w: 150, h: 124 },
-        { x: 115, y: 210, w: 180, h: 140 },
-        { x: 305, y: 210, w: 180, h: 140 },
+        { x: 32, y: 34, w: 160, h: 124 },
+        { x: 206, y: 34, w: 160, h: 124 },
+        { x: 380, y: 34, w: 160, h: 124 },
+        { x: 104, y: 212, w: 198, h: 138 },
+        { x: 318, y: 212, w: 198, h: 138 },
       ],
     }
   }
 
   if (template === 'ring_chambers') {
+    const fiveRoomLayout = [
+      { x: 50, y: 34, w: 152, h: 132 },
+      { x: 244, y: 34, w: 152, h: 132 },
+      { x: 438, y: 34, w: 102, h: 132 },
+      { x: 96, y: 208, w: 198, h: 140 },
+      { x: 306, y: 208, w: 198, h: 140 },
+    ]
     return {
       shell: { x: 20, y: 18, w: 540, h: 346 },
       corridor: { x: 40, y: 176, w: 500, h: 18 },
       core: { x: 250, y: 186, w: 80, h: 42 },
-      rooms: [
-        { x: 40, y: 34, w: 92, h: 130 },
-        { x: 144, y: 34, w: 92, h: 130 },
-        { x: 248, y: 34, w: 92, h: 130 },
-        { x: 352, y: 34, w: 92, h: 130 },
-        { x: 456, y: 34, w: 84, h: 130 },
-        { x: 40, y: 204, w: 92, h: 146 },
-        { x: 144, y: 204, w: 92, h: 146 },
-        { x: 248, y: 204, w: 92, h: 146 },
-        { x: 352, y: 204, w: 92, h: 146 },
-        { x: 456, y: 204, w: 84, h: 146 },
-      ],
+      rooms:
+        roomCount <= 5
+          ? fiveRoomLayout
+          : [
+              { x: 40, y: 34, w: 92, h: 130 },
+              { x: 144, y: 34, w: 92, h: 130 },
+              { x: 248, y: 34, w: 92, h: 130 },
+              { x: 352, y: 34, w: 92, h: 130 },
+              { x: 456, y: 34, w: 84, h: 130 },
+              { x: 40, y: 204, w: 92, h: 146 },
+              { x: 144, y: 204, w: 92, h: 146 },
+              { x: 248, y: 204, w: 92, h: 146 },
+              { x: 352, y: 204, w: 92, h: 146 },
+              { x: 456, y: 204, w: 84, h: 146 },
+            ],
     }
   }
 
@@ -129,56 +142,115 @@ const drawSprite = (context, cache, path, x, y, width, height, fallbackColor) =>
   context.fillRect(x, y, width, height)
 }
 
+const drawSpriteContain = (context, cache, path, x, y, width, height, fallbackColor) => {
+  const image = path ? cache[path] : null
+  if (!image) {
+    context.fillStyle = fallbackColor
+    context.fillRect(x, y, width, height)
+    return
+  }
+  const scale = Math.min(width / image.width, height / image.height)
+  const drawWidth = Math.max(1, Math.floor(image.width * scale))
+  const drawHeight = Math.max(1, Math.floor(image.height * scale))
+  const offsetX = x + Math.floor((width - drawWidth) / 2)
+  const offsetY = y + Math.floor((height - drawHeight) / 2)
+  context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight)
+}
+
+const drawRoomLabel = (context, rect, room) => {
+  const labelWidth = Math.max(74, rect.w - LABEL_WIDTH)
+  const labelX = rect.x + LABEL_PAD_X
+  const labelY = rect.y + 12
+
+  context.fillStyle = 'rgba(8, 13, 22, 0.9)'
+  context.fillRect(labelX, labelY, labelWidth, 42)
+  context.strokeStyle = 'rgba(171, 195, 227, 0.45)'
+  context.lineWidth = 1
+  context.strokeRect(labelX, labelY, labelWidth, 42)
+
+  context.font = `700 9px ${LABEL_FONT}`
+  context.fillStyle = '#f6e4bf'
+  context.fillText(room.code, labelX + 4, labelY + 5)
+
+  context.font = `8px ${LABEL_FONT}`
+  context.fillStyle = '#d8e8ff'
+  context.fillText(trimText(context, room.roleLabel, labelWidth - 8), labelX + 4, labelY + 17)
+
+  context.fillStyle = '#e6d6a3'
+  context.fillText(trimText(context, room.taskLabel, labelWidth - 8), labelX + 4, labelY + 29)
+}
+
 const drawInterior = (context, roomRect, room, cache, tick) => {
   const monitorBlink = Math.floor(tick / 24) % 2 === 0
   const deskX = roomRect.x + 10
-  const deskY = roomRect.y + roomRect.h - 24
+  const deskY = roomRect.y + roomRect.h - 30
   const deskWidth = roomRect.w - 20
 
-  drawSprite(
+  drawSpriteContain(
     context,
     cache,
     room.assets?.desk,
     deskX,
     deskY,
     deskWidth,
-    10,
+    16,
     '#63482d',
   )
 
+  drawSpriteContain(
+    context,
+    cache,
+    room.assets?.prop,
+    roomRect.x + 10,
+    roomRect.y + roomRect.h - 74,
+    30,
+    38,
+    '#665445',
+  )
+
   if (room.interiorTheme === 'policy' || room.interiorTheme === 'judge') {
-    drawSprite(
+    drawSpriteContain(
       context,
       cache,
       room.assets?.prop,
-      roomRect.x + 12,
-      roomRect.y + 52,
-      roomRect.w - 24,
-      8,
+      roomRect.x + roomRect.w - 44,
+      roomRect.y + roomRect.h - 78,
+      30,
+      38,
       '#6a6437',
+    )
+    drawSpriteContain(
+      context,
+      cache,
+      room.assets?.monitor,
+      roomRect.x + Math.floor(roomRect.w / 2) - 12,
+      deskY - 16,
+      24,
+      14,
+      monitorBlink ? '#8feaff' : '#6da7ce',
     )
     return
   }
 
   if (room.interiorTheme === 'evidence' || room.interiorTheme === 'timeline') {
-    drawSprite(
+    drawSpriteContain(
       context,
       cache,
       room.assets?.monitor,
       roomRect.x + 16,
-      deskY - 14,
-      16,
-      12,
+      deskY - 18,
+      22,
+      14,
       monitorBlink ? '#8feaff' : '#6da7ce',
     )
-    drawSprite(
+    drawSpriteContain(
       context,
       cache,
       room.assets?.monitor,
-      roomRect.x + roomRect.w - 32,
-      deskY - 14,
-      16,
-      12,
+      roomRect.x + roomRect.w - 38,
+      deskY - 18,
+      22,
+      14,
       monitorBlink ? '#8feaff' : '#6da7ce',
     )
     return
@@ -186,14 +258,14 @@ const drawInterior = (context, roomRect, room, cache, tick) => {
 
   if (room.interiorTheme === 'audit' || room.interiorTheme === 'validation') {
     for (let idx = 0; idx < 3; idx += 1) {
-      drawSprite(
+      drawSpriteContain(
         context,
         cache,
         room.assets?.monitor,
-        roomRect.x + 14 + idx * 18,
-        deskY - 12,
+        roomRect.x + 10 + idx * 20,
+        deskY - 16,
+        18,
         14,
-        10,
         monitorBlink ? '#8feaff' : '#6da7ce',
       )
     }
@@ -201,27 +273,37 @@ const drawInterior = (context, roomRect, room, cache, tick) => {
   }
 
   if (room.interiorTheme === 'verdict' || room.interiorTheme === 'deliberation') {
-    drawSprite(
+    drawSpriteContain(
       context,
       cache,
       room.assets?.prop,
       roomRect.x + Math.floor(roomRect.w / 2) - 10,
-      roomRect.y + 50,
+      roomRect.y + roomRect.h - 78,
       20,
-      14,
+      38,
       '#d5c27a',
+    )
+    drawSpriteContain(
+      context,
+      cache,
+      room.assets?.monitor,
+      roomRect.x + Math.floor(roomRect.w / 2) - 11,
+      deskY - 17,
+      22,
+      14,
+      monitorBlink ? '#8feaff' : '#6da7ce',
     )
     return
   }
 
-  drawSprite(
+  drawSpriteContain(
     context,
     cache,
     room.assets?.monitor,
     roomRect.x + 14,
-    deskY - 12,
+    deskY - 16,
+    18,
     14,
-    10,
     monitorBlink ? '#8feaff' : '#6da7ce',
   )
 }
@@ -250,7 +332,10 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
   const doneRef = useRef(new Set(completedRooms))
   const spriteCache = useSpriteCache(floor.rooms)
 
-  const layout = useMemo(() => floorLayout(floor.layoutTemplate), [floor.layoutTemplate])
+  const layout = useMemo(
+    () => floorLayout(floor.layoutTemplate, floor.rooms.length),
+    [floor.layoutTemplate, floor.rooms.length],
+  )
 
   const roomRects = useMemo(
     () =>
@@ -275,7 +360,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
       return undefined
     }
 
-    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1))
+    const dpr = Math.max(1, window.devicePixelRatio || 1)
     canvas.width = MAP_WIDTH * dpr
     canvas.height = MAP_HEIGHT * dpr
     context.imageSmoothingEnabled = false
@@ -311,7 +396,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
       context.fillRect(layout.shell.x, layout.shell.y, layout.shell.w, layout.shell.h)
       context.strokeStyle = '#6f89ae'
       context.lineWidth = 2
-      context.strokeRect(layout.shell.x + 0.5, layout.shell.y + 0.5, layout.shell.w - 1, layout.shell.h - 1)
+      context.strokeRect(layout.shell.x, layout.shell.y, layout.shell.w, layout.shell.h)
 
       context.fillStyle = '#344866'
       context.fillRect(layout.corridor.x, layout.corridor.y, layout.corridor.w, layout.corridor.h)
@@ -329,33 +414,31 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
 
         context.fillStyle = done ? '#456a57' : theme.floor
         context.fillRect(rect.x, rect.y, rect.w, rect.h)
-        drawSprite(context, spriteCache, room.assets?.wall, rect.x, rect.y, rect.w, 12, theme.wall)
+
+        drawSprite(
+          context,
+          spriteCache,
+          room.assets?.wall,
+          rect.x + 1,
+          rect.y + 1,
+          rect.w - 2,
+          rect.h - 2,
+          theme.floor,
+        )
+
+        context.fillStyle = done ? 'rgba(69, 106, 87, 0.3)' : 'rgba(29, 43, 64, 0.2)'
+        context.fillRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+
         context.fillStyle = theme.wall
         context.fillRect(rect.x, rect.y, rect.w, 10)
         context.fillRect(rect.x, rect.y, 5, rect.h)
 
         context.strokeStyle = active ? '#ffd99f' : done ? '#95d9b8' : '#4b6386'
         context.lineWidth = active ? 2 : 1
-        context.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1)
+        context.strokeRect(rect.x, rect.y, rect.w, rect.h)
 
         drawInterior(context, rect, room, spriteCache, tick)
-
-        context.fillStyle = 'rgba(12, 22, 36, 0.92)'
-        context.fillRect(rect.x + 6, rect.y + 12, rect.w - 12, 38)
-        context.strokeStyle = 'rgba(154, 176, 208, 0.45)'
-        context.lineWidth = 1
-        context.strokeRect(rect.x + 6.5, rect.y + 12.5, rect.w - 13, 37)
-
-        context.fillStyle = '#f6e3c1'
-        context.font = 'bold 9px monospace'
-        context.fillText(room.code, rect.x + 10, rect.y + 18)
-
-        context.fillStyle = '#d9e7f8'
-        context.font = '8px monospace'
-        context.fillText(trimText(context, room.roleLabel, rect.w - 20), rect.x + 10, rect.y + 28)
-
-        context.fillStyle = '#e0d3a2'
-        context.fillText(trimText(context, room.taskLabel, rect.w - 20), rect.x + 10, rect.y + 38)
+        drawRoomLabel(context, rect, room)
 
         context.fillStyle = '#132036'
         context.fillRect(rect.x + Math.floor(rect.w / 2) - 8, rect.y + rect.h - 4, 16, 4)
@@ -417,7 +500,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
 
     frameId = window.requestAnimationFrame(draw)
     return () => window.cancelAnimationFrame(frameId)
-  }, [floor, roomRects, spriteCache])
+  }, [floor, layout, roomRects, spriteCache])
 
   return (
     <div className="pixel-map-shell">

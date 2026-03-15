@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Press+Start+2P&display=swap');
+
+:root {
+  --text-main: #e8edf5;
+  --text-soft: #c3cfde;
+  --text-muted: #8fa1ba;
+  --panel-bg: rgba(16, 27, 43, 0.88);
+  --panel-border: #324866;
+  --panel-shadow: 0 14px 30px rgba(1, 7, 16, 0.48);
+  --pixel-font: 'Press Start 2P', monospace;
+  --body-font: 'Chakra Petch', sans-serif;
+
+  font-family: var(--body-font);
+  color: var(--text-main);
+  background: #0a111c;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(76, 113, 184, 0.22), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(246, 166, 91, 0.18), transparent 38%),
+    linear-gradient(180deg, #0a121d, #090f18 44%, #070c13 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
