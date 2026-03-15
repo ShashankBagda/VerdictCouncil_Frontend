@@ -1,13 +1,111 @@
-const DEFAULT_ASSETS = {
-  wall: '/pixel-placeholders/wall.png',
-  desk: '/pixel-placeholders/desk.png',
-  prop: '/pixel-placeholders/prop.png',
-  monitor: '/pixel-placeholders/monitor.png',
+const THEME_ASSETS = {
+  intake: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_cabinet.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  structuring: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  ops: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_cabinet.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  classification: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  validation: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  risk: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_chair_red.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  evidence: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  timeline: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  witness: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_chair_red.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  policy: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  advocate: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_chair_red.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  balanced: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  deliberation: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  fairness: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  verdict: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_cabinet.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
+  judge: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  },
+  audit: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+  },
 }
 
 const withUiMeta = (room) => ({
   ...room,
-  assets: room.assets || DEFAULT_ASSETS,
+  assets: room.assets || THEME_ASSETS[room.interiorTheme] || THEME_ASSETS.ops,
 })
 
 export const AGENT_FLOORS = [
