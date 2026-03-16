@@ -1,0 +1,22 @@
+{
+  "name": "VerdictCouncil Frontend",
+  "short_name": "VerdictCouncil",
+  "description": "Gamified court simulation frontend for appeal intake, building simulation, and agent pipeline.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a111c",
+  "theme_color": "#0a111c",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
