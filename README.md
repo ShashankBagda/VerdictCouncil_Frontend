@@ -5,14 +5,15 @@ React + Vite frontend for the VerdictCouncil project.
 ## Current UI Scope
 
 This UI pass includes a routed, multi-page flow:
-- `/intake`: Appeal and dispute intake form
-- `/building`: One-floor-at-a-time courtroom simulation with categorized agent offices
-- `/pipeline`: Agent orchestration timeline and legal-path context
+- `/intake`: Appeal and dispute intake form with multi-file capture
+- `/graph`: Graph mesh orchestration view (primary simulation)
+- `/pipeline`: Agent pipeline progress and judge-gating status
 
 Highlights:
-- Floors divided by v4 agent categories (A-01 to A-18 + oversight)
-- Pixel NPC sprites with active thought-bubble animation
-- Domain-aware pipeline (Small Claims vs Traffic Violation)
+- Consolidated 9-agent architecture across 4 layers
+- Judge-controlled approval gates (per agent, per layer, or end-only)
+- Auto-layout graph mesh visualization
+- Domain-aware copy (Small Claims vs Traffic Violation)
 
 ## Development
 

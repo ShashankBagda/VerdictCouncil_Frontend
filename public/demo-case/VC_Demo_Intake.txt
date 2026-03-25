@@ -1,0 +1,26 @@
+VerdictCouncil Demo Intake Packet
+
+Case Title: Late delivery refund dispute
+Domain: Small Claims Tribunal
+
+Appellant: Amelia Tan
+Respondent: Horizon Electronics Pte Ltd
+Claim Amount: 850
+
+Appeal Reason:
+Refund request denied despite delivery delay and incomplete accessories. Seeking
+refund for failed service and replacement of missing items.
+
+Dispute Narrative:
+Product arrived 12 days late and missing accessories. Multiple follow-ups with
+vendor support were unresolved. Appellant seeks refund and compensation for
+delivery delay.
+
+Evidence Notes:
+- Order invoice and receipt
+- Delivery timestamp and tracking record
+- Email support thread
+- Photos of missing accessories
+
+Requested Remedy:
+Full refund, delivery fee reimbursement, and replacement accessories if refund is denied.
