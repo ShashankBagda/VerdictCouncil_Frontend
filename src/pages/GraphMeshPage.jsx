@@ -1,41 +1,12 @@
 import { useMemo, useState } from 'react'
-import ReactFlow, { Background, Controls } from 'reactflow'
-import dagre from '@dagrejs/dagre'
+import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import AgentNode from '../components/AgentNode'
 
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 96
-
-const getLayoutedElements = (nodes, edges) => {
-  const dagreGraph = new dagre.graphlib.Graph()
-  dagreGraph.setDefaultEdgeLabel(() => ({}))
-  dagreGraph.setGraph({ rankdir: 'LR', ranksep: 80, nodesep: 40 })
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
-  })
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target)
-  })
-
-  dagre.layout(dagreGraph)
-
-  return {
-    nodes: nodes.map((node) => {
-      const { x, y } = dagreGraph.node(node.id)
-      return {
-        ...node,
-        position: {
-          x: x - NODE_WIDTH / 2,
-          y: y - NODE_HEIGHT / 2,
-        },
-      }
-    }),
-    edges,
-  }
-}
+const COLUMN_WIDTH = 270
+const ROW_HEIGHT = 128
 
 const statusLabel = (status) => {
   if (status === 'running') return 'Running'
@@ -44,6 +15,44 @@ const statusLabel = (status) => {
   if (status === 'completed') return 'Completed'
   if (status === 'redo_requested') return 'Redo Requested'
   return 'Queued'
+}
+
+const formatEventTime = (value) => {
+  if (!value) {
+    return 'Pending'
+  }
+
+  return new Date(value).toLocaleTimeString('en-SG', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const buildLayeredNodes = ({ agents, layers, layerLookup, agentStatusMap, redoTargetAgentId, selectedAgentId }) => {
+  const layerGroups = layers.map((layer) => ({
+    ...layer,
+    agents: agents.filter((agent) => agent.layerId === layer.id),
+  }))
+
+  return layerGroups.flatMap((layer, columnIndex) =>
+    layer.agents.map((agent, rowIndex) => ({
+      id: agent.id,
+      type: 'agentNode',
+      position: {
+        x: 40 + columnIndex * COLUMN_WIDTH,
+        y: 40 + rowIndex * ROW_HEIGHT + (layer.agents.length === 2 ? 44 : 0),
+      },
+      data: {
+        title: agent.title,
+        layer: layerLookup[agent.layerId],
+        status: agentStatusMap[agent.id] || 'idle',
+        statusLabel: statusLabel(agentStatusMap[agent.id]),
+        index: agents.findIndex((entry) => entry.id === agent.id) + 1,
+        isRedoTarget: redoTargetAgentId === agent.id,
+        isSelected: selectedAgentId === agent.id,
+      },
+    })),
+  )
 }
 
 function GraphMeshPage({
@@ -58,7 +67,14 @@ function GraphMeshPage({
   sendBackToAgent,
   redoTargetAgentId,
   pipelineStages,
+  agentArtifacts,
+  auditEvents,
+  judgeNoteDraft,
+  setJudgeNoteDraft,
+  redirectReasonDraft,
+  setRedirectReasonDraft,
 }) {
+  const [selectedAgentId, setSelectedAgentId] = useState('')
   const [redirectTarget, setRedirectTarget] = useState('')
 
   const layerLookup = useMemo(
@@ -81,22 +97,30 @@ function GraphMeshPage({
     return availableRedirectAgents.at(-1).id
   }, [availableRedirectAgents, redirectTarget])
 
+  const activeAgentId = agents[currentAgentIndex]?.id || agents[0]?.id
+  const effectiveSelectedAgentId =
+    agents.find((agent) => agent.id === selectedAgentId)?.id || activeAgentId
+  const selectedAgent = agents.find((agent) => agent.id === effectiveSelectedAgentId) || agents[0]
+  const selectedArtifact = agentArtifacts[selectedAgent?.id] || null
+
   const nodes = useMemo(
     () =>
-      agents.map((agent, index) => ({
-        id: agent.id,
-        type: 'agentNode',
-        data: {
-          title: agent.title,
-          layer: layerLookup[agent.layerId],
-          status: agentStatusMap[agent.id] || 'idle',
-          statusLabel: statusLabel(agentStatusMap[agent.id]),
-          index: index + 1,
-          isRedoTarget: redoTargetAgentId === agent.id,
-        },
-        position: { x: 0, y: 0 },
-      })),
-    [agents, agentStatusMap, layerLookup, redoTargetAgentId],
+      buildLayeredNodes({
+        agents,
+        layers,
+        layerLookup,
+        agentStatusMap,
+        redoTargetAgentId,
+        selectedAgentId: effectiveSelectedAgentId,
+      }),
+    [
+      agentStatusMap,
+      agents,
+      effectiveSelectedAgentId,
+      layerLookup,
+      layers,
+      redoTargetAgentId,
+    ],
   )
 
   const edges = useMemo(
@@ -105,15 +129,17 @@ function GraphMeshPage({
         id: `edge-${agent.id}-${agents[index + 1].id}`,
         source: agent.id,
         target: agents[index + 1].id,
+        type: 'smoothstep',
         animated: agentStatusMap[agent.id] === 'running',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 18,
+          height: 18,
+          color: '#9fb4cc',
+        },
         style: { stroke: '#9fb4cc', strokeWidth: 1.4 },
       })),
     [agents, agentStatusMap],
-  )
-
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
-    () => getLayoutedElements(nodes, edges),
-    [nodes, edges],
   )
 
   const nodeTypes = useMemo(() => ({ agentNode: AgentNode }), [])
@@ -123,30 +149,61 @@ function GraphMeshPage({
       <div className="page-hero">
         <h2>Graph Mesh Orchestration</h2>
         <p>
-          The orchestrator visualizes the 9-agent pipeline, highlights the active stage,
-          and pauses for judge approval based on the selected gate mode.
+          The mesh is arranged by architecture layer so every agent remains visible in a
+          single screen, while the judge can still inspect dossier details and reroute
+          the flow in context.
         </p>
       </div>
 
       <div className="graph-grid">
         <div className="graph-panel card">
-          <div className="graph-canvas">
+          <div className="layer-ribbon">
+            {layers.map((layer) => (
+              <div key={layer.id} className="layer-ribbon-item">
+                <span className="micro-label">{layer.title}</span>
+                <p>{layer.description}</p>
+              </div>
+            ))}
+          </div>
+          <div className="graph-canvas graph-canvas-compact">
             <ReactFlow
-              nodes={layoutedNodes}
-              edges={layoutedEdges}
+              nodes={nodes}
+              edges={edges}
               nodeTypes={nodeTypes}
               fitView
+              fitViewOptions={{ padding: 0.08, minZoom: 0.85, maxZoom: 1 }}
               nodesDraggable={false}
               nodesConnectable={false}
               zoomOnScroll={false}
-              panOnScroll
+              zoomOnPinch={false}
+              panOnScroll={false}
+              panOnDrag={false}
+              onNodeClick={(_, node) => setSelectedAgentId(node.id)}
+              proOptions={{ hideAttribution: true }}
             >
-              <Background color="#dbe5f0" gap={20} />
+              <Background color="#dbe5f0" gap={22} />
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
           <div>
-            <strong>Orchestrator Timeline</strong>
+            <div className="section-header compact">
+              <strong>Orchestrator Timeline</strong>
+              <span
+                className={`stage-status ${
+                  runState === 'waiting_judge'
+                    ? 'waiting_judge'
+                    : runState === 'complete'
+                      ? 'completed'
+                      : runState
+                }`}
+              >
+                {runState === 'idle'
+                  ? 'Idle'
+                  : runState === 'complete'
+                    ? 'Complete'
+                    : statusLabel(runState)}
+              </span>
+            </div>
             <div className="timeline">
               {pipelineStages.map((stage) => {
                 const status = agentStatusMap[stage.agentId] || 'idle'
@@ -157,9 +214,16 @@ function GraphMeshPage({
                       ? 'waiting_judge'
                       : status
                 return (
-                  <span key={stage.id} className={`timeline-item ${timelineClass}`}>
+                  <button
+                    type="button"
+                    key={stage.id}
+                    className={`timeline-item ${timelineClass} ${
+                      effectiveSelectedAgentId === stage.agentId ? 'selected' : ''
+                    }`}
+                    onClick={() => setSelectedAgentId(stage.agentId)}
+                  >
                     {stage.title}
-                  </span>
+                  </button>
                 )
               })}
             </div>
@@ -193,6 +257,22 @@ function GraphMeshPage({
                 End Only
               </button>
             </div>
+            <label className="input-field" style={{ marginTop: '16px' }}>
+              Judge Note
+              <textarea
+                value={judgeNoteDraft}
+                onChange={(event) => setJudgeNoteDraft(event.target.value)}
+                placeholder="Record approval notes, concerns, or follow-up instructions."
+              />
+            </label>
+            <label className="input-field">
+              Redirect Reason
+              <textarea
+                value={redirectReasonDraft}
+                onChange={(event) => setRedirectReasonDraft(event.target.value)}
+                placeholder="If rerouting, explain what should be revisited."
+              />
+            </label>
             <div className="btn-row" style={{ marginTop: '16px' }}>
               <button
                 type="button"
@@ -232,10 +312,76 @@ function GraphMeshPage({
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => sendBackToAgent(effectiveRedirectTarget)}
-                disabled={!effectiveRedirectTarget}
+                disabled={!effectiveRedirectTarget || runState !== 'waiting_judge'}
               >
                 Send Back to Agent
               </button>
+            </div>
+          </div>
+
+          <div className="card">
+            <strong>Selected Dossier</strong>
+            <div className="dossier-block">
+              <span className="micro-label">{layerLookup[selectedAgent.layerId]}</span>
+              <h3>{selectedAgent.title}</h3>
+              <p>{selectedArtifact?.summary}</p>
+            </div>
+            <div className="dossier-grid">
+              <div className="dossier-item">
+                <span>Confidence</span>
+                <strong>
+                  {selectedArtifact?.confidence ? `${selectedArtifact.confidence}%` : 'Pending'}
+                </strong>
+              </div>
+              <div className="dossier-item">
+                <span>Status</span>
+                <strong>{statusLabel(agentStatusMap[selectedAgent.id])}</strong>
+              </div>
+            </div>
+            <div className="dossier-block">
+              <span className="micro-label">Evidence</span>
+              <ul className="detail-list">
+                {(selectedArtifact?.evidenceRefs || []).length > 0 ? (
+                  selectedArtifact.evidenceRefs.map((entry) => <li key={entry}>{entry}</li>)
+                ) : (
+                  <li>No evidence references recorded yet.</li>
+                )}
+              </ul>
+            </div>
+            <div className="dossier-block">
+              <span className="micro-label">Risks</span>
+              <ul className="detail-list">
+                {(selectedArtifact?.risks || []).length > 0 ? (
+                  selectedArtifact.risks.map((entry) => <li key={entry}>{entry}</li>)
+                ) : (
+                  <li>No risk flags recorded yet.</li>
+                )}
+              </ul>
+            </div>
+            <div className="dossier-block">
+              <span className="micro-label">Judge Review</span>
+              <p>
+                {selectedArtifact?.judgeNote || 'No judge comment captured for this stage yet.'}
+              </p>
+              {selectedArtifact?.redirectReason ? (
+                <p className="helper-text">Redirect: {selectedArtifact.redirectReason}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="card">
+            <strong>Recent Audit</strong>
+            <div className="audit-list">
+              {auditEvents.slice(0, 6).map((event) => (
+                <article key={event.id} className="audit-item">
+                  <div className="audit-meta">
+                    <span>{event.actor}</span>
+                    <span>{formatEventTime(event.createdAt)}</span>
+                  </div>
+                  <strong>{event.stageTitle || 'Case Event'}</strong>
+                  <p>{event.message}</p>
+                </article>
+              ))}
             </div>
           </div>
         </aside>
