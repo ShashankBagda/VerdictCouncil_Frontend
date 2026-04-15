@@ -1,0 +1,263 @@
+/* ============================================================================
+   Animations & Transitions
+   ========================================================================== */
+
+/* Page Transitions */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.page-enter {
+  animation: pageEnter 300ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.page-exit {
+  animation: pageExit 300ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Tab Transitions */
+@keyframes tabCrossFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.tab-transition {
+  animation: tabCrossFade 200ms ease-in-out forwards;
+}
+
+/* Button Hover Animation */
+@keyframes buttonHover {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-2px);
+  }
+}
+
+button:not(:disabled):hover {
+  animation: buttonHover 150ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Modal & Dialog */
+@keyframes modalScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-enter {
+  animation: modalScale 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Loading Spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  border: 2px solid rgba(26, 35, 50, 0.1);
+  border-top: 2px solid #006b8a;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Pulsing Glow (for in-progress agents) */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(14, 165, 233, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0);
+  }
+}
+
+.agent-in-progress {
+  animation: pulseGlow 1.5s ease-out infinite;
+}
+
+/* Animated Checkmark */
+@keyframes checkmark {
+  0% {
+    stroke-dashoffset: 50;
+    opacity: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.checkmark {
+  animation: checkmark 400ms ease-in-out forwards;
+}
+
+/* Progress Bar Animation */
+@keyframes progressFill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.progress-animate {
+  animation: progressFill 500ms ease-in-out forwards;
+}
+
+/* Skeleton Loader Shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(179, 190, 205, 0.2) 0%,
+    rgba(179, 190, 205, 0.3) 50%,
+    rgba(179, 190, 205, 0.2) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Slide In */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in-left {
+  animation: slideInLeft 300ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.slide-in-right {
+  animation: slideInRight 300ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Fade In/Out */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 200ms ease-in forwards;
+}
+
+.fade-out {
+  animation: fadeOut 200ms ease-out forwards;
+}
+
+/* Bounce */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.bounce {
+  animation: bounce 600ms ease-in-out infinite;
+}
+
+/* Scale Pulse (for important elements) */
+@keyframes scalePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.scale-pulse {
+  animation: scalePulse 800ms ease-in-out infinite;
+}
+
+/* Accessible animations - respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

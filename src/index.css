@@ -1,50 +1,13 @@
-:root {
-  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
-  --font-body: "Work Sans", "Segoe UI", sans-serif;
-  --color-bg: #f5f7fb;
-  --color-surface: #ffffff;
-  --color-surface-alt: #eef2f7;
-  --color-border: #d6dee9;
-  --color-text: #142033;
-  --color-muted: #5b6a7c;
-  --color-primary: #003d7c;
-  --color-accent: #ef7c00;
-  --color-accent-soft: #ffecd4;
-  --shadow-soft: 0 18px 40px rgba(15, 25, 40, 0.08);
-  --shadow-card: 0 16px 30px rgba(15, 25, 40, 0.06);
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --space-1: 6px;
-  --space-2: 10px;
-  --space-3: 14px;
-  --space-4: 18px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 40px;
-  font-family: var(--font-body);
-  color: var(--color-text);
-  background: var(--color-bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-}
+@import './styles/globals.css';
+@import './styles/animations.css';
 
 body {
   margin: 0;
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(0, 61, 124, 0.16), transparent 46%),
-    radial-gradient(circle at 90% 10%, rgba(239, 124, 0, 0.12), transparent 40%),
-    linear-gradient(180deg, #f5f7fb, #eef2f7 60%, #e9eef6 100%);
+  padding: 0;
 }
 
 #root {
+  width: 100%;
   min-height: 100vh;
 }
 
