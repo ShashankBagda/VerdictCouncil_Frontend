@@ -1,138 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAPI } from '../../hooks';
 import { useCase } from '../../hooks';
 import api from '../../lib/api';
+import FloorPixelMap from '../../components/FloorPixelMap';
+import AgentStreamPanel from '../../components/AgentStreamPanel';
+import { BUILDING_FLOORS, deriveRoomStatus } from '../../data/buildingFloors';
 
-// Agent metadata for display
-const AGENT_METADATA = {
-  'fact-reconstruction': {
-    label: 'Fact Reconstruction',
-    floor: 4,
-    color: 'blue',
-    icon: '📋',
-  },
-  'evidence-analysis': {
-    label: 'Evidence Analysis',
-    floor: 4,
-    color: 'blue',
-    icon: '🔍',
-  },
-  'witness-analysis': {
-    label: 'Witness Analysis',
-    floor: 3,
-    color: 'purple',
-    icon: '👤',
-  },
-  'legal-knowledge': {
-    label: 'Legal Knowledge',
-    floor: 3,
-    color: 'purple',
-    icon: '⚖️',
-  },
-  'argument-construction': {
-    label: 'Argument Construction',
-    floor: 2,
-    color: 'green',
-    icon: '🗣️',
-  },
-  'complexity-routing': {
-    label: 'Complexity Routing',
-    floor: 2,
-    color: 'green',
-    icon: '🎯',
-  },
-  'deliberation': {
-    label: 'Deliberation',
-    floor: 1,
-    color: 'amber',
-    icon: '🤔',
-  },
-  'governance-verdict': {
-    label: 'Governance & Verdict',
-    floor: 1,
-    color: 'amber',
-    icon: '⚡',
-  },
-  'layer2-aggregator': {
-    label: 'Layer 2 Aggregator',
-    floor: 1,
-    color: 'red',
-    icon: '🔗',
-  },
-};
-
-const STATUS_CONFIG = {
-  pending: { label: 'Pending', icon: Clock, color: 'gray', bgColor: 'bg-gray-50' },
-  running: { label: 'Running', icon: Clock, color: 'blue', bgColor: 'bg-blue-50' },
-  completed: { label: 'Completed', icon: CheckCircle, color: 'emerald', bgColor: 'bg-emerald-50' },
-  failed: { label: 'Failed', icon: AlertCircle, color: 'rose', bgColor: 'bg-rose-50' },
+// Fade transition state for floor switching
+const FADE = {
+  IDLE: 'idle',
+  OUT: 'fade_out',
+  IN: 'fade_in',
 };
 
 export default function BuildingSimulation() {
   const { caseId } = useParams();
   const { showError } = useAPI();
-  const { pipelineStatus: cachedStatus, updatePipelineStatus } = useCase();
+  const { updatePipelineStatus } = useCase();
 
   const [loading, setLoading] = useState(true);
   const [pipelineStatus, setPipelineStatus] = useState(null);
-  const [expandedAgent, setExpandedAgent] = useState(null);
-  const [selectedFloor, setSelectedFloor] = useState(null);
+  const [selectedFloor, setSelectedFloor] = useState(BUILDING_FLOORS[0]);
+  const [selectedAgentId, setSelectedAgentId] = useState(null);
+  const [fadeState, setFadeState] = useState(FADE.IDLE);
 
-  // Fetch pipeline status on mount
+  // Fetch pipeline status (polling fallback for the overall status bar)
   useEffect(() => {
     const fetchStatus = async () => {
       try {
         setLoading(true);
-        const res = await api.getPipelineStatus(caseId);
-        setPipelineStatus(res.data);
-        updatePipelineStatus(res.data);
+        const res = await api.getPipelineStatus(caseId); // returns data directly, not res.data
+        setPipelineStatus(res);
+        updatePipelineStatus(res);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'Failed to fetch pipeline status';
-        showError(msg);
+        showError(err.message || 'Failed to fetch pipeline status');
       } finally {
         setLoading(false);
       }
     };
-
     fetchStatus();
-
-    // Optional: Poll for updates every 5 seconds
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(fetchStatus, 10000);
     return () => clearInterval(interval);
   }, [caseId, showError, updatePipelineStatus]);
 
-  // Use cached status if initial load failed
-  const status = pipelineStatus || cachedStatus;
+  // Handle floor switching with fade transition
+  const switchFloor = useCallback((floor) => {
+    if (floor.id === selectedFloor.id) return;
+    setFadeState(FADE.OUT);
+    setTimeout(() => {
+      setSelectedFloor(floor);
+      setSelectedAgentId(null);
+      setFadeState(FADE.IN);
+      setTimeout(() => setFadeState(FADE.IDLE), 210);
+    }, 170);
+  }, [selectedFloor]);
 
-  // Group agents by floor
-  const agentsByFloor = {
-    4: [],
-    3: [],
-    2: [],
-    1: [],
-  };
+  // Handle agent selection
+  const handleSelectAgent = useCallback((roomId) => {
+    setSelectedAgentId(roomId);
+  }, []);
 
-  if (status?.agents) {
-    status.agents.forEach((agent) => {
-      const meta = AGENT_METADATA[agent.agent_id];
-      if (meta) {
-        agentsByFloor[meta.floor].push({ ...agent, meta });
-      }
-    });
-  }
+  const { activeRooms, completedRooms } = deriveRoomStatus(
+    pipelineStatus?.agents,
+    selectedFloor.id
+  );
 
-  // Get agent status
-  const getAgentStatus = (agentId) => {
-    if (!status?.agents) return 'pending';
-    const agent = status.agents.find((a) => a.agent_id === agentId);
-    return agent?.status || 'pending';
-  };
-
-  if (loading) {
+  if (loading && !pipelineStatus) {
     return (
-      <div className="card-lg flex items-center justify-center h-96">
+      <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="spinner w-8 h-8 mx-auto mb-4" />
           <p className="text-gray-600">Loading building visualization...</p>
@@ -142,169 +78,114 @@ export default function BuildingSimulation() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="card-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-navy-900 mb-2">Verdict Council Building</h2>
-            <p className="text-gray-600">
-              9-agent analysis pipeline processing case {caseId}
-            </p>
+    <div className="flex flex-col h-full gap-4">
+      {/* Top bar: overall progress */}
+      <div className="flex items-center justify-between bg-white rounded-lg shadow-sm px-6 py-3 border border-gray-200">
+        <div>
+          <h2 className="text-xl font-bold text-navy-900">Verdict Council Building</h2>
+          <p className="text-sm text-gray-600">9-agent pipeline for case {caseId}</p>
+        </div>
+        {pipelineStatus && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">Progress</span>
+            <div className="w-32 h-2 bg-gray-200 rounded-full">
+              <div
+                className="h-2 bg-teal-500 rounded-full transition-all duration-500"
+                style={{ width: `${pipelineStatus.overall_progress_percent || 0}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold text-teal-700">
+              {pipelineStatus.overall_progress_percent || 0}%
+            </span>
+            <span className={`px-2 py-0.5 rounded text-xs font-semibold capitalize ${
+              pipelineStatus.overall_status === 'processing' ? 'bg-blue-100 text-blue-800' :
+              pipelineStatus.overall_status === 'ready_for_review' ? 'bg-emerald-100 text-emerald-800' :
+              pipelineStatus.overall_status === 'failed' ? 'bg-rose-100 text-rose-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {pipelineStatus.overall_status?.replace(/_/g, ' ')}
+            </span>
           </div>
-          {status && (
-            <div className="text-right">
-              <p className="text-sm text-gray-600 mb-1">Overall Progress</p>
-              <div className="flex items-center gap-2">
-                <div className="w-24 h-2 bg-gray-200 rounded-full">
-                  <div
-                    className="h-2 bg-teal-500 rounded-full transition-all"
-                    style={{ width: `${status.overall_progress_percent || 0}%` }}
-                  />
-                </div>
-                <span className="text-lg font-bold text-teal-600">
-                  {status.overall_progress_percent || 0}%
-                </span>
-              </div>
-            </div>
-          )}
+        )}
+      </div>
+
+      {/* Floor selector tabs */}
+      <div className="flex gap-2">
+        {BUILDING_FLOORS.map((floor) => (
+          <button
+            key={floor.id}
+            onClick={() => switchFloor(floor)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+              selectedFloor.id === floor.id
+                ? 'bg-navy-900 text-white shadow'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Floor {floor.number}: {floor.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Main split panel */}
+      <div className="flex gap-4 flex-1 min-h-0" style={{ height: '520px' }}>
+        {/* Left: Pixi.js building (55%) */}
+        <div
+          className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-900"
+          style={{
+            width: '55%',
+            opacity: fadeState === FADE.IDLE ? 1 : 0,
+            transition: fadeState === FADE.OUT
+              ? 'opacity 170ms ease-out'
+              : fadeState === FADE.IN
+              ? 'opacity 210ms ease-in'
+              : 'none',
+          }}
+        >
+          <FloorPixelMap
+            floor={selectedFloor}
+            activeRooms={activeRooms}
+            completedRooms={completedRooms}
+          />
+          <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">
+            Click an agent name below to view its stream
+          </div>
+        </div>
+
+        {/* Right: Agent stream panel (45%) */}
+        <div style={{ width: '45%' }}>
+          <AgentStreamPanel
+            caseId={caseId}
+            selectedAgentId={selectedAgentId}
+            agentStatuses={pipelineStatus?.agents}
+          />
         </div>
       </div>
 
-      {/* Building Visualization */}
-      <div className="card-lg bg-gradient-to-br from-sky-50 to-blue-50">
-        <div className="space-y-8">
-          {/* Floors from top to bottom */}
-          {[4, 3, 2, 1].map((floorNum) => (
-            <div key={floorNum} className="border-b border-gray-200 pb-8 last:border-0">
-              {/* Floor Label */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className="text-center">
-                  <div className="w-12 h-12 rounded-lg bg-navy-900 text-white flex items-center justify-center font-bold text-lg">
-                    {floorNum}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">Floor</p>
-                </div>
-                <h3 className="text-xl font-bold text-navy-900">
-                  {floorNum === 4
-                    ? 'Evidence Layer'
-                    : floorNum === 3
-                      ? 'Analysis Layer'
-                      : floorNum === 2
-                        ? 'Argumentation Layer'
-                        : 'Decision Layer'}
-                </h3>
-              </div>
-
-              {/* Agents on this floor */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ml-16">
-                {agentsByFloor[floorNum].length > 0 ? (
-                  agentsByFloor[floorNum].map((agent) => {
-                    const statusConfig = STATUS_CONFIG[agent.status] || STATUS_CONFIG.pending;
-                    const StatusIcon = statusConfig.icon;
-                    const isExpanded = expandedAgent === agent.agent_id;
-
-                    return (
-                      <button
-                        key={agent.agent_id}
-                        onClick={() =>
-                          setExpandedAgent(isExpanded ? null : agent.agent_id)
-                        }
-                        className={`p-4 rounded-lg border-2 transition-all text-left ${
-                          statusConfig.bgColor
-                        } border-${statusConfig.color}-300 hover:shadow-md`}
-                      >
-                        {/* Agent Header */}
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-2xl">{agent.meta.icon}</span>
-                              <h4 className="font-semibold text-navy-900 text-sm">
-                                {agent.meta.label}
-                              </h4>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <StatusIcon
-                                className={`w-4 h-4 text-${statusConfig.color}-600`}
-                              />
-                              <span
-                                className={`text-xs font-semibold text-${statusConfig.color}-700`}
-                              >
-                                {statusConfig.label}
-                              </span>
-                            </div>
-                          </div>
-                          {isExpanded ? (
-                            <ChevronUp className="w-5 h-5 text-gray-600 flex-shrink-0" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-gray-600 flex-shrink-0" />
-                          )}
-                        </div>
-
-                        {/* Expanded Details */}
-                        {isExpanded && (
-                          <div className="mt-4 pt-4 border-t border-gray-200 space-y-2 text-xs">
-                            {agent.start_time && (
-                              <div>
-                                <p className="text-gray-600">Started:</p>
-                                <p className="font-mono text-gray-900">
-                                  {new Date(agent.start_time).toLocaleTimeString()}
-                                </p>
-                              </div>
-                            )}
-                            {agent.end_time && (
-                              <div>
-                                <p className="text-gray-600">Ended:</p>
-                                <p className="font-mono text-gray-900">
-                                  {new Date(agent.end_time).toLocaleTimeString()}
-                                </p>
-                              </div>
-                            )}
-                            {agent.elapsed_seconds && (
-                              <div>
-                                <p className="text-gray-600">Duration:</p>
-                                <p className="font-mono text-gray-900">
-                                  {agent.elapsed_seconds}s
-                                </p>
-                              </div>
-                            )}
-                            {agent.error_message && (
-                              <div className="mt-2 p-2 bg-rose-100 rounded border border-rose-200">
-                                <p className="text-rose-900 font-mono text-xs">
-                                  {agent.error_message}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="text-gray-500 italic text-sm">
-                    No agents on this floor
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Status Legend */}
-      <div className="card-lg">
-        <h3 className="font-semibold text-navy-900 mb-4">Status Legend</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-            const Icon = config.icon;
-            return (
-              <div key={key} className="flex items-center gap-3">
-                <Icon className={`w-5 h-5 text-${config.color}-600`} />
-                <span className={`text-sm text-${config.color}-900`}>{config.label}</span>
-              </div>
-            );
-          })}
-        </div>
+      {/* Agent selector row — click to focus stream */}
+      <div className="flex flex-wrap gap-2">
+        {selectedFloor.rooms.map((room) => {
+          const agentStatus = pipelineStatus?.agents?.find((a) => a.agent_id === room.id);
+          const status = agentStatus?.status || 'pending';
+          return (
+            <button
+              key={room.id}
+              onClick={() => handleSelectAgent(room.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border-2 ${
+                selectedAgentId === room.id
+                  ? 'border-teal-500 bg-teal-50 text-teal-800'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <span className={`mr-1.5 inline-block w-2 h-2 rounded-full ${
+                status === 'running' ? 'bg-blue-500 animate-pulse' :
+                status === 'completed' ? 'bg-emerald-500' :
+                status === 'failed' ? 'bg-rose-500' :
+                'bg-gray-300'
+              }`} />
+              {room.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
