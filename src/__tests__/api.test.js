@@ -34,7 +34,7 @@ describe('API module', () => {
   it('constructs correct cases list URL', async () => {
     const { default: api } = await import('../lib/api');
     try {
-      await api.getCases();
+      await api.listCases();
     } catch {
       // ignore
     }
