@@ -1,6 +1,31 @@
 # VerdictCouncil Frontend
 
-React 18 + Vite frontend for the VerdictCouncil judicial decision-support system.
+React 18 + Vite + TailwindCSS frontend for the VerdictCouncil judicial decision-support system.
+
+## Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Node.js | 18+ | `brew install node` |
+
+## Setup
+
+```bash
+cp .env.example .env    # configure API URL (default: http://127.0.0.1:8001)
+npm install
+npm run dev             # starts Vite dev server on http://localhost:5173
+```
+
+Requires the backend API running on port 8001 (see `VerdictCouncil_Backend`).
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_URL` | `http://127.0.0.1:8001` | Backend API base URL |
+| `VITE_BYPASS_AUTH` | `false` | Skip login in development |
+| `VITE_BYPASS_AUTH_EMAIL` | `judge@verdictcouncil.sg` | Email used when auth is bypassed |
+| `VITE_BYPASS_AUTH_ROLE` | `judge` | Role used when auth is bypassed |
 
 ## Routes
 
@@ -18,19 +43,28 @@ React 18 + Vite frontend for the VerdictCouncil judicial decision-support system
 | `/graph` | GraphMesh | Graph mesh orchestration view |
 | `/whatif` | WhatIfMode | What-if scenario analysis |
 
-## Development
+## Tech Stack
 
-```bash
-npm install
-npm run dev
-```
+- **React 18** — UI framework
+- **Vite 5** — build tool and dev server
+- **TailwindCSS 3** — utility-first styling
+- **React Router 7** — client-side routing
+- **ReactFlow** + Dagre — graph/mesh visualization
+- **Framer Motion** — animations
+- **Pixi.js** — 2D graphics (building simulation)
+- **Vitest** + React Testing Library — testing
+
+## Development
 
 Build, lint, and test:
 
 ```bash
-npm run lint
-npm run build
-npm test          # Vitest + React Testing Library
+npm run lint          # ESLint
+npm run lint:fix      # auto-fix lint issues
+npm run type-check    # TypeScript validation
+npm run build         # production build
+npm test              # Vitest + React Testing Library
+npm run test:watch    # watch mode
 ```
 
 ## Testing
