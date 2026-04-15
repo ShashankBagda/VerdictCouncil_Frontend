@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, Beaker } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
 import api from '../../lib/api';
+import { DEMO_CASES } from '../../data/demoCases';
 
 export default function CaseIntake() {
   const navigate = useNavigate();
@@ -35,6 +36,17 @@ export default function CaseIntake() {
   const canProceedToStep2 = isStep1Valid;
   const canProceedToStep3 = isStep1Valid && isStep2Valid;
   const canSubmit = canProceedToStep3 && isStep3Valid;
+
+  // Load demo case data
+  const loadDemoCase = (demo) => {
+    setDomain(demo.formState.domain === 'small_claims' ? 'SCT' : 'Traffic');
+    setCaseDescription(demo.description);
+    setPlaintiff(demo.formState.appellant);
+    setDefendant(demo.formState.respondent);
+    setClaimAmount(demo.formState.claimAmount || '');
+    setStep(3); // Jump to file upload step
+    showNotification(`Loaded demo: ${demo.label}`, 'success');
+  };
 
   // File handling
   const handleFileSelect = (newFiles) => {
@@ -153,6 +165,27 @@ export default function CaseIntake() {
           </React.Fragment>
         ))}
       </div>
+
+      {/* Demo Case Loader */}
+      {step === 1 && DEMO_CASES.length > 0 && (
+        <div className="card-lg bg-amber-50 border border-amber-200">
+          <div className="flex items-center gap-2 mb-3">
+            <Beaker className="w-5 h-5 text-amber-600" />
+            <h3 className="font-semibold text-amber-900">Load Demo Case</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {DEMO_CASES.map((demo) => (
+              <button
+                key={demo.id}
+                onClick={() => loadDemoCase(demo)}
+                className="px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-sm font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                {demo.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Step 1: Domain & Description */}
       {step === 1 && (

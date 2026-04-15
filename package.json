@@ -19,8 +19,7 @@
     "@dagrejs/dagre": "^1.1.5",
     "framer-motion": "^11.0.12",
     "lucide-react": "^0.376.0",
-    "pixi.js": "^8.6.0",
-    "zustand": "^4.4.7"
+    "pixi.js": "^8.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

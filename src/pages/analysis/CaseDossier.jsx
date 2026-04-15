@@ -103,10 +103,43 @@ export default function CaseDossier() {
     );
   }
 
+  const handleExport = () => {
+    const dossier = {
+      case_id: caseId,
+      exported_at: new Date().toISOString(),
+      evidence: evidence || null,
+      timeline: timeline || null,
+      witnesses: witnesses || null,
+      statutes: statutes || null,
+      arguments: arguments_ || null,
+      deliberation: deliberation || null,
+      verdict: verdict || null,
+    };
+    const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `case-${caseId}-dossier.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
       <div className="card-lg">
+        <div className="flex items-center justify-between mb-2">
+          <div />
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        </div>
         <div className="flex gap-2 overflow-x-auto pb-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
