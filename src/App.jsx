@@ -26,9 +26,8 @@ import CaseDossier from './pages/analysis/CaseDossier';
 import WhatIfMode from './pages/whatif/WhatIfMode';
 import HearingPack from './pages/judge/HearingPack';
 
-// Pages - Admin/Senior
-import AdminPanel from './pages/admin/AdminPanel';
-import SeniorJudgeInbox from './pages/senior/SeniorJudgeInbox';
+// Pages - Escalation
+import EscalatedCases from './pages/escalation/EscalatedCases';
 import NotFound from './pages/NotFound';
 
 // Layout
@@ -92,12 +91,8 @@ export default function App() {
                   </Route>
 
                   <Route
-                    path="/admin"
-                    element={<ProtectedRoute element={<AdminPanel />} />}
-                  />
-                  <Route
-                    path="/senior-judge"
-                    element={<ProtectedRoute element={<SeniorJudgeInbox />} />}
+                    path="/escalated-cases"
+                    element={<ProtectedRoute element={<EscalatedCases />} />}
                   />
                 </Route>
 

@@ -227,11 +227,11 @@ export const api = {
   setConfig: (config) =>
     request('POST', '/api/v1/admin/cost-config', config),
 
-  // Senior Judge
-  getSeniorInbox: (page = 1) =>
-    request('GET', `/api/v1/senior-judge/inbox?page=${page}`),
-  actionOnInbox: (itemId, action, reason = '') =>
-    request('POST', `/api/v1/senior-judge/inbox/${itemId}/action`, { action, reason }),
+  // Escalated Cases
+  getEscalatedCases: (page = 1) =>
+    request('GET', `/api/v1/cases/escalated?page=${page}`),
+  actionOnEscalatedCase: (itemId, action, reason = '') =>
+    request('POST', `/api/v1/cases/escalated/${itemId}/action`, { action, reason }),
 };
 
 export class APIError extends Error {

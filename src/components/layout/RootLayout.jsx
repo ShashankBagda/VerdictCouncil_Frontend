@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
-import { Menu, LogOut, Home, FileText, Users, Settings,BarChart3 } from 'lucide-react';
+import { Menu, LogOut, Home, FileText, Users, Settings } from 'lucide-react';
 
 export function RootLayout() {
   const navigate = useNavigate();
@@ -54,14 +54,8 @@ export function RootLayout() {
           />
           <NavItem
             icon={<Users size={20} />}
-            label="Senior Judge"
-            onClick={() => navigate('/senior-judge')}
-            show={sidebarOpen}
-          />
-          <NavItem
-            icon={<BarChart3 size={20} />}
-            label="Analytics"
-            onClick={() => navigate('/admin')}
+            label="Escalated Cases"
+            onClick={() => navigate('/escalated-cases')}
             show={sidebarOpen}
           />
           <NavItem

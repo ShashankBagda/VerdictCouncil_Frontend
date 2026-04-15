@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  Send,
   ArrowRight,
   MessageSquare,
   Clock,
@@ -26,7 +25,7 @@ const ITEM_TYPE_ICONS = {
   reopen: { icon: ArrowRight, color: 'text-purple-600', label: 'Reopen Request' },
 };
 
-export default function SeniorJudgeInbox() {
+export default function EscalatedCases() {
   const { showError, showNotification } = useAPI();
 
   // State
@@ -45,10 +44,10 @@ export default function SeniorJudgeInbox() {
     const fetchInbox = async () => {
       try {
         setLoading(true);
-        const res = await api.getSeniorInbox();
+        const res = await api.getEscalatedCases();
         setItems(res.data.items || []);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'failed to fetch inbox';
+        const msg = err.response?.data?.detail || 'failed to fetch escalated cases';
         showError(msg);
       } finally {
         setLoading(false);
@@ -70,7 +69,7 @@ export default function SeniorJudgeInbox() {
   const handleAction = async (itemId, action, reason = '') => {
     try {
       setProcessingId(itemId);
-      await api.actionOnInbox(itemId, action, reason);
+      await api.actionOnEscalatedCase(itemId, action, reason);
 
       // Update local state
       setItems((prev) =>
@@ -109,7 +108,7 @@ export default function SeniorJudgeInbox() {
       <div className="card-lg flex items-center justify-center h-96">
         <div className="text-center">
           <div className="spinner w-8 h-8 mx-auto mb-4" />
-          <p className="text-gray-600">Loading inbox items...</p>
+          <p className="text-gray-600">Loading escalated cases...</p>
         </div>
       </div>
     );
@@ -119,7 +118,7 @@ export default function SeniorJudgeInbox() {
     <div className="space-y-6">
       {/* Header */}
       <div className="card-lg">
-        <h1 className="text-3xl font-bold text-navy-900 mb-2">Senior Judge Inbox</h1>
+        <h1 className="text-3xl font-bold text-navy-900 mb-2">Escalated Cases</h1>
         <p className="text-gray-600">Review escalations, amendments, and reopen requests</p>
       </div>
 
