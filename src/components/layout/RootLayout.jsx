@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
-import { Menu, LogOut, Home, FileText, Users, Settings } from 'lucide-react';
+import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-react';
 
 export function RootLayout() {
   const navigate = useNavigate();
@@ -56,6 +56,12 @@ export function RootLayout() {
             icon={<Users size={20} />}
             label="Escalated Cases"
             onClick={() => navigate('/escalated-cases')}
+            show={sidebarOpen}
+          />
+          <NavItem
+            icon={<Database size={20} />}
+            label="Knowledge Base"
+            onClick={() => navigate('/knowledge-base')}
             show={sidebarOpen}
           />
           <NavItem

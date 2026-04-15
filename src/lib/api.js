@@ -201,6 +201,44 @@ export const api = {
   getKnowledgeBaseStatus: () =>
     request('GET', '/api/v1/knowledge-base/status'),
 
+  // Knowledge Base CRUD
+  initializeKB: () =>
+    request('POST', '/api/v1/knowledge-base/initialize'),
+  uploadToKB: async (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/api/v1/knowledge-base/documents`;
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      xhr.withCredentials = true;
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(xhr.responseText || `Upload failed: ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(formData);
+    });
+  },
+  listKBDocuments: () =>
+    request('GET', '/api/v1/knowledge-base/documents'),
+  deleteKBDocument: (fileId) =>
+    request('DELETE', `/api/v1/knowledge-base/documents/${fileId}`),
+  searchKB: (query) =>
+    request('POST', '/api/v1/knowledge-base/search', { query }),
+
   // Dashboard
   getDashboardStats: (timeWindow = '30d') =>
     request('GET', `/api/v1/dashboard/stats?window=${timeWindow}`),

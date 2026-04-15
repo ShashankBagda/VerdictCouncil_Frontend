@@ -25,6 +25,7 @@ import CaseDossier from './pages/analysis/CaseDossier';
 // Pages - What-If & Judge
 import WhatIfMode from './pages/whatif/WhatIfMode';
 import HearingPack from './pages/judge/HearingPack';
+import KnowledgeBase from './pages/judge/KnowledgeBase';
 
 // Pages - Escalation
 import EscalatedCases from './pages/escalation/EscalatedCases';
@@ -90,6 +91,10 @@ export default function App() {
                     <Route index element={<Navigate to="building" replace />} />
                   </Route>
 
+                  <Route
+                    path="/knowledge-base"
+                    element={<ProtectedRoute element={<KnowledgeBase />} />}
+                  />
                   <Route
                     path="/escalated-cases"
                     element={<ProtectedRoute element={<EscalatedCases />} />}
