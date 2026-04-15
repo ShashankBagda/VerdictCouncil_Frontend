@@ -46,7 +46,30 @@ export default function KnowledgeBase() {
     }
   };
 
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+  const ALLOWED_TYPES = [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ];
+
+  const validateFile = (file) => {
+    if (file.size > MAX_FILE_SIZE) {
+      showError(`File exceeds 50 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      return false;
+    }
+    if (file.type && !ALLOWED_TYPES.includes(file.type)) {
+      showError(`File type "${file.type}" not supported. Use PDF, PNG, JPEG, TXT, or DOC.`);
+      return false;
+    }
+    return true;
+  };
+
   const handleUpload = async (file) => {
+    if (!validateFile(file)) return;
     setUploading(true);
     setUploadProgress(0);
     try {
