@@ -86,18 +86,18 @@ export default function CaseIntake() {
 
     setIsSubmitting(true);
     try {
-      // Step 1: Create case
+      // Step 1: Create case — align with backend CaseCreateRequest schema
+      const domainMap = { SCT: 'small_claims', Traffic: 'traffic_violation' };
       const caseData = {
-        domain,
-        case_description: caseDescription,
-        party_1: plaintiff,
-        party_2: defendant,
+        domain: domainMap[domain] || domain,
+        description: caseDescription,
+        parties: [plaintiff, defendant].filter(Boolean),
         ...(domain === 'SCT' && { claim_amount: parseFloat(claimAmount) || 0 }),
         ...(domain === 'Traffic' && { offence_code: offenceCode }),
       };
 
       const createCaseRes = await api.createCase(caseData);
-      const newCaseId = createCaseRes.data.case_id;
+      const newCaseId = createCaseRes.id;
       setCaseCreated(newCaseId);
 
       // Step 2: Upload documents
