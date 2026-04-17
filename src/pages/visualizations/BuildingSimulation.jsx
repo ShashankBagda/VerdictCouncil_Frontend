@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { useAPI } from '../../hooks';
-import { useCase } from '../../hooks';
-import api from '../../lib/api';
+import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import FloorPixelMap from '../../components/FloorPixelMap';
 import AgentStreamPanel from '../../components/AgentStreamPanel';
 import { BUILDING_FLOORS, deriveRoomStatus } from '../../data/buildingFloors';
@@ -19,30 +17,13 @@ export default function BuildingSimulation() {
   const { showError } = useAPI();
   const { updatePipelineStatus } = useCase();
 
-  const [loading, setLoading] = useState(true);
-  const [pipelineStatus, setPipelineStatus] = useState(null);
   const [selectedFloor, setSelectedFloor] = useState(BUILDING_FLOORS[0]);
   const [selectedAgentId, setSelectedAgentId] = useState(null);
   const [fadeState, setFadeState] = useState(FADE.IDLE);
-
-  // Fetch pipeline status (polling fallback for the overall status bar)
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        setLoading(true);
-        const res = await api.getPipelineStatus(caseId); // returns data directly, not res.data
-        setPipelineStatus(res);
-        updatePipelineStatus(res);
-      } catch (err) {
-        showError(err.message || 'Failed to fetch pipeline status');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
-    return () => clearInterval(interval);
-  }, [caseId, showError, updatePipelineStatus]);
+  const { loading, pipelineStatus } = usePipelineStatus(caseId, {
+    onStatus: updatePipelineStatus,
+    onError: showError,
+  });
 
   // Handle floor switching with fade transition
   const switchFloor = useCallback((floor) => {

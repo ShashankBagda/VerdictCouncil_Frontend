@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -10,21 +10,8 @@ import {
 import 'reactflow/dist/style.css';
 import { useParams } from 'react-router-dom';
 import { Clock, CheckCircle, AlertCircle, Info } from 'lucide-react';
-import { useAPI } from '../../hooks';
-import { useCase } from '../../hooks';
-import api, { getErrorMessage } from '../../lib/api';
-
-const AGENT_LABELS = {
-  'fact-reconstruction': '📋 Fact Reconstruction',
-  'evidence-analysis': '🔍 Evidence Analysis',
-  'witness-analysis': '👤 Witness Analysis',
-  'legal-knowledge': '⚖️ Legal Knowledge',
-  'argument-construction': '🗣️ Argument Construction',
-  'complexity-routing': '🎯 Complexity Routing',
-  'deliberation': '🤔 Deliberation',
-  'governance-verdict': '⚡ Governance & Verdict',
-  'layer2-aggregator': '🔗 Layer 2 Aggregator',
-};
+import { useAPI, useCase, usePipelineStatus } from '../../hooks';
+import { PIPELINE_AGENT_LABELS } from '../../lib/pipelineStatus';
 
 const STATUS_CONFIG = {
   pending: { color: '#e5e7eb', textColor: '#666' },
@@ -34,129 +21,86 @@ const STATUS_CONFIG = {
 };
 
 const AGENT_POSITIONS = {
-  // Evidence Layer (top - y: 0)
-  'fact-reconstruction': { x: -100, y: 0 },
-  'evidence-analysis': { x: 100, y: 0 },
-
-  // Analysis Layer (y: 150)
-  'witness-analysis': { x: -200, y: 150 },
-  'legal-knowledge': { x: 0, y: 150 },
-
-  // Argumentation Layer (y: 300)
-  'argument-construction': { x: -100, y: 300 },
-  'complexity-routing': { x: 100, y: 300 },
-
-  // Decision Layer (y: 450)
-  'deliberation': { x: -150, y: 450 },
-  'governance-verdict': { x: 0, y: 450 },
-  'layer2-aggregator': { x: 150, y: 450 },
+  'case-processing': { x: 0, y: 0 },
+  'fact-reconstruction': { x: -180, y: 130 },
+  'evidence-analysis': { x: 0, y: 130 },
+  'witness-analysis': { x: 180, y: 130 },
+  'legal-knowledge': { x: -110, y: 280 },
+  'argument-construction': { x: 110, y: 280 },
+  'complexity-routing': { x: 0, y: 430 },
+  'deliberation': { x: -120, y: 580 },
+  'governance-verdict': { x: 120, y: 580 },
 };
 
-// Define the DAG edges (agent dependencies)
 const AGENT_EDGES = [
-  // From evidence layer
+  { source: 'case-processing', target: 'fact-reconstruction' },
+  { source: 'case-processing', target: 'evidence-analysis' },
+  { source: 'case-processing', target: 'witness-analysis' },
   { source: 'fact-reconstruction', target: 'argument-construction' },
-  { source: 'evidence-analysis', target: 'complexity-routing' },
-
-  // From analysis layer
+  { source: 'evidence-analysis', target: 'legal-knowledge' },
   { source: 'witness-analysis', target: 'argument-construction' },
-  { source: 'legal-knowledge', target: 'deliberation' },
-
-  // From argumentation layer
-  { source: 'argument-construction', target: 'deliberation' },
+  { source: 'legal-knowledge', target: 'complexity-routing' },
+  { source: 'argument-construction', target: 'complexity-routing' },
+  { source: 'complexity-routing', target: 'deliberation' },
   { source: 'complexity-routing', target: 'governance-verdict' },
-
-  // To aggregator
-  { source: 'deliberation', target: 'layer2-aggregator' },
-  { source: 'governance-verdict', target: 'layer2-aggregator' },
 ];
 
 export default function GraphMesh() {
   const { caseId } = useParams();
   const { showError } = useAPI();
-  const { pipelineStatus: cachedStatus, updatePipelineStatus } = useCase();
-
-  const [loading, setLoading] = useState(true);
-  const [pipelineStatus, setPipelineStatus] = useState(null);
+  const { updatePipelineStatus } = useCase();
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Fetch pipeline status
+  const { loading, pipelineStatus } = usePipelineStatus(caseId, {
+    onStatus: updatePipelineStatus,
+    onError: showError,
+  });
+
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        setLoading(true);
-        const res = await api.getPipelineStatus(caseId);
-        setPipelineStatus(res.data);
-        updatePipelineStatus(res.data);
-      } catch (err) {
-        const msg = getErrorMessage(err, 'Failed to fetch pipeline status');
-        showError(msg);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStatus();
-
-    // Poll for updates
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, [caseId, showError, updatePipelineStatus]);
-
-  // Build nodes and edges when status changes
-  useEffect(() => {
-    const status = pipelineStatus || cachedStatus;
-
-    if (!status?.agents) {
+    if (!pipelineStatus?.agents?.length) {
       setNodes([]);
       setEdges([]);
       return;
     }
 
-    // Create node objects
-    const agentMap = {};
-    status.agents.forEach((agent) => {
-      agentMap[agent.agent_id] = agent;
-    });
+    const agentMap = Object.fromEntries(
+      pipelineStatus.agents.map((agent) => [agent.agent_id, agent]),
+    );
 
-    const newNodes = status.agents.map((agent) => {
-      const pos = AGENT_POSITIONS[agent.agent_id] || { x: 0, y: 0 };
-      const statusConfig = STATUS_CONFIG[agent.status] || STATUS_CONFIG.pending;
+    const nextNodes = pipelineStatus.agents.map((agent) => {
+      const position = AGENT_POSITIONS[agent.agent_id] || { x: 0, y: 0 };
+      const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.pending;
 
       return {
         id: agent.agent_id,
         data: {
           label: (
             <div className="text-center text-xs font-semibold">
-              <div className="text-sm">{AGENT_LABELS[agent.agent_id] || agent.agent_id}</div>
-              <div className="text-xs mt-1 text-gray-600">{agent.status}</div>
+              <div className="text-sm">{PIPELINE_AGENT_LABELS[agent.agent_id] || agent.name}</div>
+              <div className="text-xs mt-1 text-gray-600 capitalize">{agent.status}</div>
             </div>
           ),
         },
-        position: pos,
+        position,
         style: {
-          background: statusConfig.color,
-          border: `2px solid ${statusConfig.textColor}`,
+          background: config.color,
+          border: `2px solid ${config.textColor}`,
           borderRadius: '8px',
           padding: '12px',
-          width: '140px',
-          color: statusConfig.textColor,
+          width: '150px',
+          color: config.textColor,
           fontWeight: 500,
           cursor: 'pointer',
           transition: 'all 0.3s ease',
-          boxShadow:
-            agent.status === 'running'
-              ? `0 0 10px ${statusConfig.color}`
-              : 'none',
+          boxShadow: agent.status === 'running' ? `0 0 10px ${config.color}` : 'none',
         },
       };
     });
 
-    // Create edges from DAG definition
-    const newEdges = AGENT_EDGES.map((edge, idx) => ({
-      id: `edge-${idx}`,
+    const nextEdges = AGENT_EDGES.map((edge, index) => ({
+      id: `edge-${index}`,
       source: edge.source,
       target: edge.target,
       animated: agentMap[edge.source]?.status === 'completed',
@@ -171,23 +115,15 @@ export default function GraphMesh() {
       },
     }));
 
-    setNodes(newNodes);
-    setEdges(newEdges);
-  }, [pipelineStatus, cachedStatus, setNodes, setEdges]);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+  }, [pipelineStatus, setEdges, setNodes]);
 
-  const handleNodeClick = (event, node) => {
-    setSelectedNode(node.id);
-  };
+  const selectedAgent = useMemo(() => (
+    pipelineStatus?.agents?.find((agent) => agent.agent_id === selectedNode) || null
+  ), [pipelineStatus, selectedNode]);
 
-  const getSelectedAgentStatus = () => {
-    if (!selectedNode) return null;
-    const status = pipelineStatus || cachedStatus;
-    return status?.agents?.find((a) => a.agent_id === selectedNode);
-  };
-
-  const selectedAgent = getSelectedAgentStatus();
-
-  if (loading) {
+  if (loading && !pipelineStatus) {
     return (
       <div className="card-lg flex items-center justify-center h-96">
         <div className="text-center">
@@ -205,13 +141,12 @@ export default function GraphMesh() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
+        onNodeClick={(_, node) => setSelectedNode(node.id)}
         fitView
       >
         <Background color="#aaa" gap={16} />
         <Controls />
 
-        {/* Top Panel - Overview */}
         <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-sm">
           <h3 className="font-bold text-navy-900 mb-3">Pipeline Status</h3>
           <div className="space-y-2 text-sm">
@@ -229,20 +164,19 @@ export default function GraphMesh() {
             </div>
             <div className="pt-2 border-t text-xs">
               <p className="text-gray-600">
-                {pipelineStatus?.agents?.filter((a) => a.status === 'completed').length || 0} /
+                {pipelineStatus?.agents?.filter((agent) => agent.status === 'completed').length || 0} /
                 {pipelineStatus?.agents?.length || 0} agents completed
               </p>
             </div>
           </div>
         </Panel>
 
-        {/* Right Panel - Selected Agent Details */}
         {selectedAgent && (
           <Panel position="right" className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-xs">
             <div className="space-y-4">
               <div>
                 <h4 className="font-bold text-navy-900 text-sm mb-1">
-                  {AGENT_LABELS[selectedAgent.agent_id] || selectedAgent.agent_id}
+                  {PIPELINE_AGENT_LABELS[selectedAgent.agent_id] || selectedAgent.name}
                 </h4>
                 <div className="flex items-center gap-2 mb-2">
                   {selectedAgent.status === 'completed' && (
@@ -260,7 +194,6 @@ export default function GraphMesh() {
                 </div>
               </div>
 
-              {/* Timing Info */}
               <div className="border-t pt-3 space-y-2 text-xs">
                 {selectedAgent.start_time && (
                   <div>
@@ -286,7 +219,6 @@ export default function GraphMesh() {
                 )}
               </div>
 
-              {/* Error Message */}
               {selectedAgent.error_message && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Error</p>
@@ -296,7 +228,6 @@ export default function GraphMesh() {
                 </div>
               )}
 
-              {/* Output Summary */}
               {selectedAgent.output_summary && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Output</p>
@@ -311,7 +242,6 @@ export default function GraphMesh() {
           </Panel>
         )}
 
-        {/* Info Panel */}
         <Panel position="bottom-left" className="text-xs text-gray-600 bg-white rounded px-2 py-1 border border-gray-200">
           <p className="flex items-center gap-1">
             <Info className="w-3 h-3" />
