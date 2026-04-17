@@ -1,0 +1,205 @@
+import { storage } from './storage';
+
+const WORKFLOW_STORAGE_KEY = 'workflow_items';
+
+const normalizeStatus = (status) => {
+  const value = String(status || 'pending').toLowerCase();
+  if (value === 'approve') return 'approved';
+  if (value === 'reject') return 'rejected';
+  return value;
+};
+
+const normalizeItemType = (value) => {
+  const itemType = String(value || 'escalation').toLowerCase();
+  if (itemType === 'reopen_request') return 'reopen';
+  return itemType;
+};
+
+const normalizeHistoryEntry = (entry, index = 0) => ({
+  id: entry?.id || `history-${index}`,
+  action: entry?.action || entry?.status || 'created',
+  reason: entry?.reason || entry?.note || '',
+  actor: entry?.actor || entry?.actor_email || entry?.reviewed_by || entry?.submitter || 'System',
+  created_at: entry?.created_at || entry?.timestamp || new Date().toISOString(),
+  assignee: entry?.assignee || entry?.assigned_to || null,
+});
+
+export const normalizeWorkflowItem = (item, index = 0) => {
+  const itemType = normalizeItemType(item?.item_type || item?.type);
+  const id = String(item?.id || item?.request_id || item?.workflow_id || `${itemType}-${index}`);
+  const status = normalizeStatus(item?.status);
+  const caseId = String(item?.case_id || item?.caseId || item?.case?.id || 'unknown');
+  const history = Array.isArray(item?.history)
+    ? item.history.map(normalizeHistoryEntry)
+    : [];
+
+  return {
+    ...item,
+    id,
+    case_id: caseId,
+    item_type: itemType,
+    status,
+    title: item?.title || `Case ${caseId}`,
+    description: item?.description || item?.summary || '',
+    context: item?.context || item?.details || '',
+    details: item?.details || item?.context || '',
+    submitter: item?.submitter || item?.requested_by || item?.created_by || 'Unknown',
+    submitted_at: item?.submitted_at || item?.created_at || new Date().toISOString(),
+    assignee: item?.assignee || item?.assigned_to || null,
+    priority: item?.priority || 'medium',
+    source: item?.source || 'remote',
+    decision_snapshot: item?.decision_snapshot || null,
+    requested_change: item?.requested_change || null,
+    history,
+  };
+};
+
+export const getStoredWorkflowItems = () => {
+  const items = storage.get(WORKFLOW_STORAGE_KEY) || [];
+  return items.map((item, index) => normalizeWorkflowItem(item, index));
+};
+
+const persistWorkflowItems = (items) => {
+  storage.set(WORKFLOW_STORAGE_KEY, items);
+};
+
+export const saveWorkflowItem = (item) => {
+  const current = getStoredWorkflowItems();
+  const next = [...current.filter((entry) => entry.id !== item.id), normalizeWorkflowItem(item)];
+  persistWorkflowItems(next);
+  return next;
+};
+
+export const updateStoredWorkflowItem = (itemId, updater) => {
+  const current = getStoredWorkflowItems();
+  const next = current.map((item) => {
+    if (item.id !== String(itemId)) return item;
+    return normalizeWorkflowItem(updater(item));
+  });
+  persistWorkflowItems(next);
+  return next.find((item) => item.id === String(itemId)) || null;
+};
+
+export const getCaseWorkflowItems = (caseId) =>
+  getStoredWorkflowItems().filter((item) => String(item.case_id) === String(caseId));
+
+export const mergeWorkflowItems = (remoteItems = [], localItems = []) => {
+  const merged = new Map();
+
+  remoteItems.forEach((item, index) => {
+    const normalized = normalizeWorkflowItem(item, index);
+    merged.set(normalized.id, normalized);
+  });
+
+  localItems.forEach((item, index) => {
+    const normalized = normalizeWorkflowItem(item, index);
+    merged.set(normalized.id, normalized);
+  });
+
+  return [...merged.values()].sort(
+    (a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime(),
+  );
+};
+
+export const buildWorkflowCounts = (items = []) => ({
+  all: items.length,
+  escalation: items.filter((item) => item.item_type === 'escalation').length,
+  amendment: items.filter((item) => item.item_type === 'amendment').length,
+  reopen: items.filter((item) => item.item_type === 'reopen').length,
+  pending: items.filter((item) => item.status === 'pending').length,
+});
+
+const createLocalWorkflowItem = (caseId, itemType, payload, actor) => {
+  const submittedAt = new Date().toISOString();
+  const id = `local-${itemType}-${caseId}-${Date.now()}`;
+
+  return normalizeWorkflowItem({
+    id,
+    case_id: caseId,
+    item_type: itemType,
+    status: 'pending',
+    title: payload.title || `Case ${caseId}`,
+    description: payload.description,
+    context: payload.context || '',
+    details: payload.details || '',
+    submitter: actor,
+    submitted_at: submittedAt,
+    source: 'local',
+    priority: payload.priority || 'high',
+    requested_change: payload.requested_change || null,
+    decision_snapshot: payload.decision_snapshot || null,
+    history: [
+      {
+        action: 'created',
+        reason: payload.description,
+        actor,
+        created_at: submittedAt,
+      },
+    ],
+  });
+};
+
+export const createAmendmentRequest = (caseId, payload, actor) => {
+  const item = createLocalWorkflowItem(caseId, 'amendment', payload, actor);
+  saveWorkflowItem(item);
+  return item;
+};
+
+export const createReopenRequest = (caseId, payload, actor) => {
+  const item = createLocalWorkflowItem(caseId, 'reopen', payload, actor);
+  saveWorkflowItem(item);
+  return item;
+};
+
+export const applyLocalWorkflowAction = (itemId, action, reason, actor, assignee = null) =>
+  updateStoredWorkflowItem(itemId, (item) => {
+    const nextStatus = normalizeStatus(action === 'reassign' || action === 'info_requested' ? 'pending' : action);
+    const submittedAt = new Date().toISOString();
+
+    return {
+      ...item,
+      status: nextStatus,
+      assignee: assignee || item.assignee || null,
+      history: [
+        ...(item.history || []),
+        normalizeHistoryEntry({
+          action,
+          reason,
+          actor,
+          assignee,
+          created_at: submittedAt,
+        }),
+      ],
+    };
+  });
+
+export const getCaseDecisionHistory = (caseDetail) => {
+  const root = caseDetail || {};
+  const history = root.decision_history || root.history || root.amendment_history || [];
+
+  if (Array.isArray(history) && history.length > 0) {
+    return history.map((entry, index) => ({
+      id: entry.id || `decision-${index}`,
+      decision_type: entry.decision_type || entry.decision || entry.action || 'decision',
+      reason: entry.reason || entry.note || '',
+      actor: entry.actor || entry.recorded_by || 'System',
+      created_at: entry.created_at || entry.recorded_at || root.updated_at || new Date().toISOString(),
+      source: entry.source || 'backend',
+    }));
+  }
+
+  if (root.judge_decision || root.judge_reason || root.decision_recorded_at) {
+    return [
+      {
+        id: 'decision-current',
+        decision_type: root.judge_decision || root.recommendation || 'decision',
+        reason: root.judge_reason || root.recommendation_reason || '',
+        actor: root.recorded_by || 'Judge',
+        created_at: root.decision_recorded_at || new Date().toISOString(),
+        source: 'backend',
+      },
+    ];
+  }
+
+  return [];
+};

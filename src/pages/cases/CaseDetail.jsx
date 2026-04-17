@@ -7,6 +7,7 @@ import {
   normalizeCaseDetail,
   normalizeUploadedDocument,
 } from '../../lib/caseWorkspace';
+import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
 
 const VALID_APPEND_TYPES = [
   'application/pdf',
@@ -372,6 +373,8 @@ export default function CaseDetail() {
               <p className="text-sm text-gray-600">No uploaded documents recorded yet.</p>
             )}
           </div>
+
+          <CaseExceptionPanel caseId={caseId} caseDetail={workspaceCase} />
         </aside>
       </div>
     </div>
