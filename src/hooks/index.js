@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { APIContext } from '../contexts/APIContext';
 import { CaseContext } from '../contexts/CaseContext';
+export { default as usePipelineStatus } from './usePipelineStatus';
 
 export function useAuth() {
   const context = useContext(AuthContext);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Zap } from 'lucide-react';
 import api from '../lib/api';
+import { PIPELINE_AGENT_LABELS, normalizePipelineStatus } from '../lib/pipelineStatus';
 
 /**
  * AgentStreamPanel — right panel showing live pipeline events via SSE.
@@ -56,10 +57,11 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
           pollInterval = setInterval(async () => {
             try {
               const status = await api.getPipelineStatus(caseId);
+              const normalizedStatus = normalizePipelineStatus(status);
               // Synthesize events from status changes (for display continuity)
-              if (status?.agents) {
+              if (normalizedStatus?.agents) {
                 const synth = {};
-                status.agents.forEach((a) => {
+                normalizedStatus.agents.forEach((a) => {
                   synth[a.agent_id] = [{ event: a.status, agent: a.agent_id, synthetic: true }];
                 });
                 setEvents((prev) => ({ ...synth, ...prev }));
@@ -90,18 +92,6 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   const agentEvents = selectedAgentId ? (events[selectedAgentId] || []) : [];
   const selectedAgent = agentStatuses?.find((a) => a.agent_id === selectedAgentId);
 
-  const AGENT_LABELS = {
-    'case-processing': 'Case Processing',
-    'complexity-routing': 'Complexity Routing',
-    'evidence-analysis': 'Evidence Analysis',
-    'fact-reconstruction': 'Fact Reconstruction',
-    'witness-analysis': 'Witness Analysis',
-    'legal-knowledge': 'Legal Knowledge',
-    'argument-construction': 'Argument Construction',
-    'deliberation': 'Deliberation',
-    'governance-verdict': 'Governance & Verdict',
-  };
-
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
       {/* Header */}
@@ -109,7 +99,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-teal-400" />
           <span className="text-sm font-semibold text-white">
-            {selectedAgentId ? AGENT_LABELS[selectedAgentId] || selectedAgentId : 'Agent Stream'}
+            {selectedAgentId ? PIPELINE_AGENT_LABELS[selectedAgentId] || selectedAgentId : 'Agent Stream'}
           </span>
         </div>
         <div className="flex items-center gap-2">
