@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useAPI } from '../../hooks';
-import api from '../../lib/api';
+import api, { getErrorMessage } from '../../lib/api';
 
 const SCENARIO_FACTS = [
   {
@@ -107,7 +107,7 @@ export default function WhatIfMode() {
         const res = await api.getVerdict(caseId);
         setOriginalVerdict(res.data);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'Failed to fetch verdict';
+        const msg = getErrorMessage(err, 'Failed to fetch verdict');
         showError(msg);
       } finally {
         setLoading(false);
@@ -122,7 +122,6 @@ export default function WhatIfMode() {
     if (!original || !modified) return null;
 
     let differences = 0;
-    let total = 5; // Number of comparison metrics
 
     // Compare key metrics
     if (original.confidence !== modified.confidence) {
@@ -174,7 +173,7 @@ export default function WhatIfMode() {
       showNotification(`Scenario "${scenarioName}" analyzed successfully!`, 'success');
       setScenarioName('');
     } catch (err) {
-      const msg = err.response?.data?.detail || 'failed to analyze scenario';
+      const msg = getErrorMessage(err, 'Failed to analyze scenario');
       showError(msg);
     } finally {
       setAnalyzing(false);

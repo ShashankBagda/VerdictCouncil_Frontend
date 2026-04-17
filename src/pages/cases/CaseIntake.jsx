@@ -3,7 +3,7 @@ import { Upload, X, CheckCircle, AlertCircle, Beaker } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
-import api from '../../lib/api';
+import api, { getErrorMessage } from '../../lib/api';
 import { DEMO_CASES } from '../../data/demoCases';
 
 export default function CaseIntake() {
@@ -119,7 +119,7 @@ export default function CaseIntake() {
           await api.uploadDocuments(newCaseId, [file], (progress) => {
             setUploadProgress(prev => ({ ...prev, [i]: progress }));
           });
-        } catch (err) {
+        } catch {
           showError(`Failed to upload ${file.name}`);
         }
       }
@@ -127,7 +127,7 @@ export default function CaseIntake() {
       showNotification('Case created successfully! Redirecting...', 'success');
       setTimeout(() => navigate(`/case/${newCaseId}`), 2000);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'Failed to create case';
+      const msg = getErrorMessage(err, 'Failed to create case');
       showError(msg);
       setIsSubmitting(false);
     }

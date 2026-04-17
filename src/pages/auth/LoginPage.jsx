@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
 import { Lock, Mail } from 'lucide-react';
+import { getErrorMessage } from '../../lib/api';
 
 const isTruthyEnv = (value) => {
   if (value === true) return true;
@@ -13,19 +14,21 @@ const isTruthyEnv = (value) => {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, loading, error: authError } = useAuth();
+  const location = useLocation();
+  const { login, loading, error: authError, isAuthenticated, isAuthResolved } = useAuth();
   const { showError } = useAPI();
   const [email, setEmail] = useState('judge@verdictcouncil.sg');
   const [password, setPassword] = useState('password');
   const [localError, setLocalError] = useState('');
+  const redirectTarget = location.state?.from?.pathname || '/';
 
   const bypassAuth = import.meta.env.DEV && isTruthyEnv(import.meta.env.VITE_BYPASS_AUTH);
 
   useEffect(() => {
-    if (bypassAuth) {
-      navigate('/', { replace: true });
+    if (bypassAuth || (isAuthResolved && isAuthenticated)) {
+      navigate(redirectTarget, { replace: true });
     }
-  }, [bypassAuth, navigate]);
+  }, [bypassAuth, isAuthenticated, isAuthResolved, navigate, redirectTarget]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,15 +41,15 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      navigate('/');
+      navigate(redirectTarget, { replace: true });
     } catch (err) {
-      const errorMsg = err.detail || 'Login failed. Please try again.';
+      const errorMsg = getErrorMessage(err, 'Login failed. Please try again.');
       setLocalError(errorMsg);
       showError(errorMsg);
     }
   };
 
-  if (bypassAuth) {
+  if (bypassAuth || (isAuthResolved && isAuthenticated)) {
     return null;
   }
 

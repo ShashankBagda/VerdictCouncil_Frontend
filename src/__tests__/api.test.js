@@ -10,6 +10,9 @@ describe('API module', () => {
       Promise.resolve({
         ok: true,
         status: 200,
+        headers: {
+          get: () => 'application/json',
+        },
         json: () => Promise.resolve({}),
       })
     );
@@ -62,5 +65,23 @@ describe('API module', () => {
     }
     const fetchCall = globalThis.fetch.mock.calls[0];
     expect(fetchCall[0]).toContain('/api/v1/knowledge-base/documents');
+  });
+
+  it('does not redirect during suppressed 401 session bootstrap', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 401,
+        headers: {
+          get: () => 'application/json',
+        },
+        json: () => Promise.resolve({ detail: 'Unauthorized' }),
+      }),
+    );
+
+    const { default: api } = await import('../lib/api');
+
+    await expect(api.getSession()).rejects.toMatchObject({ status: 401 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });
