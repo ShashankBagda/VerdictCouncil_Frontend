@@ -2,11 +2,14 @@ import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-react';
+import api from '../../lib/api';
+import { buildWorkflowCounts, getStoredWorkflowItems, normalizeWorkflowItem } from '../../lib/escalationWorkflow';
 
 export function RootLayout() {
   const navigate = useNavigate();
   const { logout, user, hasAnyRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [inboxCount, setInboxCount] = React.useState(0);
 
   const roleLabel = user?.role
     ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
@@ -16,6 +19,34 @@ export function RootLayout() {
     await logout();
     navigate('/login');
   };
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadInboxCount = async () => {
+      try {
+        const res = await api.getEscalatedCases();
+        if (!isMounted) return;
+        const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
+        const localItems = getStoredWorkflowItems();
+        const counts = buildWorkflowCounts([...remoteItems, ...localItems]);
+        setInboxCount(counts.pending);
+      } catch {
+        if (isMounted) {
+          const counts = buildWorkflowCounts(getStoredWorkflowItems());
+          setInboxCount(counts.pending);
+        }
+      }
+    };
+
+    loadInboxCount();
+    const intervalId = window.setInterval(loadInboxCount, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -61,7 +92,17 @@ export function RootLayout() {
             label="Escalated Cases"
             onClick={() => navigate('/escalated-cases')}
             show={sidebarOpen}
+            badge={inboxCount > 0 ? String(inboxCount) : null}
           />
+          {hasAnyRole(['admin', 'senior_judge']) && (
+            <NavItem
+              icon={<Users size={20} />}
+              label="Senior Inbox"
+              onClick={() => navigate('/senior-inbox')}
+              show={sidebarOpen}
+              badge={inboxCount > 0 ? String(inboxCount) : null}
+            />
+          )}
           {hasAnyRole(['admin', 'senior_judge']) && (
             <NavItem
               icon={<Database size={20} />}
@@ -125,16 +166,23 @@ export function RootLayout() {
   );
 }
 
-function NavItem({ icon, label, onClick, show }) {
+function NavItem({ icon, label, onClick, show, badge = null }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-navy-800 transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-navy-900"
+      className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-navy-800 transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-navy-900"
       aria-label={label}
       title={label}
     >
-      <span aria-hidden="true">{icon}</span>
-      {show && <span>{label}</span>}
+      <span className="flex items-center gap-3 min-w-0">
+        <span aria-hidden="true">{icon}</span>
+        {show && <span>{label}</span>}
+      </span>
+      {badge && show && (
+        <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs font-semibold">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

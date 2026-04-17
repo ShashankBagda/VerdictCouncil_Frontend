@@ -28,6 +28,7 @@ import KnowledgeBase from './pages/judge/KnowledgeBase';
 
 // Pages - Escalation
 import EscalatedCases from './pages/escalation/EscalatedCases';
+import SeniorJudgeInbox from './pages/senior/SeniorJudgeInbox';
 import NotFound from './pages/NotFound';
 
 // Layout
@@ -95,6 +96,15 @@ export default function App() {
                   <Route
                     path="/escalated-cases"
                     element={<ProtectedRoute element={<EscalatedCases />} />}
+                  />
+                  <Route
+                    path="/senior-inbox"
+                    element={
+                      <ProtectedRoute
+                        element={<SeniorJudgeInbox />}
+                        allowedRoles={['admin', 'senior_judge']}
+                      />
+                    }
                   />
                 </Route>
 
