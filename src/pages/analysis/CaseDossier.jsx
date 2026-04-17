@@ -13,9 +13,9 @@ import {
   Download,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { useAPI } from '../../hooks';
-import { useCase } from '../../hooks';
-import api from '../../lib/api';
+import { useAPI, useCase } from '../../hooks';
+import api, { getErrorMessage } from '../../lib/api';
+import { normalizeVerdict } from '../../lib/caseWorkspace';
 
 const TABS = [
   { id: 'evidence', label: 'Evidence', icon: FileText, color: 'blue' },
@@ -29,7 +29,7 @@ const TABS = [
 
 export default function CaseDossier() {
   const { caseId } = useParams();
-  const { showError } = useAPI();
+  const { showError, showNotification } = useAPI();
   const { activeTab, setActiveTab } = useCase();
 
   const [loading, setLoading] = useState(true);
@@ -43,6 +43,10 @@ export default function CaseDossier() {
   const [arguments_, setArguments] = useState(null);
   const [deliberation, setDeliberation] = useState(null);
   const [verdict, setVerdict] = useState(null);
+  const [decisionType, setDecisionType] = useState('accept');
+  const [decisionReason, setDecisionReason] = useState('');
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
+  const [decisionLocked, setDecisionLocked] = useState(false);
 
   // Fetch all analysis data on mount
   useEffect(() => {
@@ -74,9 +78,15 @@ export default function CaseDossier() {
         setStatutes(statutesRes.status === 'fulfilled' ? statutesRes.value.data : null);
         setArguments(argumentsRes.status === 'fulfilled' ? argumentsRes.value.data : null);
         setDeliberation(deliberationRes.status === 'fulfilled' ? deliberationRes.value.data : null);
-        setVerdict(verdictRes.status === 'fulfilled' ? verdictRes.value.data : null);
+        setVerdict(verdictRes.status === 'fulfilled' ? normalizeVerdict(verdictRes.value) : null);
+        if (verdictRes.status === 'fulfilled') {
+          const normalizedVerdict = normalizeVerdict(verdictRes.value);
+          if (normalizedVerdict?.judge_decision || normalizedVerdict?.decision_recorded_at) {
+            setDecisionLocked(true);
+          }
+        }
       } catch (err) {
-        const msg = err.message || 'Failed to fetch case analysis';
+        const msg = getErrorMessage(err, 'Failed to fetch case analysis');
         showError(msg);
       } finally {
         setLoading(false);
@@ -122,6 +132,38 @@ export default function CaseDossier() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDecisionSubmit = async () => {
+    const requiresReason = decisionType === 'modify' || decisionType === 'reject';
+
+    if (requiresReason && !decisionReason.trim()) {
+      showError('Modify and Reject decisions require a written reason.');
+      return;
+    }
+
+    try {
+      setDecisionSubmitting(true);
+      const payload = await api.recordDecision(caseId, {
+        decision_type: decisionType,
+        reason: decisionReason.trim() || undefined,
+      });
+
+      const nextVerdict = normalizeVerdict(payload);
+      setVerdict({
+        ...verdict,
+        ...nextVerdict,
+        judge_decision: decisionType,
+        judge_reason: decisionReason.trim() || null,
+        decision_recorded_at: new Date().toISOString(),
+      });
+      setDecisionLocked(true);
+      showNotification('Decision recorded successfully.', 'success');
+    } catch (error) {
+      showError(getErrorMessage(error, 'Failed to record decision'));
+    } finally {
+      setDecisionSubmitting(false);
+    }
   };
 
   return (
@@ -614,6 +656,90 @@ export default function CaseDossier() {
 
           {verdict ? (
             <div className="space-y-6">
+              <div className="rounded-lg border border-gray-200 p-5 bg-gray-50">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-navy-900">Judge Decision</h3>
+                    <p className="text-sm text-gray-600">
+                      Record the final judicial action for this case workspace.
+                    </p>
+                  </div>
+                  {decisionLocked && (
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                      Decision recorded
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  {[
+                    {
+                      value: 'accept',
+                      label: 'Accept',
+                      activeClass: 'border-emerald-400 bg-emerald-50 text-emerald-700',
+                    },
+                    {
+                      value: 'modify',
+                      label: 'Modify',
+                      activeClass: 'border-amber-400 bg-amber-50 text-amber-700',
+                    },
+                    {
+                      value: 'reject',
+                      label: 'Reject',
+                      activeClass: 'border-rose-400 bg-rose-50 text-rose-700',
+                    },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setDecisionType(option.value)}
+                      disabled={decisionLocked}
+                      className={`px-4 py-3 rounded-lg border-2 font-semibold transition-all ${
+                        decisionType === option.value
+                          ? option.activeClass
+                          : 'border-gray-200 bg-white text-gray-700'
+                      } disabled:opacity-60`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-navy-900">
+                    Reason {decisionType === 'modify' || decisionType === 'reject' ? '(required)' : '(optional)'}
+                  </label>
+                  <textarea
+                    value={decisionReason}
+                    onChange={(event) => setDecisionReason(event.target.value)}
+                    disabled={decisionLocked}
+                    placeholder={
+                      decisionType === 'accept'
+                        ? 'Optional note for accepting the recommendation'
+                        : `Explain why this case should be ${decisionType}ed`
+                    }
+                    className="input-field min-h-28"
+                  />
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-4">
+                  <p className="text-xs text-gray-500">
+                    Once recorded, the decision form becomes read-only in this workspace.
+                  </p>
+                  <button
+                    onClick={handleDecisionSubmit}
+                    disabled={
+                      decisionLocked ||
+                      decisionSubmitting ||
+                      ((decisionType === 'modify' || decisionType === 'reject') &&
+                        !decisionReason.trim())
+                    }
+                    className="px-5 py-2.5 bg-navy-900 text-white rounded-lg font-semibold hover:bg-navy-800 disabled:opacity-50"
+                  >
+                    {decisionSubmitting ? 'Recording…' : 'Record Decision'}
+                  </button>
+                </div>
+              </div>
+
               {/* Recommendation */}
               {verdict.recommendation && (
                 <div className="border-l-4 border-emerald-500 pl-6 py-4">
