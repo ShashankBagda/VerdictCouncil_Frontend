@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -12,7 +12,7 @@ import { useParams } from 'react-router-dom';
 import { Clock, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useAPI } from '../../hooks';
 import { useCase } from '../../hooks';
-import api from '../../lib/api';
+import api, { getErrorMessage } from '../../lib/api';
 
 const AGENT_LABELS = {
   'fact-reconstruction': '📋 Fact Reconstruction',
@@ -91,7 +91,7 @@ export default function GraphMesh() {
         setPipelineStatus(res.data);
         updatePipelineStatus(res.data);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'Failed to fetch pipeline status';
+        const msg = getErrorMessage(err, 'Failed to fetch pipeline status');
         showError(msg);
       } finally {
         setLoading(false);

@@ -5,8 +5,12 @@ import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-
 
 export function RootLayout() {
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, hasAnyRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+
+  const roleLabel = user?.role
+    ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+    : 'Authenticated User';
 
   const handleLogout = async () => {
     await logout();
@@ -58,12 +62,14 @@ export function RootLayout() {
             onClick={() => navigate('/escalated-cases')}
             show={sidebarOpen}
           />
-          <NavItem
-            icon={<Database size={20} />}
-            label="Knowledge Base"
-            onClick={() => navigate('/knowledge-base')}
-            show={sidebarOpen}
-          />
+          {hasAnyRole(['admin', 'senior_judge']) && (
+            <NavItem
+              icon={<Database size={20} />}
+              label="Knowledge Base"
+              onClick={() => navigate('/knowledge-base')}
+              show={sidebarOpen}
+            />
+          )}
           <NavItem
             icon={<Settings size={20} />}
             label="Settings"
@@ -90,7 +96,12 @@ export function RootLayout() {
         {/* Header */}
         <header className="bg-white border-b border-gray-200 p-4 shadow-sm flex items-center justify-between" role="banner">
           <h1 className="text-2xl font-bold text-navy-900">VerdictCouncil</h1>
-          <div className="text-sm text-gray-600" role="status">
+          <div className="text-sm text-gray-600 flex items-center gap-3" role="status">
+            {user?.role && (
+              <span className="px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold">
+                {roleLabel}
+              </span>
+            )}
             {user?.email && (
               <span>
                 Logged in as <strong>{user.email}</strong>

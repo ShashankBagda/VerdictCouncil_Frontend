@@ -4,7 +4,7 @@ import { Search, Plus, Filter, Clock, CheckCircle, AlertCircle } from 'lucide-re
 import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
 import { useCase } from '../../hooks';
-import api from '../../lib/api';
+import api, { getErrorMessage } from '../../lib/api';
 
 const statusConfig = {
   intake: { label: 'Intake', icon: Clock, color: 'blue' },
@@ -39,7 +39,7 @@ export default function CaseList() {
         });
         setCases(res.data?.cases || []);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'Failed to fetch cases';
+        const msg = getErrorMessage(err, 'Failed to fetch cases');
         showError(msg);
         setCases([]);
       } finally {

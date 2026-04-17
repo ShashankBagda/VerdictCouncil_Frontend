@@ -1,19 +1,9 @@
 /**
- * localStorage wrapper for persistent preferences and session data
+ * localStorage wrapper for persistent preferences and non-auth session data.
+ * Auth is cookie-based and should not be mirrored into localStorage.
  */
 
 export const storage = {
-  // Auth
-  setAuthToken: (token) => {
-    localStorage.setItem('vc_token', token);
-  },
-  getAuthToken: () => {
-    return localStorage.getItem('vc_token');
-  },
-  clearAuthToken: () => {
-    localStorage.removeItem('vc_token');
-  },
-
   // User preferences
   getTheme: () => localStorage.getItem('vc_theme') || 'light',
   setTheme: (theme) => localStorage.setItem('vc_theme', theme),

@@ -11,7 +11,7 @@ import {
   User,
 } from 'lucide-react';
 import { useAPI } from '../../hooks';
-import api from '../../lib/api';
+import api, { getErrorMessage } from '../../lib/api';
 
 const STATUS_COLORS = {
   pending: { badge: 'bg-amber-100 text-amber-700', icon: 'text-amber-600' },
@@ -47,7 +47,7 @@ export default function EscalatedCases() {
         const res = await api.getEscalatedCases();
         setItems(res.data.items || []);
       } catch (err) {
-        const msg = err.response?.data?.detail || 'failed to fetch escalated cases';
+        const msg = getErrorMessage(err, 'Failed to fetch escalated cases');
         showError(msg);
       } finally {
         setLoading(false);
@@ -81,7 +81,7 @@ export default function EscalatedCases() {
       setActionForm({}); // Clear form
       showNotification(`Item ${action}ed successfully`, 'success');
     } catch (err) {
-      const msg = err.response?.data?.detail || `failed to ${action} item`;
+      const msg = getErrorMessage(err, `Failed to ${action} item`);
       showError(msg);
     } finally {
       setProcessingId(null);

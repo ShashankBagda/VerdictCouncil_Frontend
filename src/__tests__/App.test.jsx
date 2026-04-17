@@ -7,18 +7,24 @@ import { CaseProvider } from '../contexts/CaseContext';
 
 // Mock api module to avoid real network calls
 vi.mock('../lib/api', () => ({
+  APIError: class APIError extends Error {
+    constructor(status, detail) {
+      super(detail);
+      this.status = status;
+      this.detail = detail;
+    }
+  },
+  getErrorMessage: (error, fallback) => error?.detail || error?.message || fallback,
   default: {
     login: vi.fn(),
     logout: vi.fn(),
-  },
-}));
-
-// Mock storage module
-vi.mock('../lib/storage', () => ({
-  default: {
-    getAuthToken: () => null,
-    setAuthToken: vi.fn(),
-    clearAuthToken: vi.fn(),
+    extendSession: vi.fn(),
+    getSession: vi.fn(() => {
+      const error = new Error('Unauthorized');
+      error.status = 401;
+      error.detail = 'Unauthorized';
+      return Promise.reject(error);
+    }),
   },
 }));
 

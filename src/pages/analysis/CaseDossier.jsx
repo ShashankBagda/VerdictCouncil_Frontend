@@ -90,8 +90,6 @@ export default function CaseDossier() {
     setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const currentTab = TABS.find((t) => t.id === activeTab) || TABS[0];
-
   if (loading) {
     return (
       <div className="card-lg flex items-center justify-center h-96">

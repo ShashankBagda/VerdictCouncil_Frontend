@@ -1,26 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WifiOff, Wifi } from 'lucide-react';
 import { useOnline } from '../../hooks';
 
 export default function ConnectivityIndicator() {
   const isOnline = useOnline();
   const [showNotification, setShowNotification] = useState(false);
-  const [lastStatus, setLastStatus] = useState(true);
+  const lastStatusRef = useRef(isOnline);
 
   // Show notification when connection changes
   useEffect(() => {
-    if (isOnline !== lastStatus) {
-      setShowNotification(true);
-      setLastStatus(isOnline);
+    let timer;
 
-      // Auto dismiss after 3 seconds
-      const timer = setTimeout(() => {
+    if (isOnline !== lastStatusRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowNotification(true);
+      timer = setTimeout(() => {
         setShowNotification(false);
       }, 3000);
-
-      return () => clearTimeout(timer);
     }
-  }, [isOnline, lastStatus]);
+
+    lastStatusRef.current = isOnline;
+
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [isOnline]);
 
   if (!showNotification) {
     // Show small persistent indicator in corner when offline

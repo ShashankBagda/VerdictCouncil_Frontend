@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { APIProvider } from './contexts/APIContext';
 import { CaseProvider } from './contexts/CaseContext';
-import { useAuth } from './hooks';
 import './App.css';
 
 // Pages - Auth
@@ -32,19 +31,12 @@ import EscalatedCases from './pages/escalation/EscalatedCases';
 import NotFound from './pages/NotFound';
 
 // Layout
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import RootLayout from './components/layout/RootLayout';
 import SessionWarning from './components/shared/SessionWarning';
 import GlobalNotification from './components/shared/GlobalNotification';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import ConnectivityIndicator from './components/shared/ConnectivityIndicator';
-
-/**
- * ProtectedRoute - Only render if authenticated
- */
-function ProtectedRoute({ element }) {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? element : <Navigate to="/login" replace />;
-}
 
 /**
  * RootApp - Entry point with all providers and routing
@@ -93,7 +85,12 @@ export default function App() {
 
                   <Route
                     path="/knowledge-base"
-                    element={<ProtectedRoute element={<KnowledgeBase />} />}
+                    element={
+                      <ProtectedRoute
+                        element={<KnowledgeBase />}
+                        allowedRoles={['admin', 'senior_judge']}
+                      />
+                    }
                   />
                   <Route
                     path="/escalated-cases"
