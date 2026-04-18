@@ -84,4 +84,66 @@ describe('API module', () => {
     await expect(api.getSession()).rejects.toMatchObject({ status: 401 });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('falls back to /auth/me when /auth/session is unavailable', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: {
+          get: () => 'application/json',
+        },
+        json: () => Promise.resolve({ detail: 'Not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: () => 'application/json',
+        },
+        json: () => Promise.resolve({ id: 'user-1', email: 'judge@verdictcouncil.sg', role: 'judge' }),
+      });
+
+    const { default: api } = await import('../lib/api');
+    const session = await api.getSession();
+
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('/api/v1/auth/session');
+    expect(globalThis.fetch.mock.calls[1][0]).toContain('/api/v1/auth/me');
+    expect(session.user.email).toBe('judge@verdictcouncil.sg');
+  });
+
+  it('constructs correct escalated cases URL', async () => {
+    const { default: api } = await import('../lib/api');
+    try {
+      await api.getEscalatedCases();
+    } catch {
+      // ignore
+    }
+    const fetchCall = globalThis.fetch.mock.calls[0];
+    expect(fetchCall[0]).toContain('/api/v1/escalated-cases?page=1');
+  });
+
+  it('posts backend-compatible escalated case actions', async () => {
+    const { default: api } = await import('../lib/api');
+    try {
+      await api.actionOnEscalatedCase('case-123', {
+        action: 'manual_decision',
+        notes: 'Reviewed by senior judge',
+        final_order: 'Appeal dismissed.',
+      });
+    } catch {
+      // ignore
+    }
+    const fetchCall = globalThis.fetch.mock.calls[0];
+    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/case-123/action');
+    expect(fetchCall[1].method).toBe('POST');
+    expect(fetchCall[1].body).toBe(
+      JSON.stringify({
+        action: 'manual_decision',
+        notes: 'Reviewed by senior judge',
+        final_order: 'Appeal dismissed.',
+      }),
+    );
+  });
 });

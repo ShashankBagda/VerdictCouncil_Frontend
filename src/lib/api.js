@@ -121,7 +121,12 @@ async function request(method, path, options = {}) {
 
 function buildSessionState(payload) {
   const root = payload?.data || payload || {};
-  const user = root.user || payload?.user || null;
+  const looksLikeUser =
+    root &&
+    typeof root === 'object' &&
+    !Array.isArray(root) &&
+    ('email' in root || 'role' in root || 'id' in root);
+  const user = root.user || payload?.user || (looksLikeUser ? root : null);
   const session = root.session || payload?.session || null;
   const expiresAt = root.expires_at || session?.expires_at || user?.expires_at || null;
 
@@ -205,8 +210,26 @@ export const api = {
     request('POST', '/api/v1/auth/login', { body: { email, password } }),
   logout: () =>
     request('POST', '/api/v1/auth/logout', { suppress401Redirect: true }),
-  extendSession: () =>
-    request('POST', '/api/v1/auth/extend'),
+  extendSession: async () => {
+    try {
+      const payload = await request('POST', '/api/v1/auth/extend', {
+        suppress401Redirect: true,
+      });
+      return buildSessionState(payload);
+    } catch (error) {
+      if (!(error instanceof APIError)) {
+        throw error;
+      }
+
+      // The current backend does not expose /auth/extend yet.
+      // Fall back to a fresh session bootstrap when the route is absent.
+      if (error.status === 404) {
+        return api.getSession();
+      }
+
+      throw error;
+    }
+  },
   getSession: async () => {
     try {
       const payload = await request('GET', '/api/v1/auth/session', {
@@ -337,11 +360,9 @@ export const api = {
     request('POST', '/api/v1/admin/cost-config', { body: config }),
 
   getEscalatedCases: (page = 1) =>
-    request('GET', `/api/v1/cases/escalated?page=${page}`),
-  actionOnEscalatedCase: (itemId, action, reason = '') =>
-    request('POST', `/api/v1/cases/escalated/${itemId}/action`, {
-      body: { action, reason },
-    }),
+    request('GET', `/api/v1/escalated-cases?page=${page}`),
+  actionOnEscalatedCase: (itemId, body) =>
+    request('POST', `/api/v1/escalated-cases/${itemId}/action`, { body }),
 };
 
 export default api;

@@ -1,13 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle,
-  MessageSquare,
-  Search,
-  Shield,
-  XCircle,
-} from 'lucide-react';
+import { Search, Shield } from 'lucide-react';
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import {
@@ -15,7 +7,9 @@ import {
   getStoredWorkflowItems,
   mergeWorkflowItems,
   normalizeWorkflowItem,
+  splitWorkflowItemsBySource,
 } from '../../lib/escalationWorkflow';
+import EscalationDetailView from '../../components/escalation/EscalationDetailView';
 
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
 
@@ -37,8 +31,6 @@ export default function SeniorJudgeInbox() {
   const [statusFilter, setStatusFilter] = useState('pending');
   const [typeFilter, setTypeFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [reason, setReason] = useState('');
-  const [assignee, setAssignee] = useState('');
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
@@ -79,7 +71,17 @@ export default function SeniorJudgeInbox() {
     [items, search, statusFilter, typeFilter],
   );
 
-  const selectedItem = filteredItems.find((item) => item.id === selectedId) || filteredItems[0] || null;
+  const { local: localItems } = useMemo(
+    () => splitWorkflowItemsBySource(items),
+    [items],
+  );
+  const remoteFilteredItems = useMemo(
+    () => filteredItems.filter((item) => item.source !== 'local'),
+    [filteredItems],
+  );
+
+  const selectedItem =
+    filteredItems.find((item) => item.id === selectedId) || filteredItems[0] || null;
 
   useEffect(() => {
     if (selectedItem && selectedItem.id !== selectedId) {
@@ -87,56 +89,84 @@ export default function SeniorJudgeInbox() {
     }
   }, [selectedId, selectedItem]);
 
-  const handleAction = async (action) => {
+  const handleAction = async (action, payload = {}) => {
     if (!selectedItem) return;
-    if ((action === 'rejected' || action === 'info_requested') && !reason.trim()) {
+
+    const nextReason = payload.reason?.trim() || '';
+    const nextAssignee = payload.assignee?.trim() || '';
+    const finalOrder = payload.finalOrder?.trim() || '';
+
+    if (
+      selectedItem.source === 'local' &&
+      (action === 'rejected' || action === 'info_requested') &&
+      !nextReason
+    ) {
       showError('A written reason is required for this action.');
       return;
     }
-    if (action === 'reassign' && !assignee.trim()) {
+    if (selectedItem.source === 'local' && action === 'reassign' && !nextAssignee) {
       showError('Enter a target judge email before reassigning.');
+      return;
+    }
+    if (selectedItem.source !== 'local' && action === 'add_notes' && !nextReason) {
+      showError('Add notes requires review notes.');
+      return;
+    }
+    if (selectedItem.source !== 'local' && action === 'manual_decision' && !finalOrder) {
+      showError('Manual decision requires a final order.');
+      return;
+    }
+    if (selectedItem.source !== 'local' && action === 'reject' && !nextReason) {
+      showError('Reject requires review notes.');
       return;
     }
 
     try {
       setProcessing(true);
+
       if (selectedItem.source === 'local') {
         const updated = applyLocalWorkflowAction(
           selectedItem.id,
           action,
-          reason.trim(),
+          nextReason,
           user?.email || 'senior@local',
-          assignee.trim() || null,
+          nextAssignee || null,
         );
         setItems((prev) => prev.map((item) => (item.id === selectedItem.id ? updated : item)));
       } else {
-        await api.actionOnEscalatedCase(selectedItem.id, action, reason.trim());
-        setItems((prev) =>
-          prev.map((item) =>
+        const response = await api.actionOnEscalatedCase(selectedItem.id, {
+          action,
+          notes: nextReason || undefined,
+          final_order: finalOrder || undefined,
+        });
+        setItems((prev) => {
+          if (action !== 'add_notes') {
+            return prev.filter((item) => item.id !== selectedItem.id);
+          }
+
+          return prev.map((item) =>
             item.id === selectedItem.id
               ? {
                   ...item,
-                  status: action === 'reassign' || action === 'info_requested' ? 'pending' : action,
-                  assignee: assignee.trim() || item.assignee || null,
+                  status: 'pending',
                   history: [
                     ...(item.history || []),
                     {
                       id: `${item.id}-${Date.now()}`,
                       action,
-                      reason: reason.trim(),
+                      reason: nextReason || response?.message || 'Notes added',
                       actor: user?.email || 'senior-reviewer',
-                      assignee: assignee.trim() || null,
                       created_at: new Date().toISOString(),
                     },
                   ],
                 }
               : item,
-          ),
-        );
+          );
+        });
+        showNotification(response?.message || 'Escalation updated successfully.', 'success');
+        return;
       }
 
-      setReason('');
-      setAssignee('');
       showNotification(`Request ${action.replace(/_/g, ' ')} successfully.`, 'success');
     } catch (error) {
       showError(getErrorMessage(error, `Failed to ${action.replace(/_/g, ' ')} request`));
@@ -162,10 +192,15 @@ export default function SeniorJudgeInbox() {
             <p className="text-gray-600 mt-2">
               Ranked senior-review queue for escalations, amendments, and reopen requests.
             </p>
+            {localItems.length > 0 && (
+              <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Local-only review items are visible here for demo continuity, but they are not part of the backend senior-review queue.
+              </p>
+            )}
           </div>
           <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            <span className="text-sm font-semibold">{filteredItems.length} active items</span>
+            <span className="text-sm font-semibold">{remoteFilteredItems.length} backend items</span>
           </div>
         </div>
       </div>
@@ -223,14 +258,21 @@ export default function SeniorJudgeInbox() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold text-navy-900 truncate">{item.title}</p>
-                  <span className="text-xs uppercase text-gray-500">{item.priority}</span>
+                  <div className="flex items-center gap-2">
+                    {item.source === 'local' && (
+                      <span className="text-[10px] uppercase font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                        Local
+                      </span>
+                    )}
+                    <span className="text-xs uppercase text-gray-500">{item.priority}</span>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description}</p>
                 <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
                   <span>Case {item.case_id}</span>
-                  <span>•</span>
+                  <span>&bull;</span>
                   <span>{item.item_type}</span>
-                  <span>•</span>
+                  <span>&bull;</span>
                   <span>{item.status}</span>
                 </div>
               </button>
@@ -238,135 +280,8 @@ export default function SeniorJudgeInbox() {
           </div>
         </aside>
 
-        <section className="card-lg">
-          {selectedItem ? (
-            <div className="space-y-6">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-semibold">
-                    Case {selectedItem.case_id}
-                  </span>
-                  <span className="px-2 py-1 rounded bg-amber-100 text-amber-700 text-xs font-semibold capitalize">
-                    {selectedItem.priority}
-                  </span>
-                </div>
-                <h2 className="text-2xl font-bold text-navy-900">{selectedItem.title}</h2>
-                <p className="text-gray-700 mt-2">{selectedItem.description}</p>
-              </div>
-
-              {(selectedItem.context || selectedItem.details) && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-                  {selectedItem.context && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Context</p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedItem.context}</p>
-                    </div>
-                  )}
-                  {selectedItem.details && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Details</p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedItem.details}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Submitted by</p>
-                  <p className="text-sm text-navy-900">{selectedItem.submitter}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {new Date(selectedItem.submitted_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Assigned reviewer</p>
-                  <p className="text-sm text-navy-900">{selectedItem.assignee || 'Unassigned'}</p>
-                  <p className="text-xs text-gray-500 mt-2">Source: {selectedItem.source}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="Reason for reject or request-info actions"
-                  className="input-field min-h-28"
-                />
-                <input
-                  value={assignee}
-                  onChange={(event) => setAssignee(event.target.value)}
-                  placeholder="Judge email for reassignment"
-                  className="input-field"
-                />
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <button
-                    onClick={() => handleAction('approved')}
-                    disabled={processing}
-                    className="px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleAction('rejected')}
-                    disabled={processing}
-                    className="px-4 py-2.5 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleAction('info_requested')}
-                    disabled={processing}
-                    className="px-4 py-2.5 rounded-lg bg-violet-600 text-white font-semibold hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Request Info
-                  </button>
-                  <button
-                    onClick={() => handleAction('reassign')}
-                    disabled={processing}
-                    className="px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <ArrowRight className="w-4 h-4" />
-                    Reassign
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-bold text-navy-900 mb-3">Review History</h3>
-                {selectedItem.history?.length ? (
-                  <div className="space-y-2">
-                    {selectedItem.history.map((entry) => (
-                      <div key={entry.id} className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                        <p className="text-sm font-semibold text-navy-900 capitalize">
-                          {entry.action.replace(/_/g, ' ')}
-                        </p>
-                        {entry.reason && <p className="text-sm text-gray-700 mt-1">{entry.reason}</p>}
-                        <p className="text-xs text-gray-500 mt-2">
-                          {entry.actor} • {new Date(entry.created_at).toLocaleString()}
-                          {entry.assignee ? ` • Assigned to ${entry.assignee}` : ''}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-                    No review history yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-center text-gray-500">
-              <div>
-                <AlertCircle className="w-8 h-8 mx-auto mb-3" />
-                <p>No inbox item matches the current filters.</p>
-              </div>
-            </div>
-          )}
+        <section className="h-[calc(100vh-280px)] xl:h-auto min-h-[600px]">
+          <EscalationDetailView item={selectedItem} onAction={handleAction} processing={processing} />
         </section>
       </div>
     </div>
