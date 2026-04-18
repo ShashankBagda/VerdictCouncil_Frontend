@@ -4,6 +4,7 @@ const WORKFLOW_STORAGE_KEY = 'workflow_items';
 
 const normalizeStatus = (status) => {
   const value = String(status || 'pending').toLowerCase();
+  if (value === 'escalated') return 'pending';
   if (value === 'approve') return 'approved';
   if (value === 'reject') return 'rejected';
   return value;
@@ -107,6 +108,11 @@ export const buildWorkflowCounts = (items = []) => ({
   amendment: items.filter((item) => item.item_type === 'amendment').length,
   reopen: items.filter((item) => item.item_type === 'reopen').length,
   pending: items.filter((item) => item.status === 'pending').length,
+});
+
+export const splitWorkflowItemsBySource = (items = []) => ({
+  remote: items.filter((item) => item.source !== 'local'),
+  local: items.filter((item) => item.source === 'local'),
 });
 
 const createLocalWorkflowItem = (caseId, itemType, payload, actor) => {

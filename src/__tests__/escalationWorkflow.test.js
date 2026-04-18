@@ -47,4 +47,15 @@ describe('escalationWorkflow', () => {
     expect(counts.reopen).toBe(1);
     expect(counts.escalation).toBe(1);
   });
+
+  it('normalizes backend escalated status into pending queue state', () => {
+    const item = normalizeWorkflowItem({
+      id: 'remote-queue-1',
+      case_id: 'CASE-7',
+      item_type: 'escalation',
+      status: 'escalated',
+    });
+
+    expect(item.status).toBe('pending');
+  });
 });
