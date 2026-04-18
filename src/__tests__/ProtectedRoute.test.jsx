@@ -29,7 +29,7 @@ describe('ProtectedRoute', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Checking session…')).toBeInTheDocument();
+    expect(screen.getByText('Checking session...')).toBeInTheDocument();
   });
 
   it('renders element when authenticated', () => {
