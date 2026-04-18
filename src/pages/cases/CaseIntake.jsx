@@ -1,10 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { Upload, X, CheckCircle, Beaker } from 'lucide-react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { Upload, X, CheckCircle, Beaker, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, useAPI, useCase } from '../../hooks';
-import api, { getErrorMessage } from '../../lib/api';
+import { useAPI, useCase } from '../../hooks';
+import api, { APIError, getErrorMessage } from '../../lib/api';
 import { DEMO_CASES } from '../../data/demoCases';
 import { buildDemoPipelineStatus } from '../../lib/pipelineStatus';
+import AuthContentGate from '../../components/auth/AuthContentGate';
 
 const DEMO_MODE =
   import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_DEMO_MODE === '1';
@@ -18,87 +19,162 @@ const VALID_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_FILES = 20;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 function normalizeCaseId(response) {
-  return response?.id || response?.case_id || response?.data?.id || response?.data?.case_id || null;
+  return (
+    response?.id ||
+    response?.case_id ||
+    response?.data?.id ||
+    response?.data?.case_id ||
+    null
+  );
 }
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/** Validate a single file. Returns an error string or null. */
+function validateFile(file, existingCount) {
+  if (existingCount >= MAX_FILES) {
+    return `Maximum ${MAX_FILES} files allowed.`;
+  }
+  if (!VALID_FILE_TYPES.includes(file.type)) {
+    return `${file.name}: Invalid file type. Allowed: PDF, images, text, Word docs.`;
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return `${file.name}: File too large (${formatFileSize(file.size)}). Max 50 MB.`;
+  }
+  return null;
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export default function CaseIntake() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
   const { showError, showNotification } = useAPI();
   const { selectCase, updatePipelineStatus } = useCase();
 
+  // Form state
   const [step, setStep] = useState(1);
+  const [caseTitle, setCaseTitle] = useState('');
   const [domain, setDomain] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
   const [plaintiff, setPlaintiff] = useState('');
   const [defendant, setDefendant] = useState('');
   const [claimAmount, setClaimAmount] = useState('');
   const [offenceCode, setOffenceCode] = useState('');
+
+  // File state
   const [files, setFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
   const [uploadErrors, setUploadErrors] = useState({});
   const [uploadedFiles, setUploadedFiles] = useState({});
+
+  // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [caseCreated, setCaseCreated] = useState(null);
   const [selectedDemoCase, setSelectedDemoCase] = useState(null);
-  const fileInputRef = useRef(null);
-  const dragOverRef = useRef(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const isStep1Valid = domain && caseDescription.trim().length > 0;
-  const isStep2Valid = plaintiff.trim().length > 0 && defendant.trim().length > 0;
+  // Drag state (useState so the drop zone re-renders)
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Dirty-form guard: warn before navigating away with unsaved data
+  const isDirty =
+    !caseCreated &&
+    (domain !== '' ||
+      caseDescription.trim() !== '' ||
+      plaintiff.trim() !== '' ||
+      defendant.trim() !== '' ||
+      files.length > 0);
+
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // ── Validation ──────────────────────────────────────────────────────────
+
+  const descriptionMinLength = 10;
+  const isStep1Valid =
+    domain !== '' && caseDescription.trim().length >= descriptionMinLength;
+  const isStep2Valid =
+    plaintiff.trim().length > 0 && defendant.trim().length > 0;
   const isStep3Valid = files.length > 0;
 
   const canProceedToStep2 = isStep1Valid;
   const canProceedToStep3 = isStep1Valid && isStep2Valid;
   const canSubmit = canProceedToStep3 && isStep3Valid;
 
-  const loadDemoCase = (demo) => {
-    if (!DEMO_MODE) {
-      showError('Demo mode is disabled for this environment.');
-      return;
-    }
+  // ── Demo loader ─────────────────────────────────────────────────────────
 
-    setDomain(demo.formState.domain === 'small_claims' ? 'SCT' : 'Traffic');
-    setCaseDescription(demo.description);
-    setPlaintiff(demo.formState.appellant);
-    setDefendant(demo.formState.respondent);
-    setClaimAmount(demo.formState.claimAmount || '');
-    setOffenceCode(demo.formState.offenceCode || '');
-    setFiles(demo.files || []);
-    setSelectedDemoCase(demo);
-    setUploadErrors({});
-    setUploadProgress({});
-    setUploadedFiles({});
-    setStep(3);
-    showNotification(`Loaded demo: ${demo.label}`, 'success');
-  };
+  const loadDemoCase = useCallback(
+    (demo) => {
+      if (!DEMO_MODE) {
+        showError('Demo mode is disabled for this environment.');
+        return;
+      }
+      setDomain(demo.formState.domain === 'small_claims' ? 'SCT' : 'Traffic');
+      setCaseTitle(demo.formState.caseTitle || '');
+      setCaseDescription(demo.description);
+      setPlaintiff(demo.formState.appellant);
+      setDefendant(demo.formState.respondent);
+      setClaimAmount(demo.formState.claimAmount || '');
+      setOffenceCode(demo.formState.offenceCode || '');
+      setFiles(demo.files || []);
+      setSelectedDemoCase(demo);
+      setUploadErrors({});
+      setUploadProgress({});
+      setUploadedFiles({});
+      setFieldErrors({});
+      setStep(3);
+      showNotification(`Loaded demo: ${demo.label}`, 'success');
+    },
+    [showError, showNotification],
+  );
 
-  const handleFileSelect = (newFiles) => {
-    const fileArray = Array.from(newFiles || []);
-    setSelectedDemoCase(null);
+  // ── File handling ───────────────────────────────────────────────────────
 
-    const validFiles = fileArray.filter((file) => {
-      const maxSize = 50 * 1024 * 1024;
+  const handleFileSelect = useCallback(
+    (newFiles) => {
+      const fileArray = Array.from(newFiles || []);
+      setSelectedDemoCase(null);
 
-      if (!VALID_FILE_TYPES.includes(file.type)) {
-        showError(`${file.name}: Invalid file type. Allowed: PDF, images, text, Word docs.`);
-        return false;
+      let currentCount = files.length;
+      const validFiles = [];
+
+      for (const file of fileArray) {
+        const err = validateFile(file, currentCount);
+        if (err) {
+          showError(err);
+        } else {
+          validFiles.push(file);
+          currentCount += 1;
+        }
       }
 
-      if (file.size > maxSize) {
-        showError(`${file.name}: File too large. Max 50MB.`);
-        return false;
+      if (validFiles.length > 0) {
+        setFiles((prev) => [...prev, ...validFiles]);
       }
+    },
+    [files.length, showError],
+  );
 
-      return true;
-    });
-
-    setFiles((prev) => [...prev, ...validFiles]);
-  };
-
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  const removeFile = useCallback((index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
     setUploadErrors((prev) => {
       const next = { ...prev };
       delete next[index];
@@ -114,16 +190,56 @@ export default function CaseIntake() {
       delete next[index];
       return next;
     });
-  };
+  }, []);
+
+  // ── Retry a single failed upload ────────────────────────────────────────
+
+  const retryUpload = useCallback(
+    async (index, createdCaseId) => {
+      const file = files[index];
+      if (!file || !createdCaseId) return;
+
+      setUploadErrors((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+      setUploadProgress((prev) => ({ ...prev, [index]: 0 }));
+
+      try {
+        await api.uploadDocuments(createdCaseId, [file], (progress) => {
+          setUploadProgress((prev) => ({ ...prev, [index]: progress }));
+        });
+        setUploadedFiles((prev) => ({ ...prev, [index]: true }));
+        setUploadProgress((prev) => ({ ...prev, [index]: 100 }));
+      } catch (err) {
+        setUploadErrors((prev) => ({
+          ...prev,
+          [index]: getErrorMessage(err, `Failed to upload ${file.name || file.originalName}`),
+        }));
+        setUploadProgress((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    },
+    [files],
+  );
+
+  // ── Submit ──────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     setUploadErrors({});
     setUploadedFiles({});
+    setUploadProgress({});
+    setFieldErrors({});
 
     try {
+      // ── Demo path ───────────────────────────────────────────────────
       if (DEMO_MODE && selectedDemoCase) {
         const demoCaseId = `demo-${selectedDemoCase.id}`;
         setCaseCreated(demoCaseId);
@@ -134,17 +250,19 @@ export default function CaseIntake() {
         return;
       }
 
+      // ── Real path ──────────────────────────────────────────────────
       const domainMap = { SCT: 'small_claims', Traffic: 'traffic_violation' };
       const caseData = {
         domain: domainMap[domain] || domain,
-        description: caseDescription,
-        parties: [plaintiff, defendant].filter(Boolean),
-        ...(domain === 'SCT' && { claim_amount: parseFloat(claimAmount) || 0 }),
-        ...(domain === 'Traffic' && { offence_code: offenceCode }),
+        description: caseDescription.trim(),
+        parties: [plaintiff.trim(), defendant.trim()].filter(Boolean),
+        ...(caseTitle.trim() && { title: caseTitle.trim() }),
+        ...(domain === 'SCT' && claimAmount && { claim_amount: parseFloat(claimAmount) || 0 }),
+        ...(domain === 'Traffic' && offenceCode && { offence_code: offenceCode.trim() }),
       };
 
-      const createCaseResponse = await api.createCase(caseData);
-      const newCaseId = normalizeCaseId(createCaseResponse);
+      const createResponse = await api.createCase(caseData);
+      const newCaseId = normalizeCaseId(createResponse);
 
       if (!newCaseId) {
         throw new Error('Case creation succeeded but no case ID was returned.');
@@ -153,62 +271,81 @@ export default function CaseIntake() {
       setCaseCreated(newCaseId);
       selectCase(newCaseId);
 
+      // ── Upload files sequentially with per-file progress ──────────
       let hasUploadFailure = false;
 
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
         try {
           await api.uploadDocuments(newCaseId, [file], (progress) => {
-            setUploadProgress((prev) => ({ ...prev, [index]: progress }));
+            setUploadProgress((prev) => ({ ...prev, [i]: progress }));
           });
-          setUploadedFiles((prev) => ({ ...prev, [index]: true }));
-        } catch (error) {
+          setUploadedFiles((prev) => ({ ...prev, [i]: true }));
+          setUploadProgress((prev) => ({ ...prev, [i]: 100 }));
+        } catch (err) {
           hasUploadFailure = true;
           setUploadErrors((prev) => ({
             ...prev,
-            [index]: getErrorMessage(error, `Failed to upload ${file.name}`),
+            [i]: getErrorMessage(err, `Failed to upload ${file.name || file.originalName}`),
           }));
         }
       }
 
       if (hasUploadFailure) {
-        showError('Case created, but one or more files failed to upload.');
+        showError('Case created, but one or more files failed to upload. You can retry below.');
       } else {
         showNotification('Case created successfully! Redirecting to pipeline...', 'success');
+        setTimeout(() => navigate(`/case/${newCaseId}/building`), 1200);
       }
-
-      setTimeout(() => navigate(`/case/${newCaseId}/building`), 1200);
-    } catch (error) {
-      showError(getErrorMessage(error, 'Failed to create case'));
+    } catch (err) {
+      // Surface field-level validation errors from the backend
+      if (err instanceof APIError && err.fieldErrors && Object.keys(err.fieldErrors).length > 0) {
+        setFieldErrors(err.fieldErrors);
+      }
+      showError(getErrorMessage(err, 'Failed to create case'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (!isAuthenticated) {
-    return <div className="text-center text-gray-600">Please log in first.</div>;
-  }
+  // ── Auth guard ──────────────────────────────────────────────────────────
+
+
+  // ── Render ──────────────────────────────────────────────────────────────
+
+  const failedUploads = Object.keys(uploadErrors).length;
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <AuthContentGate>
+      <div className="max-w-3xl mx-auto">
       <h1 className="text-4xl font-bold text-navy-900 mb-2">New Case Intake</h1>
       <p className="text-gray-600 mb-8">Follow the steps below to register a new case</p>
 
-      <div className="flex items-center justify-between mb-12">
-        {[1, 2, 3].map((stepNumber) => (
-          <React.Fragment key={stepNumber}>
-            <div
+      {/* ── Step indicator ─────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-12" role="navigation" aria-label="Intake steps">
+        {[1, 2, 3].map((n) => (
+          <React.Fragment key={n}>
+            <button
+              onClick={() => {
+                if (n < step) setStep(n);
+              }}
+              disabled={n > step}
+              aria-current={n === step ? 'step' : undefined}
+              aria-label={`Step ${n}${n < step ? ' (completed)' : ''}`}
               className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
-                stepNumber <= step ? 'bg-teal-500 text-white' : 'bg-gray-200 text-gray-600'
+                n < step
+                  ? 'bg-teal-500 text-white cursor-pointer hover:bg-teal-600'
+                  : n === step
+                    ? 'bg-teal-500 text-white'
+                    : 'bg-gray-200 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {stepNumber <= step && stepNumber < step ? '✓' : stepNumber}
-            </div>
-            {stepNumber < 3 && (
+              {n < step ? '✓' : n}
+            </button>
+            {n < 3 && (
               <div
                 className={`flex-1 h-1 mx-4 transition-all ${
-                  stepNumber < step ? 'bg-teal-500' : 'bg-gray-200'
+                  n < step ? 'bg-teal-500' : 'bg-gray-200'
                 }`}
               />
             )}
@@ -216,8 +353,9 @@ export default function CaseIntake() {
         ))}
       </div>
 
+      {/* ── Demo loader (step 1 only) ──────────────────────────────────── */}
       {step === 1 && DEMO_MODE && DEMO_CASES.length > 0 && (
-        <div className="card-lg bg-amber-50 border border-amber-200">
+        <div className="card-lg bg-amber-50 border border-amber-200 mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Beaker className="w-5 h-5 text-amber-600" />
             <h3 className="font-semibold text-amber-900">Load Demo Case</h3>
@@ -236,9 +374,27 @@ export default function CaseIntake() {
         </div>
       )}
 
+      {/* ── Step 1: Case Type ──────────────────────────────────────────── */}
       {step === 1 && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6">Step 1: Case Type</h2>
+
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-navy-900 mb-2">
+              Case Title <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={caseTitle}
+              onChange={(e) => setCaseTitle(e.target.value)}
+              placeholder="e.g., Late delivery refund dispute"
+              className="input-field"
+              maxLength={200}
+            />
+            {fieldErrors.title && (
+              <p className="text-xs text-rose-600 mt-1">{fieldErrors.title}</p>
+            )}
+          </div>
 
           <div className="mb-6">
             <label className="block text-sm font-semibold text-navy-900 mb-3">
@@ -259,6 +415,9 @@ export default function CaseIntake() {
                 </button>
               ))}
             </div>
+            {fieldErrors.domain && (
+              <p className="text-xs text-rose-600 mt-1">{fieldErrors.domain}</p>
+            )}
           </div>
 
           <div className="mb-8">
@@ -267,14 +426,27 @@ export default function CaseIntake() {
             </label>
             <textarea
               value={caseDescription}
-              onChange={(event) => setCaseDescription(event.target.value)}
+              onChange={(e) => setCaseDescription(e.target.value)}
               placeholder="Briefly describe the case (issues, context, relevant facts)"
               className="input-field h-32"
+              maxLength={5000}
             />
-            <p className="text-xs text-gray-500 mt-1">Min 10 characters</p>
+            <div className="flex justify-between mt-1">
+              <p className={`text-xs ${
+                caseDescription.trim().length > 0 && caseDescription.trim().length < descriptionMinLength
+                  ? 'text-rose-500'
+                  : 'text-gray-500'
+              }`}>
+                Min {descriptionMinLength} characters
+              </p>
+              <p className="text-xs text-gray-400">{caseDescription.length} / 5000</p>
+            </div>
+            {fieldErrors.description && (
+              <p className="text-xs text-rose-600 mt-1">{fieldErrors.description}</p>
+            )}
           </div>
 
-          {domain === 'SCT' ? (
+          {domain === 'SCT' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
                 Claim Amount (SGD)
@@ -282,12 +454,16 @@ export default function CaseIntake() {
               <input
                 type="number"
                 value={claimAmount}
-                onChange={(event) => setClaimAmount(event.target.value)}
+                onChange={(e) => setClaimAmount(e.target.value)}
                 placeholder="e.g., 5000"
                 className="input-field"
+                min="0"
+                step="0.01"
               />
             </div>
-          ) : domain === 'Traffic' ? (
+          )}
+
+          {domain === 'Traffic' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
                 Offence Code
@@ -295,12 +471,13 @@ export default function CaseIntake() {
               <input
                 type="text"
                 value={offenceCode}
-                onChange={(event) => setOffenceCode(event.target.value)}
+                onChange={(e) => setOffenceCode(e.target.value)}
                 placeholder="e.g., TA1"
                 className="input-field"
+                maxLength={20}
               />
             </div>
-          ) : null}
+          )}
 
           <div className="flex justify-end gap-4">
             <button
@@ -320,6 +497,7 @@ export default function CaseIntake() {
         </div>
       )}
 
+      {/* ── Step 2: Party Information ──────────────────────────────────── */}
       {step === 2 && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6">Step 2: Party Information</h2>
@@ -327,26 +505,33 @@ export default function CaseIntake() {
           <div className="grid grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                Plaintiff / Claimant <span className="text-rose-500">*</span>
+                {domain === 'Traffic' ? 'Appellant' : 'Plaintiff / Claimant'}{' '}
+                <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={plaintiff}
-                onChange={(event) => setPlaintiff(event.target.value)}
+                onChange={(e) => setPlaintiff(e.target.value)}
                 placeholder="Full name"
                 className="input-field"
+                maxLength={200}
               />
+              {fieldErrors.parties && (
+                <p className="text-xs text-rose-600 mt-1">{fieldErrors.parties}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                Defendant / Respondent <span className="text-rose-500">*</span>
+                {domain === 'Traffic' ? 'Authority / Respondent' : 'Defendant / Respondent'}{' '}
+                <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={defendant}
-                onChange={(event) => setDefendant(event.target.value)}
+                onChange={(e) => setDefendant(e.target.value)}
                 placeholder="Full name"
                 className="input-field"
+                maxLength={200}
               />
             </div>
           </div>
@@ -369,41 +554,55 @@ export default function CaseIntake() {
         </div>
       )}
 
+      {/* ── Step 3: Upload Documents ───────────────────────────────────── */}
       {step === 3 && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6">Step 3: Upload Documents</h2>
 
+          {/* Drop zone */}
           <div
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              dragOverRef.current = true;
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragOver(true);
             }}
-            onDragLeave={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              dragOverRef.current = false;
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragOver(false);
             }}
-            onDrop={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              dragOverRef.current = false;
-              handleFileSelect(event.dataTransfer.files);
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragOver(false);
+              handleFileSelect(e.dataTransfer.files);
             }}
             className={`border-4 border-dashed rounded-lg p-12 text-center transition-all cursor-pointer ${
-              dragOverRef.current
-                ? 'border-teal-500 bg-teal-50'
+              isDragOver
+                ? 'border-teal-500 bg-teal-50 scale-[1.01]'
                 : 'border-gray-300 bg-gray-50 hover:border-gray-400'
             }`}
+            role="button"
+            tabIndex={0}
+            aria-label="Drop zone for file upload"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
           >
             <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-            <p className="text-lg font-semibold text-navy-900 mb-1">Drag and drop files here</p>
+            <p className="text-lg font-semibold text-navy-900 mb-1">
+              Drag and drop files here
+            </p>
             <p className="text-sm text-gray-600 mb-4">
-              or click to browse (PDF, images, text, Word docs)
+              PDF, images, text, Word docs — max 50 MB each, up to {MAX_FILES} files
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="btn-primary text-sm"
+              type="button"
             >
               Select Files
             </button>
@@ -411,90 +610,152 @@ export default function CaseIntake() {
               ref={fileInputRef}
               type="file"
               multiple
-              onChange={(event) => handleFileSelect(event.target.files)}
+              onChange={(e) => handleFileSelect(e.target.files)}
               accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
               className="hidden"
+              aria-hidden="true"
             />
           </div>
 
+          {/* File list */}
           {files.length > 0 && (
             <div className="mt-8">
-              <h3 className="font-semibold text-navy-900 mb-4">Selected Files ({files.length})</h3>
+              <h3 className="font-semibold text-navy-900 mb-4">
+                Selected Files ({files.length})
+              </h3>
               <div className="space-y-2">
-                {files.map((file, index) => (
-                  <div
-                    key={`${file.name || file.originalName}-${index}`}
-                    className="flex items-center justify-between bg-gray-50 p-3 rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-navy-900">
-                        {file.name || file.originalName}
-                      </p>
-                      {selectedDemoCase && (
-                        <p className="text-xs text-amber-700">Demo asset</p>
-                      )}
-                      <p className="text-xs text-gray-500">
-                        {((file.size || 0) / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                      {uploadProgress[index] ? (
-                        <div className="mt-2 w-full bg-gray-200 rounded-full h-1">
-                          <div
-                            className="bg-teal-500 h-1 rounded-full transition-all"
-                            style={{ width: `${uploadProgress[index]}%` }}
-                          />
-                        </div>
-                      ) : null}
-                      {uploadedFiles[index] && (
-                        <p className="text-xs text-emerald-700 mt-1">Uploaded</p>
-                      )}
-                      {uploadErrors[index] && (
-                        <p className="text-xs text-rose-700 mt-1">{uploadErrors[index]}</p>
+                {files.map((file, index) => {
+                  const isUploaded = uploadedFiles[index];
+                  const progress = uploadProgress[index];
+                  const error = uploadErrors[index];
+                  const isUploading = progress != null && progress < 100 && !error;
+
+                  return (
+                    <div
+                      key={`${file.name || file.originalName}-${index}`}
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                        error
+                          ? 'bg-rose-50 border border-rose-200'
+                          : isUploaded
+                            ? 'bg-emerald-50 border border-emerald-200'
+                            : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-navy-900 truncate">
+                          {file.name || file.originalName}
+                        </p>
+                        {selectedDemoCase && (
+                          <p className="text-xs text-amber-700">Demo asset</p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(file.size || 0)}
+                        </p>
+
+                        {/* Progress bar */}
+                        {isUploading && (
+                          <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                            <div
+                              className="bg-teal-500 h-1.5 rounded-full transition-all duration-300"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        )}
+
+                        {isUploaded && (
+                          <p className="text-xs text-emerald-700 mt-1 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Uploaded
+                          </p>
+                        )}
+
+                        {error && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <p className="text-xs text-rose-700 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> {error}
+                            </p>
+                            {caseCreated && (
+                              <button
+                                onClick={() => retryUpload(index, caseCreated)}
+                                className="text-xs text-teal-700 hover:text-teal-900 flex items-center gap-0.5 underline"
+                                type="button"
+                              >
+                                <RotateCcw className="w-3 h-3" /> Retry
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Remove button (only before upload starts) */}
+                      {!isUploading && !isUploaded && (
+                        <button
+                          onClick={() => removeFile(index)}
+                          className="ml-4 p-1 hover:bg-gray-200 rounded flex-shrink-0"
+                          aria-label={`Remove ${file.name || file.originalName}`}
+                          type="button"
+                        >
+                          <X className="w-5 h-5 text-gray-600" />
+                        </button>
                       )}
                     </div>
-                    {!uploadProgress[index] && (
-                      <button
-                        onClick={() => removeFile(index)}
-                        className="ml-4 p-1 hover:bg-gray-200 rounded"
-                      >
-                        <X className="w-5 h-5 text-gray-600" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
+          {/* Success banner */}
           {caseCreated && (
             <div className="mt-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded flex items-start gap-3">
               <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-emerald-900">Case Created Successfully!</p>
                 <p className="text-sm text-emerald-700">
-                  Case ID: <code className="bg-white px-2 py-1 rounded font-mono">{caseCreated}</code>
+                  Case ID:{' '}
+                  <code className="bg-white px-2 py-1 rounded font-mono">{caseCreated}</code>
                 </p>
+                {failedUploads > 0 && (
+                  <p className="text-sm text-amber-700 mt-1">
+                    {failedUploads} file{failedUploads > 1 ? 's' : ''} failed to upload.
+                    Use the retry buttons above, or continue to the pipeline view.
+                  </p>
+                )}
+                {failedUploads > 0 && (
+                  <button
+                    onClick={() => navigate(`/case/${caseCreated}/building`)}
+                    className="mt-2 text-sm text-teal-700 hover:text-teal-900 underline"
+                    type="button"
+                  >
+                    Continue to pipeline →
+                  </button>
+                )}
               </div>
             </div>
           )}
 
+          {/* Actions */}
           <div className="mt-8 flex justify-between gap-4">
             <button
               onClick={() => setStep(2)}
               disabled={isSubmitting}
               className="px-6 py-2 border-2 border-gray-300 rounded-lg text-gray-700 font-semibold hover:bg-gray-50 disabled:opacity-50"
+              type="button"
             >
               ← Back
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!canSubmit || isSubmitting}
+              disabled={!canSubmit || isSubmitting || (caseCreated && failedUploads === 0)}
               className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              type="button"
             >
               {isSubmitting ? (
                 <>
                   <div className="spinner w-4 h-4" />
                   Creating...
                 </>
+              ) : caseCreated ? (
+                'Case Created ✓'
               ) : (
                 'Create Case'
               )}
@@ -502,6 +763,7 @@ export default function CaseIntake() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AuthContentGate>
   );
 }

@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useState, useCallback } from 'react';
+import React, { createContext, useState, useCallback, useMemo } from 'react';
+import { isTerminalPipelineStatus } from '../lib/pipelineStatus';
 
 export const CaseContext = createContext();
 
@@ -35,6 +36,12 @@ export function CaseProvider({ children }) {
     setWhatIfMode(false);
   }, []);
 
+  /** Derived: is the pipeline in a terminal state? */
+  const isPipelineTerminal = useMemo(
+    () => isTerminalPipelineStatus(pipelineStatus),
+    [pipelineStatus],
+  );
+
   const value = {
     selectedCaseId,
     selectCase,
@@ -45,6 +52,7 @@ export function CaseProvider({ children }) {
     updateCaseList,
     pipelineStatus,
     updatePipelineStatus,
+    isPipelineTerminal,
     activeTab,
     setActiveTab,
     whatIfMode,
