@@ -1,0 +1,207 @@
+/* Typography */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (used by legacy CSS in App.css) */
+:root {
+  --color-primary: #0d9488; /* teal-600 */
+  --color-accent: #2563eb; /* blue-600 */
+  --color-text: #111827; /* gray-900 */
+  --color-muted: #6b7280; /* gray-500 */
+  --color-border: #e5e7eb; /* gray-200 */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f9fafb; /* gray-50 */
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+
+  --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.12);
+
+  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 font-sans;
+}
+
+/* Focus styles */
+*:focus-visible {
+  @apply outline-none ring-2 ring-teal-500 ring-offset-2;
+}
+
+/* Improved button focus (accessible) */
+button:focus-visible {
+  @apply ring-2 ring-teal-500 ring-offset-2 rounded;
+}
+
+/* Link focus styles */
+a:focus-visible {
+  @apply ring-2 ring-teal-500 ring-offset-2 rounded;
+}
+
+/* Form input focus */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  @apply ring-2 ring-teal-500 ring-offset-0 border-teal-500;
+}
+
+/* Buttons */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-200 text-gray-900 font-medium rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-rose-600 text-white font-medium rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-sm {
+    @apply px-2 py-1 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-lg shadow-md border border-gray-200 p-4;
+  }
+
+  .card-lg {
+    @apply p-6;
+  }
+
+  /* Input styles */
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:border-transparent;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply animate-spin-slow inline-block w-5 h-5 border-2 border-gray-300 border-t-teal-600 rounded-full;
+  }
+
+  /* Grid layout */
+  .grid-cols-responsive {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+  }
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-full hover:bg-gray-500;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    @apply hidden;
+  }
+}
+
+/* Mobile-first responsive adjustments */
+@media (max-width: 640px) {
+  /* Hide sidebar on mobile (managed by JS) */
+  body {
+    font-size: 16px; /* Prevent zoom on input focus in iOS */
+  }
+
+  /* Button sizing for mobile */
+  button {
+    min-height: 44px; /* Touch target minimum recommended by WCAG */
+    min-width: 44px;
+  }
+
+  /* Input sizing for mobile */
+  input,
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+
+  /* Card padding on mobile */
+  .card-lg {
+    @apply p-4;
+  }
+
+  /* Grid responsive */
+  .grid-cols-responsive {
+    @apply grid-cols-1;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Adjust spacing for tablets */
+  main {
+    @apply p-4;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  button {
+    border: 1px solid currentColor;
+  }
+
+  *:focus-visible {
+    @apply ring-4 ring-teal-600;
+  }
+}
