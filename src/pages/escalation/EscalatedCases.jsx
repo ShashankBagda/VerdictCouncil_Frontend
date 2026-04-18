@@ -17,7 +17,9 @@ import {
   getStoredWorkflowItems,
   mergeWorkflowItems,
   normalizeWorkflowItem,
+  splitWorkflowItemsBySource,
 } from '../../lib/escalationWorkflow';
+import EscalationDetailView from '../../components/escalation/EscalationDetailView';
 
 const TYPE_META = {
   escalation: { label: 'Escalation', tone: 'bg-rose-100 text-rose-700', icon: AlertCircle },
@@ -33,109 +35,60 @@ const STATUS_META = {
 };
 
 function ItemCard({ item, onAction, processingId }) {
-  const [reason, setReason] = useState('');
-  const [assignee, setAssignee] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const typeMeta = TYPE_META[item.item_type] || TYPE_META.escalation;
   const TypeIcon = typeMeta.icon;
 
   return (
-    <div className="card-lg border border-gray-200">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <TypeIcon className="w-5 h-5 mt-1 text-navy-900" />
+    <div className={`group relative transition-all ${expanded ? 'bg-white shadow-xl ring-1 ring-gray-100' : 'bg-transparent'} rounded-2xl`}>
+      <div 
+        onClick={() => setExpanded(!expanded)}
+        className="card-lg cursor-pointer border-gray-200 hover:border-teal-300 transition-colors flex items-center justify-between gap-4"
+      >
+        <div className="flex items-center gap-4">
+          <div className={`p-3 rounded-xl bg-white border border-gray-100 group-hover:bg-teal-50 group-hover:border-teal-100 transition-colors`}>
+            <TypeIcon className="w-5 h-5 text-navy-900" />
+          </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-bold text-navy-900">{item.title || `Case ${item.case_id}`}</h3>
-              <span className={`px-2 py-1 rounded text-xs font-semibold ${typeMeta.tone}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${typeMeta.tone}`}>
                 {typeMeta.label}
               </span>
-              <span className={`px-2 py-1 rounded text-xs font-semibold ${STATUS_META[item.status] || STATUS_META.pending}`}>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${STATUS_META[item.status] || STATUS_META.pending}`}>
                 {item.status}
               </span>
+              {item.source === 'local' && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                  Local Only
+                </span>
+              )}
             </div>
-            <p className="text-sm text-gray-700 mt-2">{item.description}</p>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-3">
-              <span className="flex items-center gap-1">
-                <User className="w-3 h-3" />
-                {item.submitter}
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {new Date(item.submitted_at).toLocaleString()}
-              </span>
-              {item.assignee && <span>Assigned to {item.assignee}</span>}
-            </div>
+            <h3 className="text-base font-black text-navy-900 tracking-tight">{item.title || `Case ${item.case_id}`}</h3>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="text-right hidden sm:block">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.submitted_at).toLocaleDateString()}</p>
+            <p className="text-xs font-bold text-gray-500">{item.submitter}</p>
+          </div>
+          <div className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-tighter ${
+            item.priority === 'urgent' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-gray-100 bg-gray-50 text-gray-400'
+          }`}>
+            {item.priority}
           </div>
         </div>
       </div>
 
-      {(item.context || item.details) && (
-        <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700 space-y-2">
-          {item.context && <p>{item.context}</p>}
-          {item.details && <p>{item.details}</p>}
-        </div>
-      )}
-
-      {item.status === 'pending' && (
-        <div className="mt-4 space-y-3">
-          <textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder="Reason or note for this action"
-            className="input-field min-h-24"
-          />
-          <input
-            value={assignee}
-            onChange={(event) => setAssignee(event.target.value)}
-            placeholder="Optional assignee email for reassign"
-            className="input-field"
-          />
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            <button
-              onClick={() => onAction(item, 'approved', reason)}
-              disabled={processingId === item.id}
-              className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Approve
-            </button>
-            <button
-              onClick={() => onAction(item, 'rejected', reason)}
-              disabled={processingId === item.id || !reason.trim()}
-              className="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <XCircle className="w-4 h-4" />
-              Reject
-            </button>
-            <button
-              onClick={() => onAction(item, 'info_requested', reason)}
-              disabled={processingId === item.id || !reason.trim()}
-              className="px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Request Info
-            </button>
-            <button
-              onClick={() => onAction(item, 'reassign', reason, assignee)}
-              disabled={processingId === item.id || !assignee.trim()}
-              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <ArrowRight className="w-4 h-4" />
-              Reassign
-            </button>
-          </div>
-        </div>
-      )}
-
-      {item.history?.length > 1 && (
-        <div className="mt-4 border-t pt-3 space-y-2">
-          {item.history.slice(1).map((entry) => (
-            <div key={entry.id} className="text-xs text-gray-600 bg-gray-50 rounded px-3 py-2">
-              <span className="font-semibold capitalize">{entry.action}</span>
-              {entry.reason ? ` • ${entry.reason}` : ''}
-              {entry.assignee ? ` • Assigned to ${entry.assignee}` : ''}
-            </div>
-          ))}
+      {expanded && (
+        <div className="px-6 pb-6 animate-in slide-in-from-top-2 duration-200">
+           <div className="pt-4 border-t border-gray-100">
+              <EscalationDetailView 
+                item={item}
+                onAction={(action, payload) => onAction(item, action, payload)}
+                processing={processingId === item.id}
+              />
+           </div>
         </div>
       )}
     </div>
@@ -168,7 +121,11 @@ export default function EscalatedCases() {
     fetchInbox();
   }, [showError]);
 
-  const counts = useMemo(() => buildWorkflowCounts(items), [items]);
+  const { remote: remoteItems, local: localItems } = useMemo(
+    () => splitWorkflowItemsBySource(items),
+    [items],
+  );
+  const remoteCounts = useMemo(() => buildWorkflowCounts(remoteItems), [remoteItems]);
   const filteredItems = useMemo(
     () =>
       items.filter((item) => {
@@ -179,7 +136,24 @@ export default function EscalatedCases() {
     [filters, items],
   );
 
-  const handleAction = async (item, action, reason = '', assignee = '') => {
+  const handleAction = async (item, action, payload = {}) => {
+    const reason = payload.reason?.trim() || '';
+    const assignee = payload.assignee?.trim() || '';
+    const finalOrder = payload.finalOrder?.trim() || '';
+
+    if (item.source !== 'local' && action === 'add_notes' && !reason) {
+      showError('Add notes requires review notes.');
+      return;
+    }
+    if (item.source !== 'local' && action === 'manual_decision' && !finalOrder) {
+      showError('Manual decision requires a final order.');
+      return;
+    }
+    if (item.source !== 'local' && action === 'reject' && !reason) {
+      showError('Reject requires review notes.');
+      return;
+    }
+
     try {
       setProcessingId(item.id);
 
@@ -187,29 +161,37 @@ export default function EscalatedCases() {
         const updated = applyLocalWorkflowAction(item.id, action, reason, user?.email || 'senior@local', assignee);
         setItems((prev) => prev.map((entry) => (entry.id === item.id ? updated : entry)));
       } else {
-        await api.actionOnEscalatedCase(item.id, action, reason);
-        setItems((prev) =>
-          prev.map((entry) =>
+        const response = await api.actionOnEscalatedCase(item.id, {
+          action,
+          notes: reason || undefined,
+          final_order: finalOrder || undefined,
+        });
+        setItems((prev) => {
+          if (action !== 'add_notes') {
+            return prev.filter((entry) => entry.id !== item.id);
+          }
+
+          return prev.map((entry) =>
             entry.id === item.id
               ? {
                   ...entry,
-                  status: action === 'reassign' || action === 'info_requested' ? 'pending' : action,
-                  assignee: assignee || entry.assignee || null,
+                  status: 'pending',
                   history: [
                     ...(entry.history || []),
                     {
                       id: `${entry.id}-${Date.now()}`,
                       action,
-                      reason,
+                      reason: reason || response?.message || 'Notes added',
                       actor: user?.email || 'reviewer',
-                      assignee: assignee || null,
                       created_at: new Date().toISOString(),
                     },
                   ],
                 }
               : entry,
-          ),
-        );
+          );
+        });
+        showNotification(response?.message || 'Escalation updated successfully.', 'success');
+        return;
       }
 
       showNotification(`Request ${action.replace(/_/g, ' ')} successfully.`, 'success');
@@ -238,6 +220,11 @@ export default function EscalatedCases() {
         <p className="text-gray-600">
           Review escalations, amendment requests, and reopen requests across the current queue.
         </p>
+        {localItems.length > 0 && (
+          <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Local-only workflow items are shown in this view for demo continuity, but they are not part of the backend queue or the shared nav badge.
+          </p>
+        )}
       </div>
 
       <div className="card-lg space-y-4">
@@ -247,10 +234,10 @@ export default function EscalatedCases() {
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { key: 'all', label: `All (${counts.all})` },
-            { key: 'escalation', label: `Escalations (${counts.escalation})` },
-            { key: 'amendment', label: `Amendments (${counts.amendment})` },
-            { key: 'reopen', label: `Reopen (${counts.reopen})` },
+            { key: 'all', label: `All (${remoteCounts.all})` },
+            { key: 'escalation', label: `Escalations (${remoteCounts.escalation})` },
+            { key: 'amendment', label: `Amendments (${remoteCounts.amendment})` },
+            { key: 'reopen', label: `Reopen (${remoteCounts.reopen})` },
           ].map((option) => (
             <button
               key={option.key}
@@ -263,6 +250,11 @@ export default function EscalatedCases() {
             </button>
           ))}
         </div>
+        {localItems.length > 0 && (
+          <p className="text-xs text-gray-500">
+            Additional local-only items visible in this page: {localItems.length}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {['all', 'pending', 'approved', 'rejected'].map((status) => (
             <button
