@@ -1,13 +1,19 @@
 import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-react';
 import api from '../../lib/api';
-import { buildWorkflowCounts, getStoredWorkflowItems, normalizeWorkflowItem } from '../../lib/escalationWorkflow';
+import { buildWorkflowCounts, normalizeWorkflowItem } from '../../lib/escalationWorkflow';
 
 export function RootLayout() {
   const navigate = useNavigate();
-  const { logout, user, hasAnyRole } = useAuth();
+  const {
+    logout,
+    user,
+    hasAnyRole,
+    isAuthenticated,
+    isAuthResolved,
+  } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [inboxCount, setInboxCount] = React.useState(0);
 
@@ -21,6 +27,11 @@ export function RootLayout() {
   };
 
   React.useEffect(() => {
+    if (!isAuthResolved || !isAuthenticated) {
+      setInboxCount(0);
+      return undefined;
+    }
+
     let isMounted = true;
 
     const loadInboxCount = async () => {
@@ -28,13 +39,11 @@ export function RootLayout() {
         const res = await api.getEscalatedCases();
         if (!isMounted) return;
         const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
-        const localItems = getStoredWorkflowItems();
-        const counts = buildWorkflowCounts([...remoteItems, ...localItems]);
+        const counts = buildWorkflowCounts(remoteItems);
         setInboxCount(counts.pending);
       } catch {
         if (isMounted) {
-          const counts = buildWorkflowCounts(getStoredWorkflowItems());
-          setInboxCount(counts.pending);
+          setInboxCount(0);
         }
       }
     };
@@ -46,7 +55,22 @@ export function RootLayout() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [isAuthenticated, isAuthResolved]);
+
+  if (!isAuthResolved) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="spinner w-8 h-8 mx-auto mb-4" />
+          <p className="text-gray-600">Restoring session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
