@@ -8,20 +8,33 @@ import {
   Clock,
   Database,
   Download,
-  ExternalLink,
   FileSearch,
   FileText,
   MessageSquare,
   Scale,
-  Search,
   ShieldCheck,
   TriangleAlert,
   Users,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { useAPI, useCase } from '../../hooks';
+import { useAuth, useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import { normalizeVerdict } from '../../lib/caseWorkspace';
+import { 
+  normalizeVerdict, 
+  extractItems, 
+  normalizeKnowledgeBaseStatus
+} from '../../lib/caseWorkspace';
+import { 
+  createAmendmentRequest,
+} from '../../lib/escalationWorkflow';
+
+// New Components
+import EvidenceGapsPanel from '../../components/analysis/EvidenceGapsPanel';
+import PrecedentSearchPanel from '../../components/analysis/PrecedentSearchPanel';
+import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
+import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
+import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
+import DecisionForm from '../../components/cases/DecisionForm';
 
 const TABS = [
   { id: 'evidence', label: 'Evidence', icon: FileText, activeClass: 'bg-blue-100 text-blue-700 border-2 border-blue-300' },
@@ -35,23 +48,6 @@ const TABS = [
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
   { id: 'verdict', label: 'Verdict', icon: CheckCircle, activeClass: 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300' },
 ];
-
-const extractItems = (payload, keys = []) => {
-  if (!payload) return [];
-
-  for (const key of keys) {
-    if (Array.isArray(payload?.[key])) {
-      return payload[key];
-    }
-  }
-
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.results)) return payload.results;
-  if (Array.isArray(payload)) return payload;
-  return [];
-};
-
 const extractEvidenceGapItems = (payload) =>
   extractItems(payload, ['gaps', 'items', 'evidence_gaps', 'missing_evidence']);
 
@@ -64,23 +60,12 @@ const extractFairnessChecks = (payload) =>
 const extractPrecedentItems = (payload) =>
   extractItems(payload, ['results', 'precedents', 'items']);
 
-const normalizeKnowledgeBase = (payload) => {
+const getFairnessSummary = (payload, checks) => {
   const root = payload?.data || payload || {};
   return {
-    initialized: Boolean(root.initialized ?? root.ready ?? root.available),
-    status: root.status || (root.initialized ? 'ready' : 'not_initialized'),
-    documents: root.documents_count ?? root.document_count ?? root.documents ?? 0,
-    chunks: root.chunks_count ?? root.chunk_count ?? null,
-    lastUpdated: root.updated_at || root.last_updated_at || root.last_indexed_at || null,
-  };
-};
-
-const getFairnessSummary = (payload, checks) => {
-  if (!payload) return null;
-  return {
-    score: payload.score ?? payload.fairness_score ?? payload.overall_score ?? null,
-    summary: payload.summary || payload.assessment || payload.notes || null,
-    flagged: payload.flagged_issues ?? payload.issue_count ?? checks.filter((check) => !isCheckPassing(check)).length,
+    score: root.score ?? root.fairness_score ?? root.overall_score ?? null,
+    summary: root.summary || root.assessment || root.notes || null,
+    flagged: root.flagged_issues ?? root.issue_count ?? checks.filter((check) => !isCheckPassing(check)).length,
   };
 };
 
@@ -114,6 +99,7 @@ function MetaBadge({ children, tone = 'gray' }) {
 
 export default function CaseDossier() {
   const { caseId } = useParams();
+  const { user } = useAuth();
   const { showError, showNotification } = useAPI();
   const { activeTab, setActiveTab } = useCase();
 
@@ -180,7 +166,7 @@ export default function CaseDossier() {
         setVerdict(verdictRes.status === 'fulfilled' ? normalizeVerdict(verdictRes.value) : null);
         setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
         setKnowledgeBaseStatus(
-          kbRes.status === 'fulfilled' ? normalizeKnowledgeBase(kbRes.value) : null,
+          kbRes.status === 'fulfilled' ? normalizeKnowledgeBaseStatus(kbRes.value) : null,
         );
 
         if (verdictRes.status === 'fulfilled') {
@@ -335,6 +321,22 @@ export default function CaseDossier() {
     }
   };
 
+  const handleLocalAmendmentRequest = async (reason) => {
+    try {
+      if (!caseId) return;
+      const payload = {
+        title: `Amendment for Case ${caseId}`,
+        description: 'Judge requested amendment for decision.',
+        context: reason,
+        priority: 'high',
+      };
+      await createAmendmentRequest(caseId, payload, user?.email || 'judge@local');
+      showNotification('Amendment request saved to the local review queue only.', 'success');
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to submit local amendment request'));
+    }
+  };
+
   if (loading) {
     return (
       <div className="card-lg flex items-center justify-center h-96">
@@ -358,13 +360,7 @@ export default function CaseDossier() {
               <h1 className="text-2xl font-bold text-navy-900">Case dossier</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {knowledgeBaseStatus?.initialized ? (
-                <MetaBadge tone="emerald">
-                  KB ready{knowledgeBaseStatus.documents ? ` • ${knowledgeBaseStatus.documents} docs` : ''}
-                </MetaBadge>
-              ) : (
-                <MetaBadge tone="amber">KB not initialized</MetaBadge>
-              )}
+              <KnowledgeBaseStatusChip status={knowledgeBaseStatus} />
               {fairnessSummary?.score !== null && fairnessSummary?.score !== undefined && (
                 <MetaBadge tone="violet">Fairness score {fairnessSummary.score}%</MetaBadge>
               )}
@@ -375,12 +371,6 @@ export default function CaseDossier() {
                 <MetaBadge tone="rose">{disputedFacts.length} disputed facts</MetaBadge>
               )}
             </div>
-            {knowledgeBaseStatus && (
-              <p className="text-sm text-gray-600">
-                Knowledge base status: {knowledgeBaseStatus.status}
-                {knowledgeBaseStatus.lastUpdated && ` • Updated ${new Date(knowledgeBaseStatus.lastUpdated).toLocaleString()}`}
-              </p>
-            )}
           </div>
 
           <button
@@ -484,99 +474,15 @@ export default function CaseDossier() {
 
       {activeTab === 'evidence-gaps' && (
         <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <TriangleAlert className="w-6 h-6 text-amber-600" />
-              Evidence Gaps
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Missing proof, unresolved contradictions, and factual records that need judicial review.
-            </p>
+          <EvidenceGapsPanel items={evidenceGapItems} />
 
-            {evidenceGapItems.length > 0 ? (
-              <div className="space-y-3">
-                {evidenceGapItems.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-navy-900">{gapLabel(item, idx)}</h3>
-                        <p className="text-sm text-gray-700 mt-1">
-                          {item.description || item.summary || item.reason || 'No description provided.'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.severity && <MetaBadge tone="amber">{item.severity}</MetaBadge>}
-                        {item.status && <MetaBadge tone="gray">{item.status}</MetaBadge>}
-                      </div>
-                    </div>
-                    {(item.recommended_action || item.next_step) && (
-                      <p className="text-sm text-amber-900 mt-3">
-                        <span className="font-semibold">Next step:</span> {item.recommended_action || item.next_step}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-6">No evidence gaps flagged yet</p>
-            )}
-          </div>
-
-          <div className="card-lg">
-            <h3 className="text-xl font-bold text-navy-900 mb-2">Disputed Facts</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Mark contested facts directly in the dossier so the backend can track judicial disputes.
-            </p>
-
-            {disputedFacts.length > 0 ? (
-              <div className="space-y-4">
-                {disputedFacts.map((fact, idx) => {
-                  const factId = fact?.id || fact?.fact_id || fact?.uuid || idx;
-                  const isDisputed = Boolean(fact?.disputed) || String(fact?.status || '').toLowerCase() === 'disputed';
-                  return (
-                    <div key={factId} className="rounded-lg border border-gray-200 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="font-semibold text-navy-900">{factLabel(fact, idx)}</p>
-                          {fact.source && <p className="text-xs text-gray-500 mt-1">Source: {fact.source}</p>}
-                        </div>
-                        {isDisputed ? <MetaBadge tone="rose">Disputed</MetaBadge> : <MetaBadge tone="blue">Open fact</MetaBadge>}
-                      </div>
-
-                      {(fact.explanation || fact.notes) && (
-                        <p className="text-sm text-gray-700 mb-3">{fact.explanation || fact.notes}</p>
-                      )}
-
-                      <textarea
-                        value={disputeReason[factId] ?? fact.dispute_reason ?? ''}
-                        onChange={(event) =>
-                          setDisputeReason((prev) => ({ ...prev, [factId]: event.target.value }))
-                        }
-                        disabled={isDisputed}
-                        placeholder="State why this fact is contested"
-                        className="input-field min-h-24"
-                      />
-
-                      <div className="mt-3 flex items-center justify-between gap-4">
-                        <p className="text-xs text-gray-500">
-                          This sends a dispute marker to the case record for downstream review.
-                        </p>
-                        <button
-                          onClick={() => handleDisputeFact(fact, idx)}
-                          disabled={isDisputed || disputeSubmitting[factId]}
-                          className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
-                        >
-                          {disputeSubmitting[factId] ? 'Submitting...' : isDisputed ? 'Marked disputed' : 'Dispute fact'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-6">No disputed facts were returned for this case</p>
-            )}
-          </div>
+          <DisputedFactsPanel 
+            facts={disputedFacts}
+            disputeReasons={disputeReason}
+            onReasonChange={(id, val) => setDisputeReason(prev => ({ ...prev, [id]: val }))}
+            onDispute={handleDisputeFact}
+            submitting={disputeSubmitting}
+          />
         </div>
       )}
 
@@ -745,93 +651,16 @@ export default function CaseDossier() {
       )}
 
       {activeTab === 'precedents' && (
-        <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <FileSearch className="w-6 h-6 text-cyan-600" />
-              Live Precedent Search
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Search precedents directly from the dossier to validate the current legal theory before issuing a decision.
-            </p>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px_auto] gap-3">
-              <input
-                value={precedentQuery}
-                onChange={(event) => setPrecedentQuery(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && handlePrecedentSearch()}
-                placeholder="Search by issue, statute, holding, or legal principle"
-                className="input-field"
-              />
-              <input
-                value={precedentDomain}
-                onChange={(event) => setPrecedentDomain(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && handlePrecedentSearch()}
-                placeholder="Domain or court"
-                className="input-field"
-              />
-              <button
-                onClick={handlePrecedentSearch}
-                disabled={searchingPrecedents}
-                className="px-4 py-2.5 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Search className="w-4 h-4" />
-                {searchingPrecedents ? 'Searching...' : 'Search'}
-              </button>
-            </div>
-          </div>
-
-          <div className="card-lg">
-            {precedentResults.length > 0 ? (
-              <div className="space-y-4">
-                {precedentResults.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border border-cyan-200 bg-cyan-50/50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-navy-900">
-                          {item.title || item.case_name || item.name || `Precedent ${idx + 1}`}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {[item.citation, item.court, item.jurisdiction].filter(Boolean).join(' • ')}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {(item.score || item.relevance) && (
-                          <MetaBadge tone="blue">
-                            Match {Math.round((item.score ?? item.relevance) * ((item.score ?? item.relevance) <= 1 ? 100 : 1))}%
-                          </MetaBadge>
-                        )}
-                        {item.source && <MetaBadge tone="gray">{item.source}</MetaBadge>}
-                      </div>
-                    </div>
-
-                    {(item.summary || item.holding || item.snippet || item.text) && (
-                      <p className="text-sm text-gray-700 mt-3">
-                        {item.summary || item.holding || item.snippet || item.text}
-                      </p>
-                    )}
-
-                    {(item.url || item.link) && (
-                      <a
-                        href={item.url || item.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-700 hover:text-cyan-800 mt-3"
-                      >
-                        Open source
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : precedentSearched ? (
-              <p className="text-gray-600 text-center py-8">No precedent matches returned for this search</p>
-            ) : (
-              <p className="text-gray-600 text-center py-8">Run a search to load precedent matches</p>
-            )}
-          </div>
-        </div>
+        <PrecedentSearchPanel 
+          query={precedentQuery}
+          onQueryChange={setPrecedentQuery}
+          domain={precedentDomain}
+          onDomainChange={setPrecedentDomain}
+          onSearch={handlePrecedentSearch}
+          results={precedentResults}
+          searching={searchingPrecedents}
+          searched={precedentSearched}
+        />
       )}
 
       {activeTab === 'arguments' && (
@@ -964,161 +793,29 @@ export default function CaseDossier() {
       )}
 
       {activeTab === 'fairness' && (
-        <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <ShieldCheck className="w-6 h-6 text-violet-600" />
-              Fairness Audit Checklist
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Review parity, procedural fairness, and any automated concerns before the final judicial action.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 mb-2">Score</p>
-                <p className="text-3xl font-bold text-violet-900">
-                  {fairnessSummary?.score ?? '--'}
-                  {fairnessSummary?.score !== null && fairnessSummary?.score !== undefined ? '%' : ''}
-                </p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Checks</p>
-                <p className="text-3xl font-bold text-navy-900">{fairnessChecks.length}</p>
-              </div>
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 mb-2">Flagged</p>
-                <p className="text-3xl font-bold text-rose-900">{fairnessSummary?.flagged ?? 0}</p>
-              </div>
-            </div>
-
-            {fairnessSummary?.summary && (
-              <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4 text-sm text-gray-700">
-                {fairnessSummary.summary}
-              </div>
-            )}
-          </div>
-
-          <div className="card-lg">
-            {fairnessChecks.length > 0 ? (
-              <div className="space-y-3">
-                {fairnessChecks.map((check, idx) => {
-                  const passing = isCheckPassing(check);
-                  return (
-                    <div
-                      key={idx}
-                      className={`rounded-lg border p-4 ${passing ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'}`}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-navy-900">
-                            {check.title || check.label || check.category || `Check ${idx + 1}`}
-                          </h3>
-                          <p className="text-sm text-gray-700 mt-1">
-                            {check.description || check.summary || check.note || 'No additional context provided.'}
-                          </p>
-                        </div>
-                        <MetaBadge tone={passing ? 'emerald' : 'amber'}>
-                          {check.status || check.result || check.outcome || (passing ? 'pass' : 'review')}
-                        </MetaBadge>
-                      </div>
-
-                      {(check.recommendation || check.mitigation || check.action) && (
-                        <p className="text-sm mt-3 text-gray-700">
-                          <span className="font-semibold">Action:</span> {check.recommendation || check.mitigation || check.action}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-8">No fairness checklist data available yet</p>
-            )}
-          </div>
-        </div>
+        <FairnessAuditPanel 
+          summary={fairnessSummary}
+          checks={fairnessChecks}
+        />
       )}
 
       {activeTab === 'verdict' && (
-        <div className="card-lg">
-          <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
-            <CheckCircle className="w-6 h-6 text-emerald-600" />
-            Verdict & Recommendation
-          </h2>
+        <div className="space-y-6">
+          <DecisionForm 
+            verdict={verdict}
+            decisionType={decisionType}
+            setDecisionType={setDecisionType}
+            decisionReason={decisionReason}
+            setDecisionReason={setDecisionReason}
+            onSubmit={handleDecisionSubmit}
+            onAmendmentRequest={handleLocalAmendmentRequest}
+            submitting={decisionSubmitting}
+            locked={decisionLocked}
+            caseId={caseId}
+          />
 
           {verdict ? (
             <div className="space-y-6">
-              <div className="rounded-lg border border-gray-200 p-5 bg-gray-50">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-navy-900">Judge Decision</h3>
-                    <p className="text-sm text-gray-600">
-                      Record the final judicial action for this case workspace.
-                    </p>
-                  </div>
-                  {decisionLocked && (
-                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                      Decision recorded
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                  {[
-                    { value: 'accept', label: 'Accept', activeClass: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
-                    { value: 'modify', label: 'Modify', activeClass: 'border-amber-400 bg-amber-50 text-amber-700' },
-                    { value: 'reject', label: 'Reject', activeClass: 'border-rose-400 bg-rose-50 text-rose-700' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setDecisionType(option.value)}
-                      disabled={decisionLocked}
-                      className={`px-4 py-3 rounded-lg border-2 font-semibold transition-all ${
-                        decisionType === option.value
-                          ? option.activeClass
-                          : 'border-gray-200 bg-white text-gray-700'
-                      } disabled:opacity-60`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-sm font-semibold text-navy-900">
-                    Reason {decisionType === 'modify' || decisionType === 'reject' ? '(required)' : '(optional)'}
-                  </label>
-                  <textarea
-                    value={decisionReason}
-                    onChange={(event) => setDecisionReason(event.target.value)}
-                    disabled={decisionLocked}
-                    placeholder={
-                      decisionType === 'accept'
-                        ? 'Optional note for accepting the recommendation'
-                        : `Explain why this case should be ${decisionType}ed`
-                    }
-                    className="input-field min-h-28"
-                  />
-                </div>
-
-                <div className="mt-4 flex items-center justify-between gap-4">
-                  <p className="text-xs text-gray-500">
-                    Once recorded, the decision form becomes read-only in this workspace.
-                  </p>
-                  <button
-                    onClick={handleDecisionSubmit}
-                    disabled={
-                      decisionLocked ||
-                      decisionSubmitting ||
-                      ((decisionType === 'modify' || decisionType === 'reject') && !decisionReason.trim())
-                    }
-                    className="px-5 py-2.5 bg-navy-900 text-white rounded-lg font-semibold hover:bg-navy-800 disabled:opacity-50"
-                  >
-                    {decisionSubmitting ? 'Recording...' : 'Record Decision'}
-                  </button>
-                </div>
-              </div>
-
               {verdict.recommendation && (
                 <div className="border-l-4 border-emerald-500 pl-6 py-4">
                   <p className="text-sm text-gray-600 uppercase tracking-wide font-semibold mb-2">Recommendation</p>
@@ -1166,7 +863,7 @@ export default function CaseDossier() {
                   <ul className="space-y-2">
                     {verdict.conditions.map((condition, idx) => (
                       <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
-                        <span className="text-blue-600 font-semibold">•</span>
+                        <span className="text-blue-600 font-semibold">&bull;</span>
                         <span className="text-gray-700">{condition}</span>
                       </li>
                     ))}
@@ -1194,3 +891,4 @@ export default function CaseDossier() {
     </div>
   );
 }
+
