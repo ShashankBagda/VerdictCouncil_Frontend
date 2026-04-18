@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Filter, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
 import { useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
+import AuthContentGate from '../../components/auth/AuthContentGate';
 
 const statusConfig = {
   intake: { label: 'Intake', icon: Clock, color: 'blue' },
@@ -16,7 +16,6 @@ const statusConfig = {
 
 export default function CaseList() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
   const { showError } = useAPI();
   const { selectedCaseId, selectCase } = useCase();
 
@@ -72,12 +71,9 @@ export default function CaseList() {
     navigate(`/case/${caseId}`);
   };
 
-  if (!isAuthenticated) {
-    return <div className="text-center text-gray-600">Please log in first.</div>;
-  }
-
   return (
-    <div className="max-w-6xl mx-auto">
+    <AuthContentGate>
+      <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -245,6 +241,7 @@ export default function CaseList() {
           })}
         </div>
       )}
-    </div>
+      </div>
+    </AuthContentGate>
   );
 }

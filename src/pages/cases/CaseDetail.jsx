@@ -8,6 +8,7 @@ import {
   normalizeUploadedDocument,
 } from '../../lib/caseWorkspace';
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
+import DocumentUploadList from '../../components/cases/DocumentUploadList';
 
 const VALID_APPEND_TYPES = [
   'application/pdf',
@@ -117,17 +118,14 @@ export default function CaseDetail() {
     setUploadErrors({});
 
     try {
-      const appendedDocuments = [];
-
+      let anySuccess = false;
       for (let index = 0; index < selectedFiles.length; index += 1) {
         const file = selectedFiles[index];
-
         try {
-          const payload = await api.uploadDocuments(caseId, [file], (progress) => {
+          await api.uploadDocuments(caseId, [file], (progress) => {
             setUploadProgress((prev) => ({ ...prev, [index]: progress }));
           });
-
-          appendedDocuments.push(normalizeUploadedDocument(payload, file.name, index));
+          anySuccess = true;
         } catch (error) {
           setUploadErrors((prev) => ({
             ...prev,
@@ -136,19 +134,17 @@ export default function CaseDetail() {
         }
       }
 
-      if (appendedDocuments.length) {
-        const existing = workspaceCase.documents || [];
-        updateCaseDetail({
-          ...workspaceCase,
-          documents: [...appendedDocuments, ...existing].sort((a, b) => {
-            return new Date(b.uploaded_at || 0).getTime() - new Date(a.uploaded_at || 0).getTime();
-          }),
-        });
-        showNotification('Documents uploaded and version history updated.', 'success');
+      if (anySuccess) {
+        // Refetch complete state to ensure all downstream analysis (KB, Dossier) reflects new data
+        const payload = await api.getCaseDetail(caseId);
+        updateCaseDetail(normalizeCaseDetail(payload, caseId));
+        showNotification('Documents uploaded and workspace synchronized.', 'success');
       }
 
       setSelectedFiles([]);
       setUploadProgress({});
+    } catch (error) {
+      showError(getErrorMessage(error, 'Unexpected error during upload sync'));
     } finally {
       setUploading(false);
     }
@@ -272,106 +268,20 @@ export default function CaseDetail() {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full px-4 py-3 border border-dashed border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              className="w-full px-4 py-3 border border-dashed border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Select files to append to this case
             </button>
 
-            {selectedFiles.length > 0 && (
-              <div className="mt-4 space-y-3">
-                {selectedFiles.map((file, index) => (
-                  <div key={`${file.name}-${index}`} className="rounded-lg bg-gray-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-navy-900 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                      {!uploading && (
-                        <button
-                          onClick={() => removeSelectedFile(index)}
-                          className="text-xs font-semibold text-gray-600 hover:text-gray-900"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    {uploadProgress[index] ? (
-                      <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                        <div
-                          className="bg-teal-500 h-1.5 rounded-full transition-all"
-                          style={{ width: `${uploadProgress[index]}%` }}
-                        />
-                      </div>
-                    ) : null}
-                    {uploadErrors[index] ? (
-                      <p className="text-xs text-rose-700 mt-2">{uploadErrors[index]}</p>
-                    ) : null}
-                  </div>
-                ))}
-
-                <button
-                  onClick={handleAppendDocuments}
-                  disabled={uploading}
-                  className="w-full px-4 py-2 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Uploading…
-                    </>
-                  ) : (
-                    'Upload Documents'
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="card-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-navy-900">Version History</h2>
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-            </div>
-
-            {workspaceCase?.documents?.length ? (
-              <div className="space-y-3">
-                {workspaceCase.documents.map((document) => (
-                  <div key={document.id} className="rounded-lg border border-gray-200 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-navy-900 truncate">
-                          {document.filename}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Version {document.version}
-                        </p>
-                      </div>
-                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-semibold">
-                        {document.status}
-                      </span>
-                    </div>
-                    {document.uploaded_at && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        Uploaded {new Date(document.uploaded_at).toLocaleString()}
-                      </p>
-                    )}
-                    {document.affected_stages?.length ? (
-                      <p className="text-xs text-teal-700 mt-2">
-                        Re-runs: {document.affected_stages.join(', ')}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-gray-500 mt-2">
-                        No affected stages reported
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-600">No uploaded documents recorded yet.</p>
-            )}
+            <DocumentUploadList 
+              selectedFiles={selectedFiles}
+              onRemoveFile={removeSelectedFile}
+              uploadProgress={uploadProgress}
+              uploadErrors={uploadErrors}
+              onUpload={handleAppendDocuments}
+              uploading={uploading}
+              documents={workspaceCase?.documents || []}
+            />
           </div>
 
           <CaseExceptionPanel caseId={caseId} caseDetail={workspaceCase} />

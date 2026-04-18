@@ -41,3 +41,40 @@ export function normalizeVerdict(payload) {
     remedy: root.remedy || root.outcome || null,
   };
 }
+
+export const extractItems = (payload, keys = []) => {
+  if (!payload) return [];
+  const root = payload?.data || payload;
+  if (!root) return [];
+
+  for (const key of keys) {
+    if (Array.isArray(root?.[key])) {
+      return root[key];
+    }
+  }
+
+  if (Array.isArray(root?.items)) return root.items;
+  if (Array.isArray(root?.results)) return root.results;
+  if (Array.isArray(root)) return root;
+  return [];
+};
+
+export function normalizeKnowledgeBaseStatus(payload) {
+  const root = payload?.data || payload || {};
+  const initialized = Boolean(root.initialized ?? root.ready ?? root.available);
+  return {
+    initialized,
+    status: root.status || (initialized ? 'ready' : 'not_initialized'),
+    documents_count: root.documents_count ?? root.document_count ?? root.documents ?? 0,
+    chunks_count: root.chunks_count ?? root.chunk_count ?? null,
+    last_updated: root.updated_at || root.last_updated_at || root.last_indexed_at || null,
+  };
+}
+
+export function normalizeKBList(payload) {
+  return extractItems(payload, ['documents', 'files', 'items']);
+}
+
+export function normalizeKBSearch(payload) {
+  return extractItems(payload, ['results', 'matches', 'items']);
+}
