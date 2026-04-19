@@ -41,6 +41,14 @@
  *   GET  /api/v1/cases/{id}/verdict   → use getCaseDetail().verdicts instead
  *   POST /api/v1/cases/{id}/hearing-pack → no backend route yet
  *   GET  /api/v1/cases/{id}/export    → no backend route yet
+ *   POST /api/v1/knowledge-base/initialize  → no backend route yet
+ *   GET  /api/v1/knowledge-base/documents   → no backend route yet
+ *   DELETE /api/v1/knowledge-base/documents/{id} → no backend route yet
+ *   POST /api/v1/knowledge-base/search      → no backend route yet
+ *   POST /api/v1/knowledge-base/documents   → no backend route yet (upload)
+ *   POST /api/v1/admin/vector-stores/refresh → no backend route yet
+ *   POST /api/v1/admin/users/{id}/{action}  → no backend route yet
+ *   POST /api/v1/admin/cost-config          → no backend route yet
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -296,7 +304,18 @@ export const api = {
   createCase: (caseData) =>
     request('POST', '/api/v1/cases/', { body: caseData }),
   listCases: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    // Backend expects: ?status=...&domain=...&page=...&per_page=...
+    // Map frontend filter names to backend query param names
+    const backendParams = {};
+    if (params.status || params.status_filter) {
+      backendParams.status = params.status || params.status_filter;
+    }
+    if (params.domain || params.domain_filter) {
+      backendParams.domain = params.domain || params.domain_filter;
+    }
+    if (params.page) backendParams.page = params.page;
+    if (params.per_page) backendParams.per_page = params.per_page;
+    const query = new URLSearchParams(backendParams).toString();
     return request('GET', `/api/v1/cases/${query ? `?${query}` : ''}`);
   },
   getCaseDetail: (caseId) =>
@@ -340,8 +359,16 @@ export const api = {
   getFairnessAudit: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/fairness-audit`),
 
-  recordDecision: (caseId, decision) =>
-    request('POST', `/api/v1/cases/${caseId}/decision`, { body: decision }),
+  recordDecision: (caseId, decision) => {
+    // Backend DecisionRequest expects { action, notes, final_order }
+    // Frontend callers may send { decision_type, reason } — normalize here
+    const body = {
+      action: decision.action || decision.decision_type || 'accept',
+      notes: decision.notes || decision.reason || undefined,
+      final_order: decision.final_order || undefined,
+    };
+    return request('POST', `/api/v1/cases/${caseId}/decision`, { body });
+  },
 
   createWhatIfScenario: (caseId, scenario) =>
     request('POST', `/api/v1/cases/${caseId}/what-if`, { body: scenario }),
