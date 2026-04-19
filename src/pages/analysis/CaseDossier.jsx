@@ -24,9 +24,6 @@ import {
   extractItems, 
   normalizeKnowledgeBaseStatus
 } from '../../lib/caseWorkspace';
-import { 
-  createAmendmentRequest,
-} from '../../lib/escalationWorkflow';
 
 // New Components
 import EvidenceGapsPanel from '../../components/analysis/EvidenceGapsPanel';
@@ -35,6 +32,8 @@ import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
 import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
 import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
 import DecisionForm from '../../components/cases/DecisionForm';
+import AmendDecisionForm from '../../components/judge/AmendDecisionForm';
+import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
 
 const TABS = [
   { id: 'evidence', label: 'Evidence', icon: FileText, activeClass: 'bg-blue-100 text-blue-700 border-2 border-blue-300' },
@@ -77,8 +76,6 @@ const isCheckPassing = (check) => {
 };
 
 const evidenceTypeLabel = (item, idx) => item.title || item.label || item.name || `Evidence ${idx + 1}`;
-const gapLabel = (item, idx) => item.title || item.label || item.category || `Gap ${idx + 1}`;
-const factLabel = (fact, idx) => fact.statement || fact.text || fact.title || `Fact ${idx + 1}`;
 
 function MetaBadge({ children, tone = 'gray' }) {
   const tones = {
@@ -99,7 +96,7 @@ function MetaBadge({ children, tone = 'gray' }) {
 
 export default function CaseDossier() {
   const { caseId } = useParams();
-  const { user } = useAuth();
+  useAuth();
   const { showError, showNotification } = useAPI();
   const { activeTab, setActiveTab } = useCase();
 
@@ -126,6 +123,10 @@ export default function CaseDossier() {
   const [precedentResults, setPrecedentResults] = useState([]);
   const [searchingPrecedents, setSearchingPrecedents] = useState(false);
   const [precedentSearched, setPrecedentSearched] = useState(false);
+  const [amendmentSubmitting, setAmendmentSubmitting] = useState(false);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [decisionHistory, setDecisionHistory] = useState([]);
+  const [reopenRequests, setReopenRequests] = useState([]);
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -143,6 +144,8 @@ export default function CaseDossier() {
           verdictRes,
           fairnessRes,
           kbRes,
+          decisionHistoryRes,
+          reopenRequestsRes,
         ] = await Promise.allSettled([
           api.getEvidence(caseId),
           api.getEvidenceGaps(caseId),
@@ -154,6 +157,8 @@ export default function CaseDossier() {
           api.getVerdict(caseId),
           api.getFairnessAudit(caseId),
           api.getKnowledgeBaseStatus(),
+          api.getDecisionHistory(caseId),
+          api.listReopenRequests(caseId),
         ]);
 
         setEvidence(evidenceRes.status === 'fulfilled' ? evidenceRes.value?.data : null);
@@ -167,6 +172,16 @@ export default function CaseDossier() {
         setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
         setKnowledgeBaseStatus(
           kbRes.status === 'fulfilled' ? normalizeKnowledgeBaseStatus(kbRes.value) : null,
+        );
+        setDecisionHistory(
+          decisionHistoryRes.status === 'fulfilled'
+            ? decisionHistoryRes.value?.items || decisionHistoryRes.value?.data?.items || []
+            : [],
+        );
+        setReopenRequests(
+          reopenRequestsRes.status === 'fulfilled'
+            ? reopenRequestsRes.value?.items || reopenRequestsRes.value?.data?.items || []
+            : [],
         );
 
         if (verdictRes.status === 'fulfilled') {
@@ -321,19 +336,31 @@ export default function CaseDossier() {
     }
   };
 
-  const handleLocalAmendmentRequest = async (reason) => {
+  const handleAmendmentRequest = async (payload) => {
     try {
-      if (!caseId) return;
-      const payload = {
-        title: `Amendment for Case ${caseId}`,
-        description: 'Judge requested amendment for decision.',
-        context: reason,
-        priority: 'high',
-      };
-      await createAmendmentRequest(caseId, payload, user?.email || 'judge@local');
-      showNotification('Amendment request saved to the local review queue only.', 'success');
+      setAmendmentSubmitting(true);
+      const response = await api.amendDecision(caseId, payload);
+      const item = response?.data || response;
+      setDecisionHistory((prev) => [item, ...prev]);
+      showNotification('Decision amendment submitted successfully.', 'success');
     } catch (err) {
-      showError(getErrorMessage(err, 'Failed to submit local amendment request'));
+      showError(getErrorMessage(err, 'Failed to submit amendment'));
+    } finally {
+      setAmendmentSubmitting(false);
+    }
+  };
+
+  const handleReopenRequest = async (payload) => {
+    try {
+      setReopenSubmitting(true);
+      const response = await api.requestCaseReopen(caseId, payload);
+      const item = response?.data || response;
+      setReopenRequests((prev) => [item, ...prev]);
+      showNotification('Reopen request submitted for senior review.', 'success');
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to submit reopen request'));
+    } finally {
+      setReopenSubmitting(false);
     }
   };
 
@@ -808,11 +835,62 @@ export default function CaseDossier() {
             decisionReason={decisionReason}
             setDecisionReason={setDecisionReason}
             onSubmit={handleDecisionSubmit}
-            onAmendmentRequest={handleLocalAmendmentRequest}
+            onAmendmentRequest={(reason) =>
+              handleAmendmentRequest({
+                recommendation_type: verdict?.recommendation || 'manual_decision',
+                recommended_outcome: verdict?.remedy || 'Amended outcome',
+                amendment_reason: reason,
+              })
+            }
             submitting={decisionSubmitting}
             locked={decisionLocked}
             caseId={caseId}
           />
+
+          {decisionLocked && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <AmendDecisionForm onSubmit={handleAmendmentRequest} submitting={amendmentSubmitting} />
+              <ReopenRequestForm onSubmit={handleReopenRequest} submitting={reopenSubmitting} />
+            </div>
+          )}
+
+          {(decisionHistory.length > 0 || reopenRequests.length > 0) && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="card-lg">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Decision History</h3>
+                <div className="space-y-3">
+                  {decisionHistory.map((item) => (
+                    <div key={item.verdict_id || item.id} className="rounded-lg border border-gray-200 p-3">
+                      <p className="text-sm font-semibold text-navy-900">
+                        {item.recommendation_type || 'manual_decision'}
+                      </p>
+                      <p className="text-sm text-gray-700 mt-1">{item.recommended_outcome}</p>
+                      {item.amendment_reason && (
+                        <p className="text-xs text-gray-500 mt-2">Reason: {item.amendment_reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card-lg">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Reopen Requests</h3>
+                <div className="space-y-3">
+                  {reopenRequests.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-navy-900">{item.reason}</p>
+                        <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 mt-1">{item.justification}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {verdict ? (
             <div className="space-y-6">

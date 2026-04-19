@@ -5,7 +5,6 @@ import { useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import {
   normalizeCaseDetail,
-  normalizeUploadedDocument,
 } from '../../lib/caseWorkspace';
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
 import DocumentUploadList from '../../components/cases/DocumentUploadList';

@@ -2,13 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Shield } from 'lucide-react';
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import {
-  applyLocalWorkflowAction,
-  getStoredWorkflowItems,
-  mergeWorkflowItems,
-  normalizeWorkflowItem,
-  splitWorkflowItemsBySource,
-} from '../../lib/escalationWorkflow';
 import EscalationDetailView from '../../components/escalation/EscalationDetailView';
 
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -21,6 +14,28 @@ const rankedItems = (items) =>
     if (priorityDiff !== 0) return priorityDiff;
     return new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime();
   });
+
+const normalizeInboxItem = (raw) => ({
+  id: raw.id,
+  backendId: raw.id,
+  case_id: raw.case_id,
+  item_type: raw.type,
+  title: `${String(raw.type || 'item').toUpperCase()} • Case ${String(raw.case_id || '').slice(0, 8)}`,
+  description: raw.reason || raw.amendment_reason || 'Pending senior judge review.',
+  context: raw,
+  details: raw,
+  submitter: 'judge',
+  submitted_at: raw.submitted_at || new Date().toISOString(),
+  status: raw.status || 'pending',
+  priority: raw.priority || 'medium',
+  source: raw.type === 'escalation' ? 'backend' : 'local',
+  history: [],
+});
+
+const parseBackendId = (backendId) => {
+  const [type, id] = String(backendId || '').split(':');
+  return { type, id };
+};
 
 export default function SeniorJudgeInbox() {
   const { user } = useAuth();
@@ -37,10 +52,9 @@ export default function SeniorJudgeInbox() {
     const fetchInbox = async () => {
       try {
         setLoading(true);
-        const res = await api.getEscalatedCases();
-        const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
-        const localItems = getStoredWorkflowItems();
-        const merged = rankedItems(mergeWorkflowItems(remoteItems, localItems));
+        const res = await api.getSeniorInbox();
+        const remoteItems = (res?.items || res?.data?.items || []).map(normalizeInboxItem);
+        const merged = rankedItems(remoteItems);
         setItems(merged);
         setSelectedId(merged[0]?.id || null);
       } catch (error) {
@@ -61,7 +75,9 @@ export default function SeniorJudgeInbox() {
           if (typeFilter !== 'all' && item.item_type !== typeFilter) return false;
           if (
             search.trim() &&
-            !`${item.title} ${item.description} ${item.case_id}`.toLowerCase().includes(search.trim().toLowerCase())
+            !`${item.title} ${item.description} ${item.case_id}`
+              .toLowerCase()
+              .includes(search.trim().toLowerCase())
           ) {
             return false;
           }
@@ -69,15 +85,6 @@ export default function SeniorJudgeInbox() {
         }),
       ),
     [items, search, statusFilter, typeFilter],
-  );
-
-  const { local: localItems } = useMemo(
-    () => splitWorkflowItemsBySource(items),
-    [items],
-  );
-  const remoteFilteredItems = useMemo(
-    () => filteredItems.filter((item) => item.source !== 'local'),
-    [filteredItems],
   );
 
   const selectedItem =
@@ -89,85 +96,74 @@ export default function SeniorJudgeInbox() {
     }
   }, [selectedId, selectedItem]);
 
+  const applyLocalUpdate = (itemId, nextStatus, reason, action) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              status: nextStatus,
+              history: [
+                ...(item.history || []),
+                {
+                  id: `${item.id}-${Date.now()}`,
+                  action,
+                  reason,
+                  actor: user?.email || 'senior-reviewer',
+                  created_at: new Date().toISOString(),
+                },
+              ],
+            }
+          : item,
+      ),
+    );
+  };
+
   const handleAction = async (action, payload = {}) => {
     if (!selectedItem) return;
 
-    const nextReason = payload.reason?.trim() || '';
-    const nextAssignee = payload.assignee?.trim() || '';
+    const reason = payload.reason?.trim() || '';
     const finalOrder = payload.finalOrder?.trim() || '';
-
-    if (
-      selectedItem.source === 'local' &&
-      (action === 'rejected' || action === 'info_requested') &&
-      !nextReason
-    ) {
-      showError('A written reason is required for this action.');
-      return;
-    }
-    if (selectedItem.source === 'local' && action === 'reassign' && !nextAssignee) {
-      showError('Enter a target judge email before reassigning.');
-      return;
-    }
-    if (selectedItem.source !== 'local' && action === 'add_notes' && !nextReason) {
-      showError('Add notes requires review notes.');
-      return;
-    }
-    if (selectedItem.source !== 'local' && action === 'manual_decision' && !finalOrder) {
-      showError('Manual decision requires a final order.');
-      return;
-    }
-    if (selectedItem.source !== 'local' && action === 'reject' && !nextReason) {
-      showError('Reject requires review notes.');
-      return;
-    }
 
     try {
       setProcessing(true);
 
-      if (selectedItem.source === 'local') {
-        const updated = applyLocalWorkflowAction(
-          selectedItem.id,
+      if (selectedItem.item_type === 'escalation') {
+        await api.actionOnEscalatedCase(selectedItem.case_id, {
           action,
-          nextReason,
-          user?.email || 'senior@local',
-          nextAssignee || null,
-        );
-        setItems((prev) => prev.map((item) => (item.id === selectedItem.id ? updated : item)));
-      } else {
-        const response = await api.actionOnEscalatedCase(selectedItem.id, {
-          action,
-          notes: nextReason || undefined,
+          notes: reason || undefined,
           final_order: finalOrder || undefined,
         });
-        setItems((prev) => {
-          if (action !== 'add_notes') {
-            return prev.filter((item) => item.id !== selectedItem.id);
-          }
-
-          return prev.map((item) =>
-            item.id === selectedItem.id
-              ? {
-                  ...item,
-                  status: 'pending',
-                  history: [
-                    ...(item.history || []),
-                    {
-                      id: `${item.id}-${Date.now()}`,
-                      action,
-                      reason: nextReason || response?.message || 'Notes added',
-                      actor: user?.email || 'senior-reviewer',
-                      created_at: new Date().toISOString(),
-                    },
-                  ],
-                }
-              : item,
-          );
-        });
-        showNotification(response?.message || 'Escalation updated successfully.', 'success');
+        const nextStatus = action === 'add_notes' ? 'pending' : action === 'reject' ? 'rejected' : 'approved';
+        applyLocalUpdate(selectedItem.id, nextStatus, reason || action, action);
+        showNotification('Escalation updated successfully.', 'success');
         return;
       }
 
-      showNotification(`Request ${action.replace(/_/g, ' ')} successfully.`, 'success');
+      if (selectedItem.item_type === 'reopen') {
+        if (!['approved', 'rejected'].includes(action)) {
+          showError('Reopen requests only support approve/reject actions.');
+          return;
+        }
+        const parsed = parseBackendId(selectedItem.backendId);
+        if (parsed.type !== 'reopen' || !parsed.id) {
+          throw new Error('Invalid reopen request id');
+        }
+        const approve = action === 'approved';
+        if (!approve && !reason) {
+          showError('Please provide a reason when rejecting a reopen request.');
+          return;
+        }
+        await api.reviewReopenRequest(selectedItem.case_id, parsed.id, {
+          approve,
+          review_notes: reason || undefined,
+        });
+        applyLocalUpdate(selectedItem.id, approve ? 'approved' : 'rejected', reason, action);
+        showNotification(`Reopen request ${approve ? 'approved' : 'rejected'}.`, 'success');
+        return;
+      }
+
+      showError('Amendment actions are not exposed by the backend yet.');
     } catch (error) {
       showError(getErrorMessage(error, `Failed to ${action.replace(/_/g, ' ')} request`));
     } finally {
@@ -192,15 +188,10 @@ export default function SeniorJudgeInbox() {
             <p className="text-gray-600 mt-2">
               Ranked senior-review queue for escalations, amendments, and reopen requests.
             </p>
-            {localItems.length > 0 && (
-              <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Local-only review items are visible here for demo continuity, but they are not part of the backend senior-review queue.
-              </p>
-            )}
           </div>
           <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            <span className="text-sm font-semibold">{remoteFilteredItems.length} backend items</span>
+            <span className="text-sm font-semibold">{filteredItems.length} backend items</span>
           </div>
         </div>
       </div>
@@ -258,14 +249,7 @@ export default function SeniorJudgeInbox() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold text-navy-900 truncate">{item.title}</p>
-                  <div className="flex items-center gap-2">
-                    {item.source === 'local' && (
-                      <span className="text-[10px] uppercase font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
-                        Local
-                      </span>
-                    )}
-                    <span className="text-xs uppercase text-gray-500">{item.priority}</span>
-                  </div>
+                  <span className="text-xs uppercase text-gray-500">{item.priority}</span>
                 </div>
                 <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description}</p>
                 <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">

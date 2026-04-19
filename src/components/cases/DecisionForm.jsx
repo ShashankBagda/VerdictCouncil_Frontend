@@ -11,7 +11,6 @@ export default function DecisionForm({
   onAmendmentRequest,
   submitting = false,
   locked = false,
-  caseId = '',
 }) {
   const [showAmendmentForm, setShowAmendmentForm] = useState(false);
   const [amendmentReason, setAmendmentReason] = useState('');
