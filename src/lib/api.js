@@ -25,20 +25,21 @@
  *   GET  /api/v1/escalated-cases                → escalation.router
  *   POST /api/v1/escalated-cases/{id}/action    → escalation.router
  *   GET  /api/v1/health/pair                    → health.router
+ *   POST /api/v1/cases/{id}/documents           → case_data.router (file upload)
+ *   GET  /api/v1/cases/{id}/status              → case_data.router (pipeline status)
+ *   GET  /api/v1/cases/{id}/status/stream       → case_data.router (SSE stream)
+ *   GET  /api/v1/cases/{id}/evidence            → case_data.router
+ *   GET  /api/v1/cases/{id}/timeline            → case_data.router
+ *   GET  /api/v1/cases/{id}/witnesses           → case_data.router
+ *   GET  /api/v1/cases/{id}/statutes            → case_data.router
+ *   GET  /api/v1/cases/{id}/precedents          → case_data.router
+ *   GET  /api/v1/cases/{id}/arguments           → case_data.router
+ *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
+ *   GET  /api/v1/cases/{id}/verdict             → case_data.router
  *
  * ⏳ Frontend-ready, backend not yet implemented:
  *   POST /api/v1/auth/extend         → falls back to GET /auth/me (handled)
  *   GET  /api/v1/auth/session        → falls back to GET /auth/me (handled)
- *   POST /api/v1/cases/{id}/documents → file upload (no backend route yet)
- *   GET  /api/v1/cases/{id}/status    → pipeline status polling (no backend route yet)
- *   GET  /api/v1/cases/{id}/evidence  → use getCaseDetail().evidence instead
- *   GET  /api/v1/cases/{id}/timeline  → use getCaseDetail().facts instead
- *   GET  /api/v1/cases/{id}/witnesses → use getCaseDetail().witnesses instead
- *   GET  /api/v1/cases/{id}/statutes  → use getCaseDetail().legal_rules instead
- *   GET  /api/v1/cases/{id}/precedents → use getCaseDetail().precedents instead
- *   GET  /api/v1/cases/{id}/arguments → use getCaseDetail().arguments instead
- *   GET  /api/v1/cases/{id}/deliberation → use getCaseDetail().deliberations instead
- *   GET  /api/v1/cases/{id}/verdict   → use getCaseDetail().verdicts instead
  *   POST /api/v1/cases/{id}/hearing-pack → no backend route yet
  *   GET  /api/v1/cases/{id}/export    → no backend route yet
  *   POST /api/v1/knowledge-base/initialize  → no backend route yet
