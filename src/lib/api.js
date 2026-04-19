@@ -9,6 +9,8 @@
  *   GET  /api/v1/auth/me             → auth.router (session bootstrap fallback)
  *   POST /api/v1/auth/extend         → auth.router
  *   GET  /api/v1/auth/session        → auth.router
+ *   POST /api/v1/auth/request-reset  → auth.router
+ *   POST /api/v1/auth/verify-reset   → auth.router
  *   POST /api/v1/cases/              → cases.router (create case)
  *   GET  /api/v1/cases/              → cases.router (list cases)
  *   GET  /api/v1/cases/{id}          → cases.router (full case detail with nested entities)
@@ -50,9 +52,9 @@
  *   GET  /api/v1/cases/{id}/arguments           → case_data.router
  *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
  *   GET  /api/v1/cases/{id}/verdict             → case_data.router
+ *   GET  /api/v1/cases/{id}/export              → cases.router
  *
  * ⏳ Frontend-ready, backend not yet implemented:
- *   GET  /api/v1/cases/{id}/export    → no backend route yet
  *   POST /api/v1/knowledge-base/initialize  → no backend route yet
  *   GET  /api/v1/knowledge-base/documents   → no backend route yet
  *   DELETE /api/v1/knowledge-base/documents/{id} → no backend route yet
@@ -311,6 +313,12 @@ export const api = {
       throw error;
     }
   },
+  requestPasswordReset: (email) =>
+    request('POST', '/api/v1/auth/request-reset', { body: { email } }),
+  verifyPasswordReset: (token, newPassword) =>
+    request('POST', '/api/v1/auth/verify-reset', {
+      body: { token, new_password: newPassword },
+    }),
 
   createCase: (caseData) =>
     request('POST', '/api/v1/cases/', { body: caseData }),
@@ -428,7 +436,7 @@ export const api = {
     return request('GET', `/api/v1/audit/${caseId}/audit${query ? `?${query}` : ''}`);
   },
 
-  exportCase: (caseId, format = 'pdf') =>
+  exportCase: (caseId, format = 'json') =>
     request('GET', `/api/v1/cases/${caseId}/export?format=${format}`),
   generateHearingPack: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/hearing-pack`),

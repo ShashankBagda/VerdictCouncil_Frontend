@@ -7,6 +7,8 @@ import './App.css';
 
 // Pages - Auth
 import LoginPage from './pages/auth/LoginPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 // Pages - Dashboard & Cases
 import Dashboard from './pages/Dashboard';
@@ -55,6 +57,8 @@ export default function App() {
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
 
                 {/* Protected routes with shared layout */}
                 <Route element={<RootLayout />}>
