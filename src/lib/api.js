@@ -1,5 +1,46 @@
 /**
  * HTTP API client with cookie-based auth, normalized errors, and optional 401 redirect behavior.
+ *
+ * Endpoint status vs VerdictCouncil_Backend (as of 2026-04-19):
+ *
+ * ✅ Fully linked:
+ *   POST /api/v1/auth/login          → auth.router
+ *   POST /api/v1/auth/logout         → auth.router
+ *   GET  /api/v1/auth/me             → auth.router (session bootstrap fallback)
+ *   POST /api/v1/cases/              → cases.router (create case)
+ *   GET  /api/v1/cases/              → cases.router (list cases)
+ *   GET  /api/v1/cases/{id}          → cases.router (full case detail with nested entities)
+ *   POST /api/v1/cases/{id}/decision → decisions.router
+ *   PATCH /api/v1/cases/{id}/facts/{fid}/dispute → judge.router
+ *   GET  /api/v1/cases/{id}/evidence-gaps       → judge.router
+ *   GET  /api/v1/cases/{id}/fairness-audit      → judge.router
+ *   POST /api/v1/cases/{id}/what-if             → what_if.router
+ *   GET  /api/v1/cases/{id}/what-if/{sid}       → what_if.router
+ *   POST /api/v1/cases/{id}/stability           → what_if.router
+ *   GET  /api/v1/cases/{id}/stability           → what_if.router
+ *   POST /api/v1/precedents/search              → precedent_search.router
+ *   GET  /api/v1/knowledge-base/status          → knowledge_base.router
+ *   GET  /api/v1/dashboard/stats                → dashboard.router
+ *   GET  /api/v1/audit/{id}/audit               → audit.router
+ *   GET  /api/v1/escalated-cases                → escalation.router
+ *   POST /api/v1/escalated-cases/{id}/action    → escalation.router
+ *   GET  /api/v1/health/pair                    → health.router
+ *
+ * ⏳ Frontend-ready, backend not yet implemented:
+ *   POST /api/v1/auth/extend         → falls back to GET /auth/me (handled)
+ *   GET  /api/v1/auth/session        → falls back to GET /auth/me (handled)
+ *   POST /api/v1/cases/{id}/documents → file upload (no backend route yet)
+ *   GET  /api/v1/cases/{id}/status    → pipeline status polling (no backend route yet)
+ *   GET  /api/v1/cases/{id}/evidence  → use getCaseDetail().evidence instead
+ *   GET  /api/v1/cases/{id}/timeline  → use getCaseDetail().facts instead
+ *   GET  /api/v1/cases/{id}/witnesses → use getCaseDetail().witnesses instead
+ *   GET  /api/v1/cases/{id}/statutes  → use getCaseDetail().legal_rules instead
+ *   GET  /api/v1/cases/{id}/precedents → use getCaseDetail().precedents instead
+ *   GET  /api/v1/cases/{id}/arguments → use getCaseDetail().arguments instead
+ *   GET  /api/v1/cases/{id}/deliberation → use getCaseDetail().deliberations instead
+ *   GET  /api/v1/cases/{id}/verdict   → use getCaseDetail().verdicts instead
+ *   POST /api/v1/cases/{id}/hearing-pack → no backend route yet
+ *   GET  /api/v1/cases/{id}/export    → no backend route yet
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
