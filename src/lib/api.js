@@ -26,6 +26,18 @@
  *   GET  /api/v1/audit/{id}/audit               → audit.router
  *   GET  /api/v1/escalated-cases                → escalation.router
  *   POST /api/v1/escalated-cases/{id}/action    → escalation.router
+ *   GET  /api/v1/senior-inbox                   → senior_inbox.router
+ *   POST /api/v1/cases/{id}/hearing-pack        → hearing_pack.router
+ *   POST /api/v1/cases/{id}/hearing-notes       → hearing_notes.router
+ *   GET  /api/v1/cases/{id}/hearing-notes       → hearing_notes.router
+ *   PATCH /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
+ *   POST /api/v1/cases/{id}/hearing-notes/{nid}/lock → hearing_notes.router
+ *   DELETE /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
+ *   POST /api/v1/cases/{id}/amend-decision      → decisions.router
+ *   GET  /api/v1/cases/{id}/decision-history    → decisions.router
+ *   POST /api/v1/cases/{id}/reopen-request      → reopen_requests.router
+ *   GET  /api/v1/cases/{id}/reopen-requests     → reopen_requests.router
+ *   PATCH /api/v1/cases/{id}/reopen-requests/{rid}/review → reopen_requests.router
  *   GET  /api/v1/health/pair                    → health.router
  *   POST /api/v1/cases/{id}/documents           → case_data.router (file upload)
  *   GET  /api/v1/cases/{id}/status              → case_data.router (pipeline status)
@@ -40,7 +52,6 @@
  *   GET  /api/v1/cases/{id}/verdict             → case_data.router
  *
  * ⏳ Frontend-ready, backend not yet implemented:
- *   POST /api/v1/cases/{id}/hearing-pack → no backend route yet
  *   GET  /api/v1/cases/{id}/export    → no backend route yet
  *   POST /api/v1/knowledge-base/initialize  → no backend route yet
  *   GET  /api/v1/knowledge-base/documents   → no backend route yet
@@ -421,6 +432,26 @@ export const api = {
     request('GET', `/api/v1/cases/${caseId}/export?format=${format}`),
   generateHearingPack: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/hearing-pack`),
+  createHearingNote: (caseId, body) =>
+    request('POST', `/api/v1/cases/${caseId}/hearing-notes`, { body }),
+  listHearingNotes: (caseId) =>
+    request('GET', `/api/v1/cases/${caseId}/hearing-notes`),
+  updateHearingNote: (caseId, noteId, body) =>
+    request('PATCH', `/api/v1/cases/${caseId}/hearing-notes/${noteId}`, { body }),
+  lockHearingNote: (caseId, noteId) =>
+    request('POST', `/api/v1/cases/${caseId}/hearing-notes/${noteId}/lock`),
+  deleteHearingNote: (caseId, noteId) =>
+    request('DELETE', `/api/v1/cases/${caseId}/hearing-notes/${noteId}`),
+  amendDecision: (caseId, body) =>
+    request('POST', `/api/v1/cases/${caseId}/amend-decision`, { body }),
+  getDecisionHistory: (caseId) =>
+    request('GET', `/api/v1/cases/${caseId}/decision-history`),
+  requestCaseReopen: (caseId, body) =>
+    request('POST', `/api/v1/cases/${caseId}/reopen-request`, { body }),
+  listReopenRequests: (caseId) =>
+    request('GET', `/api/v1/cases/${caseId}/reopen-requests`),
+  reviewReopenRequest: (caseId, requestId, body) =>
+    request('PATCH', `/api/v1/cases/${caseId}/reopen-requests/${requestId}/review`, { body }),
 
   refreshVectorStore: (store) =>
     request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
@@ -435,6 +466,8 @@ export const api = {
     request('GET', `/api/v1/escalated-cases?page=${page}`),
   actionOnEscalatedCase: (itemId, body) =>
     request('POST', `/api/v1/escalated-cases/${itemId}/action`, { body }),
+  getSeniorInbox: (page = 1, perPage = 20) =>
+    request('GET', `/api/v1/senior-inbox?page=${page}&per_page=${perPage}`),
 };
 
 export default api;
