@@ -255,10 +255,6 @@ export default function CaseIntake() {
       const caseData = {
         domain: domainMap[domain] || domain,
         description: caseDescription.trim(),
-        parties: [plaintiff.trim(), defendant.trim()].filter(Boolean),
-        ...(caseTitle.trim() && { title: caseTitle.trim() }),
-        ...(domain === 'SCT' && claimAmount && { claim_amount: parseFloat(claimAmount) || 0 }),
-        ...(domain === 'Traffic' && offenceCode && { offence_code: offenceCode.trim() }),
       };
 
       const createResponse = await api.createCase(caseData);

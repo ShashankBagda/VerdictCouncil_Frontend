@@ -12,7 +12,7 @@ export default function CaseContextSection({ caseId }) {
       try {
         setLoading(true);
         // We fetch the case record to get minimal snapshot
-        const res = await api.getCase(caseId);
+        const res = await api.getCaseDetail(caseId);
         const dossier = res?.data || res || {};
         
         setData({

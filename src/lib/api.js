@@ -303,19 +303,23 @@ export const api = {
     request('POST', `/api/v1/cases/${caseId}/decision`, { body: decision }),
 
   createWhatIfScenario: (caseId, scenario) =>
-    request('POST', '/api/v1/what-if/scenarios', { body: { caseId, ...scenario } }),
-  getWhatIfScenario: (scenarioId) =>
-    request('GET', `/api/v1/what-if/scenarios/${scenarioId}`),
-  computeStability: (caseId) =>
-    request('POST', '/api/v1/what-if/stability', { body: { caseId } }),
+    request('POST', `/api/v1/cases/${caseId}/what-if`, { body: scenario }),
+  getWhatIfScenario: (caseId, scenarioId) =>
+    request('GET', `/api/v1/cases/${caseId}/what-if/${scenarioId}`),
+  computeStability: (caseId, perturbationCount = 5) =>
+    request('POST', `/api/v1/cases/${caseId}/stability`, {
+      body: { perturbation_count: perturbationCount },
+    }),
   getStability: (caseId) =>
-    request('GET', `/api/v1/what-if/stability/${caseId}`),
+    request('GET', `/api/v1/cases/${caseId}/stability`),
 
   disputeFact: (caseId, factId, body = {}) =>
     request('PATCH', `/api/v1/cases/${caseId}/facts/${factId}/dispute`, { body }),
 
-  searchPrecedents: (query, domain) =>
-    request('POST', '/api/v1/precedents/search', { body: { query, domain } }),
+  searchPrecedents: (query, jurisdiction = 'small_claims', maxResults = 10) =>
+    request('POST', '/api/v1/precedents/search', {
+      body: { query, jurisdiction, max_results: maxResults },
+    }),
 
   getKnowledgeBaseStatus: () =>
     request('GET', '/api/v1/knowledge-base/status'),
@@ -353,7 +357,7 @@ export const api = {
   refreshVectorStore: (store) =>
     request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
   getAdminHealth: () =>
-    request('GET', '/api/v1/admin/health'),
+    request('GET', '/api/v1/health/pair'),
   manageUser: (userId, action, data) =>
     request('POST', `/api/v1/admin/users/${userId}/${action}`, { body: data }),
   setConfig: (config) =>
