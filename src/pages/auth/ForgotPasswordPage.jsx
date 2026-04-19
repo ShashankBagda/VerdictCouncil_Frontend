@@ -7,20 +7,15 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [devToken, setDevToken] = useState('');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setMessage('');
-    setDevToken('');
 
     try {
       setLoading(true);
       const payload = await api.requestPasswordReset(email);
       setMessage(payload?.message || 'If the email exists, a reset token has been issued.');
-      if (payload?.reset_token) {
-        setDevToken(payload.reset_token);
-      }
     } catch (error) {
       setMessage(getErrorMessage(error, 'Failed to request password reset.'));
     } finally {
@@ -40,12 +35,6 @@ export default function ForgotPasswordPage() {
           {message && (
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
               {message}
-            </div>
-          )}
-          {devToken && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm break-all">
-              <p className="font-semibold mb-1">Development reset token</p>
-              <p>{devToken}</p>
             </div>
           )}
 

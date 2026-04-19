@@ -53,16 +53,14 @@
  *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
  *   GET  /api/v1/cases/{id}/verdict             → case_data.router
  *   GET  /api/v1/cases/{id}/export              → cases.router
- *
- * ⏳ Frontend-ready, backend not yet implemented:
- *   POST /api/v1/knowledge-base/initialize  → no backend route yet
- *   GET  /api/v1/knowledge-base/documents   → no backend route yet
- *   DELETE /api/v1/knowledge-base/documents/{id} → no backend route yet
- *   POST /api/v1/knowledge-base/search      → no backend route yet
- *   POST /api/v1/knowledge-base/documents   → no backend route yet (upload)
- *   POST /api/v1/admin/vector-stores/refresh → no backend route yet
- *   POST /api/v1/admin/users/{id}/{action}  → no backend route yet
- *   POST /api/v1/admin/cost-config          → no backend route yet
+ *   POST /api/v1/knowledge-base/initialize   → knowledge_base.router
+ *   GET  /api/v1/knowledge-base/documents    → knowledge_base.router
+ *   POST /api/v1/knowledge-base/documents    → knowledge_base.router
+ *   DELETE /api/v1/knowledge-base/documents/{id} → knowledge_base.router
+ *   POST /api/v1/knowledge-base/search       → knowledge_base.router
+ *   POST /api/v1/admin/vector-stores/refresh → admin.router
+ *   POST /api/v1/admin/users/{id}/{action}   → admin.router
+ *   POST /api/v1/admin/cost-config           → admin.router
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
