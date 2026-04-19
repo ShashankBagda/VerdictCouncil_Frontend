@@ -7,6 +7,8 @@
  *   POST /api/v1/auth/login          → auth.router
  *   POST /api/v1/auth/logout         → auth.router
  *   GET  /api/v1/auth/me             → auth.router (session bootstrap fallback)
+ *   POST /api/v1/auth/extend         → auth.router
+ *   GET  /api/v1/auth/session        → auth.router
  *   POST /api/v1/cases/              → cases.router (create case)
  *   GET  /api/v1/cases/              → cases.router (list cases)
  *   GET  /api/v1/cases/{id}          → cases.router (full case detail with nested entities)
@@ -38,8 +40,6 @@
  *   GET  /api/v1/cases/{id}/verdict             → case_data.router
  *
  * ⏳ Frontend-ready, backend not yet implemented:
- *   POST /api/v1/auth/extend         → falls back to GET /auth/me (handled)
- *   GET  /api/v1/auth/session        → falls back to GET /auth/me (handled)
  *   POST /api/v1/cases/{id}/hearing-pack → no backend route yet
  *   GET  /api/v1/cases/{id}/export    → no backend route yet
  *   POST /api/v1/knowledge-base/initialize  → no backend route yet
@@ -271,8 +271,7 @@ export const api = {
         throw error;
       }
 
-      // The current backend does not expose /auth/extend yet.
-      // Fall back to a fresh session bootstrap when the route is absent.
+      // Backward-compatible fallback for older backend deployments.
       if (error.status === 404) {
         return api.getSession();
       }
