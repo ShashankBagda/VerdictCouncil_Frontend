@@ -2,6 +2,44 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Zap } from 'lucide-react';
 import api from '../lib/api';
 import { PIPELINE_AGENT_LABELS, normalizePipelineStatus } from '../lib/pipelineStatus';
+import { normalizePipelineEventPayload } from '../lib/pipelineEventNormalizer';
+
+function phaseStyles(phase) {
+  switch (phase) {
+    case 'completed':
+      return {
+        badge: 'bg-emerald-900 text-emerald-300 border border-emerald-700/60',
+        card: 'border-emerald-700/40 bg-emerald-950/20',
+      };
+    case 'failed':
+      return {
+        badge: 'bg-rose-900 text-rose-300 border border-rose-700/60',
+        card: 'border-rose-700/40 bg-rose-950/20',
+      };
+    case 'waiting':
+      return {
+        badge: 'bg-amber-900 text-amber-300 border border-amber-700/60',
+        card: 'border-amber-700/40 bg-amber-950/20',
+      };
+    case 'handoff':
+      return {
+        badge: 'bg-fuchsia-900 text-fuchsia-300 border border-fuchsia-700/60',
+        card: 'border-fuchsia-700/40 bg-fuchsia-950/20',
+      };
+    default:
+      return {
+        badge: 'bg-blue-900 text-blue-300 border border-blue-700/60',
+        card: 'border-blue-700/40 bg-blue-950/20',
+      };
+  }
+}
+
+function formatTs(ts) {
+  if (!ts) return 'now';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return 'now';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
 /**
  * AgentStreamPanel — right panel showing live pipeline events via SSE.
@@ -11,14 +49,42 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   const [events, setEvents] = useState({}); // keyed by agent_id
   const [sseConnected, setSseConnected] = useState(false);
   const [sseError, setSseError] = useState(false);
+  const [unsupportedStreamPayload, setUnsupportedStreamPayload] = useState(false);
   const eventSourceRef = useRef(null);
   const scrollRef = useRef(null);
   const isManualScrollRef = useRef(false);
+  const statusByAgentRef = useRef({});
 
   // Connect SSE on mount, reconnect on caseId change
   useEffect(() => {
     let pollInterval = null;
     let es = null;
+
+    statusByAgentRef.current = {};
+    setEvents({});
+    setUnsupportedStreamPayload(false);
+
+    const appendNormalizedEvents = (payload, source) => {
+      const normalized = normalizePipelineEventPayload(payload, {
+        source,
+        previousStatusByAgent: statusByAgentRef.current,
+      });
+
+      statusByAgentRef.current = normalized.nextStatusByAgent;
+      setUnsupportedStreamPayload(normalized.unsupported);
+
+      if (!normalized.events.length) {
+        return;
+      }
+
+      setEvents((prev) => {
+        const next = { ...prev };
+        normalized.events.forEach((evt) => {
+          next[evt.agentId] = [...(next[evt.agentId] || []), evt].slice(-120);
+        });
+        return next;
+      });
+    };
 
     const connectSSE = () => {
       if (es) es.close();
@@ -37,12 +103,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.agent) {
-            setEvents((prev) => ({
-              ...prev,
-              [data.agent]: [...(prev[data.agent] || []), data],
-            }));
-          }
+          appendNormalizedEvents(data, 'sse');
         } catch {
           // ignore parse errors
         }
@@ -58,14 +119,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
             try {
               const status = await api.getPipelineStatus(caseId);
               const normalizedStatus = normalizePipelineStatus(status);
-              // Synthesize events from status changes (for display continuity)
-              if (normalizedStatus?.agents) {
-                const synth = {};
-                normalizedStatus.agents.forEach((a) => {
-                  synth[a.agent_id] = [{ event: a.status, agent: a.agent_id, synthetic: true }];
-                });
-                setEvents((prev) => ({ ...synth, ...prev }));
-              }
+              appendNormalizedEvents(normalizedStatus, 'polling');
             } catch {
               // ignore
             }
@@ -146,10 +200,18 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         </div>
       )}
 
+      {unsupportedStreamPayload && (
+        <div className="px-4 py-2 bg-amber-950/60 border-b border-amber-700/50">
+          <p className="text-xs text-amber-200">
+            Stream payload format is unsupported. Waiting for next compatible update.
+          </p>
+        </div>
+      )}
+
       {/* Event stream */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 font-mono text-xs text-gray-300 space-y-1"
+        className="flex-1 overflow-y-auto p-4 text-xs text-gray-300 space-y-2"
         onScroll={(e) => {
           const el = e.currentTarget;
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
@@ -164,19 +226,33 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         )}
         {agentEvents.map((ev, i) => (
           <div
-            key={i}
-            className={`py-0.5 ${ev.synthetic ? 'text-gray-500' : 'text-gray-200'}`}
+            key={`${ev.ts || 't'}-${ev.phase || 'phase'}-${i}`}
+            className={`rounded-lg border px-3 py-2 ${phaseStyles(ev.phase).card}`}
           >
-            {ev.synthetic ? (
-              <span className="text-gray-500">~ status: {ev.event}</span>
-            ) : ev.event === 'agent_started' ? (
-              <span className="text-blue-400">▶ {ev.agent} started</span>
-            ) : ev.event === 'agent_completed' ? (
-              <span className="text-emerald-400">✓ {ev.agent} completed</span>
-            ) : ev.event === 'agent_failed' ? (
-              <span className="text-rose-400">✗ {ev.agent} failed: {ev.error}</span>
-            ) : (
-              <span>{JSON.stringify(ev)}</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`uppercase text-[10px] font-semibold px-2 py-0.5 rounded ${phaseStyles(ev.phase).badge}`}>
+                {ev.phase}
+              </span>
+              <span className="text-[10px] text-gray-500">
+                {formatTs(ev.ts)} {ev.synthetic ? '• snapshot' : ''}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-gray-100 leading-relaxed">
+              <span className="text-gray-400">work:</span> {ev.workSummary}
+            </p>
+            <p className="text-[11px] text-gray-300 leading-relaxed mt-1">
+              <span className="text-gray-500">thought:</span> {ev.thoughtSummary}
+            </p>
+
+            {(ev.fromAgentId || ev.toAgentId) && (
+              <p className="text-[10px] text-fuchsia-300 mt-1.5">
+                handoff: {ev.fromAgentId || 'upstream'} → {ev.toAgentId || 'downstream'}
+              </p>
+            )}
+
+            {ev.error && (
+              <p className="text-[10px] text-rose-300 mt-1.5">error: {ev.error}</p>
             )}
           </div>
         ))}
