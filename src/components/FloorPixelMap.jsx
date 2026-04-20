@@ -40,7 +40,7 @@ const LEVEL_ONE_EXTRA_ASSETS = [
   '/pixel-assets/l1/Wall-Graph.png',
 ]
 
-const getExtraFloorAssets = (floorId) => (floorId === 'level-1' ? LEVEL_ONE_EXTRA_ASSETS : [])
+const getExtraFloorAssets = (floorId) => (floorId === 'floor-1' ? LEVEL_ONE_EXTRA_ASSETS : [])
 
 const floorLayout = (template, roomCount) => {
   if (template === 'split_wings') {
@@ -116,14 +116,17 @@ const createNpcs = (rooms, roomRects) =>
       return []
     }
 
-    return Array.from({ length: room.npcs }, (_, index) => ({
+    const npcCount = Number.isFinite(room.npcs) ? Math.max(0, room.npcs) : 0
+    const roomName = room.label || room.name || room.id
+
+    return Array.from({ length: npcCount }, (_, index) => ({
       id: `${room.id}-${index}`,
       roomId: room.id,
       x: rect.x + 12 + ((index * 17 + room.id.length * 9) % Math.max(10, rect.w - 24)),
-      y: rect.y + 74 + ((index * 13 + room.name.length * 3) % Math.max(10, rect.h - 86)),
+      y: rect.y + 74 + ((index * 13 + roomName.length * 3) % Math.max(10, rect.h - 86)),
       tx: rect.x + 16,
       ty: rect.y + 78,
-      phase: (index + room.name.length) % 10,
+      phase: (index + roomName.length) % 10,
     }))
   })
 
@@ -452,7 +455,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
       app.stage.removeChildren()
 
       const staticContainer = app.stage
-      if (floor.id === 'level-1') {
+      if (floor.id === 'floor-1') {
         drawLevelOneScene(
           staticContainer,
           layout,
