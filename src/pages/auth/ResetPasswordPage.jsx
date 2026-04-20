@@ -58,6 +58,7 @@ export default function ResetPasswordPage() {
                 id="reset-token"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
+                autoComplete="one-time-code"
                 placeholder="Paste the token"
                 className="input-field pl-10"
                 required
@@ -76,6 +77,7 @@ export default function ResetPasswordPage() {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
                 placeholder="At least 8 characters"
                 className="input-field pl-10"
                 minLength={8}
