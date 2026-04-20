@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle, AlertCircle, Scale, ShieldAlert, MessageSquare, Send } from 'lucide-react';
 
 export default function DecisionForm({
@@ -150,7 +150,7 @@ export default function DecisionForm({
           </button>
         </div>
 
-        {locked && !showAmendmentForm && (
+        {locked && onAmendmentRequest && !showAmendmentForm && (
           <div className="pt-6 border-t border-gray-100 flex justify-center">
             <button
               onClick={() => setShowAmendmentForm(true)}
@@ -162,7 +162,7 @@ export default function DecisionForm({
           </div>
         )}
 
-        {locked && showAmendmentForm && (
+        {locked && onAmendmentRequest && showAmendmentForm && (
           <div className="pt-6 border-t border-gray-200 space-y-4 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-navy-900 uppercase tracking-widest flex items-center gap-2">

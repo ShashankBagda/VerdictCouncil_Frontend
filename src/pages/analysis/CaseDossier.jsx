@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
@@ -32,7 +32,6 @@ import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
 import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
 import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
 import DecisionForm from '../../components/cases/DecisionForm';
-import AmendDecisionForm from '../../components/judge/AmendDecisionForm';
 import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
 
 const TABS = [
@@ -123,9 +122,7 @@ export default function CaseDossier() {
   const [precedentResults, setPrecedentResults] = useState([]);
   const [searchingPrecedents, setSearchingPrecedents] = useState(false);
   const [precedentSearched, setPrecedentSearched] = useState(false);
-  const [amendmentSubmitting, setAmendmentSubmitting] = useState(false);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
-  const [decisionHistory, setDecisionHistory] = useState([]);
   const [reopenRequests, setReopenRequests] = useState([]);
 
   useEffect(() => {
@@ -144,7 +141,6 @@ export default function CaseDossier() {
           verdictRes,
           fairnessRes,
           kbRes,
-          decisionHistoryRes,
           reopenRequestsRes,
         ] = await Promise.allSettled([
           api.getEvidence(caseId),
@@ -157,7 +153,6 @@ export default function CaseDossier() {
           api.getVerdict(caseId),
           api.getFairnessAudit(caseId),
           api.getKnowledgeBaseStatus(),
-          api.getDecisionHistory(caseId),
           api.listReopenRequests(caseId),
         ]);
 
@@ -172,11 +167,6 @@ export default function CaseDossier() {
         setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
         setKnowledgeBaseStatus(
           kbRes.status === 'fulfilled' ? normalizeKnowledgeBaseStatus(kbRes.value) : null,
-        );
-        setDecisionHistory(
-          decisionHistoryRes.status === 'fulfilled'
-            ? decisionHistoryRes.value?.items || decisionHistoryRes.value?.data?.items || []
-            : [],
         );
         setReopenRequests(
           reopenRequestsRes.status === 'fulfilled'
@@ -333,20 +323,6 @@ export default function CaseDossier() {
       setPrecedentResults([]);
     } finally {
       setSearchingPrecedents(false);
-    }
-  };
-
-  const handleAmendmentRequest = async (payload) => {
-    try {
-      setAmendmentSubmitting(true);
-      const response = await api.amendDecision(caseId, payload);
-      const item = response?.data || response;
-      setDecisionHistory((prev) => [item, ...prev]);
-      showNotification('Decision amendment submitted successfully.', 'success');
-    } catch (err) {
-      showError(getErrorMessage(err, 'Failed to submit amendment'));
-    } finally {
-      setAmendmentSubmitting(false);
     }
   };
 
@@ -835,13 +811,6 @@ export default function CaseDossier() {
             decisionReason={decisionReason}
             setDecisionReason={setDecisionReason}
             onSubmit={handleDecisionSubmit}
-            onAmendmentRequest={(reason) =>
-              handleAmendmentRequest({
-                recommendation_type: verdict?.recommendation || 'manual_decision',
-                recommended_outcome: verdict?.remedy || 'Amended outcome',
-                amendment_reason: reason,
-              })
-            }
             submitting={decisionSubmitting}
             locked={decisionLocked}
             caseId={caseId}
@@ -849,45 +818,34 @@ export default function CaseDossier() {
 
           {decisionLocked && (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <AmendDecisionForm onSubmit={handleAmendmentRequest} submitting={amendmentSubmitting} />
+              <div className="card-lg">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Amend Decision
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Amending a published decision is not yet available. This capability is tracked
+                  in the backend backlog and will be enabled once the endpoint ships.
+                </p>
+              </div>
               <ReopenRequestForm onSubmit={handleReopenRequest} submitting={reopenSubmitting} />
             </div>
           )}
 
-          {(decisionHistory.length > 0 || reopenRequests.length > 0) && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <div className="card-lg">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Decision History</h3>
-                <div className="space-y-3">
-                  {decisionHistory.map((item) => (
-                    <div key={item.verdict_id || item.id} className="rounded-lg border border-gray-200 p-3">
-                      <p className="text-sm font-semibold text-navy-900">
-                        {item.recommendation_type || 'manual_decision'}
-                      </p>
-                      <p className="text-sm text-gray-700 mt-1">{item.recommended_outcome}</p>
-                      {item.amendment_reason && (
-                        <p className="text-xs text-gray-500 mt-2">Reason: {item.amendment_reason}</p>
-                      )}
+          {reopenRequests.length > 0 && (
+            <div className="card-lg">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Reopen Requests</h3>
+              <div className="space-y-3">
+                {reopenRequests.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-navy-900">{item.reason}</p>
+                      <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">
+                        {item.status}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card-lg">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Reopen Requests</h3>
-                <div className="space-y-3">
-                  {reopenRequests.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-gray-200 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-navy-900">{item.reason}</p>
-                        <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-700 mt-1">{item.justification}</p>
-                    </div>
-                  ))}
-                </div>
+                    <p className="text-sm text-gray-700 mt-1">{item.justification}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
