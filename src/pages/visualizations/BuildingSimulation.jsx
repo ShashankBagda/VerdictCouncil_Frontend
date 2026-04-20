@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
@@ -51,6 +51,20 @@ export default function BuildingSimulation() {
     pipelineStatus?.agents,
     selectedFloor.id,
   );
+  const isDev = import.meta.env.DEV;
+
+  const mapTelemetry = useMemo(() => {
+    const roomNpcCounts = selectedFloor.rooms.map((room) => ({
+      roomId: room.id,
+      npcCount: Number.isFinite(room.npcs) ? room.npcs : 0,
+    }));
+
+    return {
+      selectedRoomId: selectedAgentId || 'none',
+      totalNpcs: roomNpcCounts.reduce((acc, room) => acc + room.npcCount, 0),
+      roomNpcCounts,
+    };
+  }, [selectedAgentId, selectedFloor]);
 
   if (loading && !pipelineStatus) {
     return (
@@ -244,6 +258,18 @@ export default function BuildingSimulation() {
           );
         })}
       </div>
+
+      {isDev && (
+        <div className="bg-gray-900 rounded-lg border border-gray-700 px-3 py-2">
+          <p className="text-xs text-gray-300 font-semibold mb-1">Map telemetry</p>
+          <p className="text-[11px] text-gray-400">
+            selectedRoom={mapTelemetry.selectedRoomId} totalNpcs={mapTelemetry.totalNpcs}
+          </p>
+          <p className="text-[11px] text-gray-500 truncate">
+            {mapTelemetry.roomNpcCounts.map((room) => `${room.roomId}:${room.npcCount}`).join(' | ')}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

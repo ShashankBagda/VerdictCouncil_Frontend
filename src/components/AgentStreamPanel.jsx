@@ -11,6 +11,13 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   const [events, setEvents] = useState({}); // keyed by agent_id
   const [sseConnected, setSseConnected] = useState(false);
   const [sseError, setSseError] = useState(false);
+  const [unsupportedStreamPayload, setUnsupportedStreamPayload] = useState(false);
+  const [streamDebug, setStreamDebug] = useState({
+    received: 0,
+    parsed: 0,
+    dropped: 0,
+    unsupported: 0,
+  });
   const eventSourceRef = useRef(null);
   const scrollRef = useRef(null);
   const isManualScrollRef = useRef(false);
@@ -19,6 +26,13 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   useEffect(() => {
     let pollInterval = null;
     let es = null;
+
+    setUnsupportedStreamPayload(false);
+    setStreamDebug({ received: 0, parsed: 0, dropped: 0, unsupported: 0 });
+
+    const bumpDebug = (key) => {
+      setStreamDebug((prev) => ({ ...prev, [key]: prev[key] + 1 }));
+    };
 
     const connectSSE = () => {
       if (es) es.close();
@@ -35,16 +49,28 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       };
 
       es.onmessage = (event) => {
+        bumpDebug('received');
         try {
           const data = JSON.parse(event.data);
           if (data.agent) {
+            bumpDebug('parsed');
             setEvents((prev) => ({
               ...prev,
               [data.agent]: [...(prev[data.agent] || []), data],
             }));
+            return;
           }
+
+          // Phase 0 observability: backend currently emits snapshots, not per-event records.
+          if (Array.isArray(data.agents)) {
+            setUnsupportedStreamPayload(true);
+            bumpDebug('unsupported');
+            return;
+          }
+
+          bumpDebug('dropped');
         } catch {
-          // ignore parse errors
+          bumpDebug('dropped');
         }
       };
 
@@ -91,6 +117,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
 
   const agentEvents = selectedAgentId ? (events[selectedAgentId] || []) : [];
   const selectedAgent = agentStatuses?.find((a) => a.agent_id === selectedAgentId);
+  const isDev = import.meta.env.DEV;
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
@@ -143,6 +170,22 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
               <span className="text-xs text-gray-500">{selectedAgent.elapsed_seconds}s</span>
             )}
           </div>
+        </div>
+      )}
+
+      {unsupportedStreamPayload && (
+        <div className="px-4 py-2 bg-amber-950/60 border-b border-amber-700/50">
+          <p className="text-xs text-amber-200">
+            Unsupported stream payload detected. Live event rows may be incomplete until payload normalization is enabled.
+          </p>
+        </div>
+      )}
+
+      {isDev && (
+        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950/60">
+          <p className="text-[11px] text-gray-400">
+            SSE debug: received={streamDebug.received} parsed={streamDebug.parsed} dropped={streamDebug.dropped} unsupported={streamDebug.unsupported}
+          </p>
         </div>
       )}
 
