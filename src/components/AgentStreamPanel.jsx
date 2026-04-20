@@ -50,6 +50,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   const [sseConnected, setSseConnected] = useState(false);
   const [sseError, setSseError] = useState(false);
   const [unsupportedStreamPayload, setUnsupportedStreamPayload] = useState(false);
+  const [lastUpdateTs, setLastUpdateTs] = useState(null);
   const eventSourceRef = useRef(null);
   const scrollRef = useRef(null);
   const isManualScrollRef = useRef(false);
@@ -76,6 +77,8 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       if (!normalized.events.length) {
         return;
       }
+
+      setLastUpdateTs(normalized.events[normalized.events.length - 1]?.ts || new Date().toISOString());
 
       setEvents((prev) => {
         const next = { ...prev };
@@ -159,7 +162,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         <div className="flex items-center gap-2">
           {sseConnected ? (
             <span className="flex items-center gap-1 text-xs text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
               Live
             </span>
           ) : sseError ? (
@@ -185,7 +188,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
                 selectedAgent.status === 'completed'
                   ? 'bg-emerald-900 text-emerald-300'
                   : selectedAgent.status === 'running'
-                  ? 'bg-blue-900 text-blue-300 animate-pulse'
+                  ? 'bg-blue-900 text-blue-300 motion-safe:animate-pulse'
                   : selectedAgent.status === 'failed'
                   ? 'bg-rose-900 text-rose-300'
                   : 'bg-gray-700 text-gray-400'
@@ -208,10 +211,17 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         </div>
       )}
 
+      <div className="px-4 py-1.5 border-b border-gray-800 bg-gray-950/40">
+        <p className="text-[10px] text-gray-500">
+          last update: {lastUpdateTs ? formatTs(lastUpdateTs) : 'none'}
+        </p>
+      </div>
+
       {/* Event stream */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 text-xs text-gray-300 space-y-2"
+        aria-live="polite"
         onScroll={(e) => {
           const el = e.currentTarget;
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;

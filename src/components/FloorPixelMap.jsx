@@ -427,6 +427,25 @@ function FloorPixelMap({
 }) {
   const mountRef = useRef(null)
   const appRef = useRef(null)
+  const [reduceMotion, setReduceMotion] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined
+    }
+
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const handleChange = () => setReduceMotion(media.matches)
+    handleChange()
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleChange)
+      return () => media.removeEventListener('change', handleChange)
+    }
+
+    media.addListener(handleChange)
+    return () => media.removeListener(handleChange)
+  }, [])
 
   const layout = useMemo(
     () => floorLayout(floor.layoutTemplate, floor.rooms.length),
@@ -472,6 +491,7 @@ function FloorPixelMap({
 
       const view = app.canvas
       view.className = 'pixel-floor-map'
+      view.title = 'Select a room to inspect agent activity'
       mountEl.innerHTML = ''
       mountEl.appendChild(view)
       app.stage.removeChildren()
@@ -569,6 +589,7 @@ function FloorPixelMap({
       }
 
       app.ticker.maxFPS = 30
+      app.ticker.maxFPS = reduceMotion ? 14 : 30
       app.ticker.add(() => {
         const pulse = (Math.sin(app.ticker.lastTime / 240) + 1) / 2
         const selectedSet = selectedRoomId ? new Set([selectedRoomId]) : new Set()
@@ -607,7 +628,7 @@ function FloorPixelMap({
             effectsLayer.drawRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4)
           }
 
-          if (active && Math.floor(app.ticker.lastTime / 420) % 2 === 0) {
+          if (!reduceMotion && active && Math.floor(app.ticker.lastTime / 420) % 2 === 0) {
             const c = roomCenter(rect)
             effectsLayer.beginFill(0xf8feff, 0.88)
             effectsLayer.drawRoundedRect(c.x - 20, rect.y - 14, 40, 10, 3)
@@ -621,6 +642,7 @@ function FloorPixelMap({
         })
 
         roomLinks.forEach((link) => {
+          if (reduceMotion) return
           if (!activeSet.has(link.fromId)) return
           link.progress += link.speed
           if (link.progress >= 1) link.progress -= 1
@@ -658,7 +680,9 @@ function FloorPixelMap({
           const dy = npc.ty - npc.y
           const distance = Math.hypot(dx, dy)
           if (distance > 0.4) {
-            const speed = active ? 0.6 : failed ? 0.22 : done ? 0.26 : 0.14
+            const speed = reduceMotion
+              ? active ? 0.22 : failed ? 0.12 : done ? 0.15 : 0.09
+              : active ? 0.6 : failed ? 0.22 : done ? 0.26 : 0.14
             npc.x += (dx / distance) * speed
             npc.y += (dy / distance) * speed
           }
@@ -733,6 +757,7 @@ function FloorPixelMap({
     failedRooms,
     selectedRoomId,
     onRoomSelect,
+    reduceMotion,
   ])
 
   return (

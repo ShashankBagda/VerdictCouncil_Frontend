@@ -66,7 +66,7 @@ export default function BuildingSimulation() {
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Top bar: overall progress */}
-      <div className="flex items-center justify-between bg-white rounded-lg shadow-sm px-6 py-3 border border-gray-200">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-lg shadow-sm px-4 md:px-6 py-3 border border-gray-200">
         <div>
           <h2 className="text-xl font-bold text-navy-900">Verdict Council Building</h2>
           <p className="text-sm text-gray-600">9-agent pipeline for case {caseId}</p>
@@ -159,7 +159,7 @@ export default function BuildingSimulation() {
       )}
 
       {/* Floor selector tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {BUILDING_FLOORS.map((floor) => (
           <button
             key={floor.id}
@@ -176,12 +176,11 @@ export default function BuildingSimulation() {
       </div>
 
       {/* Main split panel */}
-      <div className="flex gap-4 flex-1 min-h-0" style={{ height: '520px' }}>
-        {/* Left: Pixi.js building (55%) */}
+      <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0">
+        {/* Left: Pixi.js building */}
         <div
-          className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-900"
+          className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-900 w-full xl:w-[55%] min-h-[320px] md:min-h-[420px] xl:min-h-0 xl:h-[520px]"
           style={{
-            width: '55%',
             opacity: fadeState === FADE.IDLE ? 1 : 0,
             transition:
               fadeState === FADE.OUT
@@ -204,8 +203,8 @@ export default function BuildingSimulation() {
           </div>
         </div>
 
-        {/* Right: Agent stream panel (45%) */}
-        <div style={{ width: '45%' }}>
+        {/* Right: Agent stream panel */}
+        <div className="w-full xl:w-[45%] min-h-[280px] md:min-h-[360px] xl:min-h-0 xl:h-[520px]">
           <AgentStreamPanel
             caseId={caseId}
             selectedAgentId={selectedAgentId}
@@ -234,7 +233,7 @@ export default function BuildingSimulation() {
               <span
                 className={`mr-1.5 inline-block w-2 h-2 rounded-full ${
                   status === 'running'
-                    ? 'bg-blue-500 animate-pulse'
+                    ? 'bg-blue-500 motion-safe:animate-pulse'
                     : status === 'completed'
                       ? 'bg-emerald-500'
                       : status === 'failed'
