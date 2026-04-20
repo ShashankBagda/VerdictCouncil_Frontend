@@ -15,10 +15,11 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
+const API_PATH_PREFIX = '/api/v1/';
 
 function loadOpenApi() {
   const candidates = [
@@ -43,7 +44,11 @@ function loadOpenApi() {
 }
 
 function extractFrontendPaths(source) {
-  const pathPattern = /['"`](\/api\/v1\/[A-Za-z0-9_\-/${}?.=&]*)['"`]/g;
+  const escaped = API_PATH_PREFIX.replace(/\//g, '\\/');
+  const pathPattern = new RegExp(
+    `['"\`](${escaped}[A-Za-z0-9_\\-/\${}?.=&]*)['"\`]`,
+    'g',
+  );
   const found = new Set();
   let match;
   while ((match = pathPattern.exec(source)) !== null) {
@@ -61,6 +66,9 @@ function normalizeFrontendPath(raw) {
 }
 
 function buildSpecMatcher(spec) {
+  if (!spec || typeof spec.paths !== 'object' || spec.paths === null) {
+    throw new Error('OpenAPI spec is missing a valid `paths` object.');
+  }
   const patterns = Object.keys(spec.paths).map((p) => {
     const regex = new RegExp('^' + p.replace(/\{[^}]+\}/g, '[^/]+') + '$');
     return { raw: p, regex };
@@ -106,4 +114,10 @@ function main() {
   return 1;
 }
 
-process.exit(main());
+export { extractFrontendPaths, normalizeFrontendPath, buildSpecMatcher, main };
+
+const invokedDirectly =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  process.exit(main());
+}
