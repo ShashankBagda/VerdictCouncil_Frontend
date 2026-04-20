@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Application, Assets, Graphics, Sprite, Text, TextStyle } from 'pixi.js'
+import { Application, Assets, Container, Graphics, Sprite, Text, TextStyle } from 'pixi.js'
 
 const MAP_WIDTH = 640
 const MAP_HEIGHT = 384
@@ -40,12 +40,45 @@ const LEVEL_ONE_EXTRA_ASSETS = [
   '/pixel-assets/l1/Wall-Graph.png',
 ]
 
+const NPC_SPRITES = [
+  '/free-office-pixel-art/worker1.png',
+  '/free-office-pixel-art/worker2.png',
+  '/free-office-pixel-art/worker4.png',
+  '/free-office-pixel-art/Julia-Idle.png',
+]
+
+const SUPPORT_DECOR_ASSETS = [
+  '/pixel-assets/props/itch_bookshelf.png',
+  '/pixel-assets/props/itch_small_drawer.png',
+  '/pixel-assets/walls/kenney_dirt_tile.png',
+]
+
 const getExtraFloorAssets = (floorId) => (floorId === 'floor-1' ? LEVEL_ONE_EXTRA_ASSETS : [])
 
 const floorLayout = (template, roomCount) => {
+  const shell = { x: 20, y: 18, w: 540, h: 346 }
+
   if (template === 'split_wings') {
+    if (roomCount <= 3) {
+      return {
+        shell,
+        corridor: { x: 40, y: 176, w: 500, h: 20 },
+        core: { x: 254, y: 162, w: 72, h: 48 },
+        rooms: [
+          { x: 44, y: 34, w: 154, h: 136 },
+          { x: 222, y: 34, w: 154, h: 136 },
+          { x: 400, y: 34, w: 130, h: 136 },
+          { x: 180, y: 214, w: 202, h: 128 },
+        ],
+        supportZones: [
+          { x: 42, y: 214, w: 124, h: 128 },
+          { x: 396, y: 214, w: 134, h: 128 },
+        ],
+      }
+    }
+
     return {
-      shell: { x: 20, y: 18, w: 540, h: 346 },
+      shell,
       corridor: { x: 32, y: 172, w: 516, h: 22 },
       core: { x: 246, y: 206, w: 88, h: 46 },
       rooms: [
@@ -55,6 +88,7 @@ const floorLayout = (template, roomCount) => {
         { x: 104, y: 212, w: 198, h: 138 },
         { x: 318, y: 212, w: 198, h: 138 },
       ],
+      supportZones: [],
     }
   }
 
@@ -68,7 +102,7 @@ const floorLayout = (template, roomCount) => {
     ]
 
     return {
-      shell: { x: 20, y: 18, w: 540, h: 346 },
+      shell,
       corridor: { x: 40, y: 176, w: 500, h: 18 },
       core: { x: 250, y: 186, w: 80, h: 42 },
       rooms:
@@ -86,11 +120,45 @@ const floorLayout = (template, roomCount) => {
               { x: 352, y: 204, w: 92, h: 146 },
               { x: 456, y: 204, w: 84, h: 146 },
             ],
+      supportZones: [],
+    }
+  }
+
+  if (roomCount === 2) {
+    return {
+      shell,
+      corridor: { x: 44, y: 196, w: 492, h: 20 },
+      core: { x: 264, y: 34, w: 12, h: 308 },
+      rooms: [
+        { x: 44, y: 34, w: 232, h: 154 },
+        { x: 304, y: 34, w: 232, h: 154 },
+      ],
+      supportZones: [
+        { x: 44, y: 224, w: 232, h: 118 },
+        { x: 304, y: 224, w: 232, h: 118 },
+      ],
+    }
+  }
+
+  if (roomCount === 3) {
+    return {
+      shell,
+      corridor: { x: 44, y: 184, w: 492, h: 20 },
+      core: { x: 264, y: 34, w: 12, h: 308 },
+      rooms: [
+        { x: 44, y: 34, w: 232, h: 138 },
+        { x: 304, y: 34, w: 232, h: 138 },
+        { x: 174, y: 216, w: 232, h: 126 },
+      ],
+      supportZones: [
+        { x: 44, y: 216, w: 116, h: 126 },
+        { x: 420, y: 216, w: 116, h: 126 },
+      ],
     }
   }
 
   return {
-    shell: { x: 20, y: 18, w: 540, h: 346 },
+    shell,
     corridor: { x: 270, y: 32, w: 20, h: 318 },
     core: { x: 44, y: 172, w: 492, h: 20 },
     rooms: [
@@ -99,6 +167,7 @@ const floorLayout = (template, roomCount) => {
       { x: 44, y: 202, w: 218, h: 148 },
       { x: 298, y: 202, w: 218, h: 148 },
     ],
+    supportZones: [],
   }
 }
 
@@ -116,17 +185,24 @@ const createNpcs = (rooms, roomRects) =>
       return []
     }
 
-    const npcCount = Number.isFinite(room.npcs) ? Math.max(0, room.npcs) : 0
+    const npcCount = Number.isFinite(room.npcs)
+      ? Math.max(1, Math.min(3, Math.ceil(room.npcs / 2)))
+      : 1
     const roomName = room.label || room.name || room.id
 
     return Array.from({ length: npcCount }, (_, index) => ({
       id: `${room.id}-${index}`,
       roomId: room.id,
-      x: rect.x + 12 + ((index * 17 + room.id.length * 9) % Math.max(10, rect.w - 24)),
-      y: rect.y + 74 + ((index * 13 + roomName.length * 3) % Math.max(10, rect.h - 86)),
-      tx: rect.x + 16,
-      ty: rect.y + 78,
+      x: rect.x + 26 + index * 30,
+      y: rect.y + rect.h - 30 - ((index + room.id.length) % 2) * 12,
+      tx: rect.x + 26 + index * 30,
+      ty: rect.y + rect.h - 30 - ((index + room.id.length) % 2) * 12,
       phase: (index + roomName.length) % 10,
+      homeX: rect.x + 26 + index * 30,
+      homeY: rect.y + rect.h - 30 - ((index + room.id.length) % 2) * 12,
+      driftRadius: 8 + ((index + roomName.length) % 3) * 2,
+      spriteUrl: NPC_SPRITES[(index + room.id.length) % NPC_SPRITES.length],
+      sprite: null,
     }))
   })
 
@@ -169,6 +245,7 @@ const useTextureCache = (rooms, extraUrls = []) => {
             const texture = await Assets.load(url)
             return [url, texture]
           } catch {
+            console.warn(`Failed to load pixel asset: ${url}`)
             return [url, null]
           }
         }),
@@ -393,6 +470,15 @@ const drawStandardScene = (container, layout, roomRects, floor, textures, active
   drawRect(container, layout.corridor.x, layout.corridor.y, layout.corridor.w, layout.corridor.h, 0x344866)
   drawRect(container, layout.core.x, layout.core.y, layout.core.w, layout.core.h, 0x2b405d)
 
+  ;(layout.supportZones || []).forEach((zone, index) => {
+    const tone = index % 2 === 0 ? 0x2a3e5c : 0x2d4666
+    drawRect(container, zone.x, zone.y, zone.w, zone.h, tone)
+    drawStrokeRect(container, zone.x, zone.y, zone.w, zone.h, 0x4b6386, 1)
+    drawSpriteRect(container, textures['/pixel-assets/walls/kenney_dirt_tile.png'], zone.x + 2, zone.y + 2, zone.w - 4, zone.h - 4)
+    drawSpriteRect(container, textures['/pixel-assets/props/itch_bookshelf.png'], zone.x + 10, zone.y + zone.h - 52, 34, 42)
+    drawSpriteRect(container, textures['/pixel-assets/props/itch_small_drawer.png'], zone.x + zone.w - 42, zone.y + zone.h - 36, 28, 24)
+  })
+
   floor.rooms.forEach((room) => {
     const rect = roomRects[room.id]
     const active = activeSet.has(room.id)
@@ -460,8 +546,23 @@ function FloorPixelMap({
     [floor.rooms, layout.rooms],
   )
 
-  const extraAssets = useMemo(() => getExtraFloorAssets(floor.id), [floor.id])
+  const extraAssets = useMemo(
+    () => [...getExtraFloorAssets(floor.id), ...NPC_SPRITES, ...SUPPORT_DECOR_ASSETS],
+    [floor.id],
+  )
   const textures = useTextureCache(floor.rooms, extraAssets)
+
+  const activeRoomsRef = useRef(new Set(activeRooms))
+  const completedRoomsRef = useRef(new Set(completedRooms))
+  const failedRoomsRef = useRef(new Set(failedRooms))
+  const selectedRoomRef = useRef(selectedRoomId)
+
+  useEffect(() => {
+    activeRoomsRef.current = new Set(activeRooms)
+    completedRoomsRef.current = new Set(completedRooms)
+    failedRoomsRef.current = new Set(failedRooms)
+    selectedRoomRef.current = selectedRoomId
+  }, [activeRooms, completedRooms, failedRooms, selectedRoomId])
 
   useEffect(() => {
     let cancelled = false
@@ -492,13 +593,16 @@ function FloorPixelMap({
       const view = app.canvas
       view.className = 'pixel-floor-map'
       view.title = 'Select a room to inspect agent activity'
+      view.style.width = '100%'
+      view.style.height = '100%'
+      view.style.imageRendering = 'pixelated'
+      view.style.touchAction = 'none'
       mountEl.innerHTML = ''
       mountEl.appendChild(view)
       app.stage.removeChildren()
 
-      const activeSet = new Set(activeRooms)
-      const doneSet = new Set(completedRooms)
-      const failedSet = new Set(failedRooms)
+      const activeSet = activeRoomsRef.current
+      const doneSet = completedRoomsRef.current
 
       const staticContainer = app.stage
       if (floor.id === 'floor-1') {
@@ -525,9 +629,26 @@ function FloorPixelMap({
 
       const npcs = createNpcs(floor.rooms, roomRects)
       const effectsLayer = new Graphics()
-      const npcLayer = new Graphics()
+      const npcShadowLayer = new Graphics()
+      const npcSpriteLayer = new Container()
       app.stage.addChild(effectsLayer)
-      app.stage.addChild(npcLayer)
+      app.stage.addChild(npcShadowLayer)
+      app.stage.addChild(npcSpriteLayer)
+
+      npcs.forEach((npc) => {
+        const texture = textures[npc.spriteUrl]
+        if (!texture) {
+          return
+        }
+        const sprite = new Sprite(texture)
+        sprite.anchor.set(0.5, 1)
+        sprite.scale.set(1.15, 1.15)
+        sprite.alpha = 0.95
+        sprite.x = Math.floor(npc.x)
+        sprite.y = Math.floor(npc.y + 8)
+        npcSpriteLayer.addChild(sprite)
+        npc.sprite = sprite
+      })
 
       const elevatorTarget = {
         x: layout.shell.x + layout.shell.w - 56,
@@ -550,11 +671,6 @@ function FloorPixelMap({
             speed: 0.006 + Math.random() * 0.008,
           }
         })
-      })
-
-      const randomTarget = (rect) => ({
-        x: rect.x + 10 + Math.random() * Math.max(8, rect.w - 22),
-        y: rect.y + 70 + Math.random() * Math.max(8, rect.h - 84),
       })
 
       const roomAtPoint = (x, y) =>
@@ -592,16 +708,19 @@ function FloorPixelMap({
       app.ticker.maxFPS = reduceMotion ? 14 : 30
       app.ticker.add(() => {
         const pulse = (Math.sin(app.ticker.lastTime / 240) + 1) / 2
-        const selectedSet = selectedRoomId ? new Set([selectedRoomId]) : new Set()
+        const activeSetLive = activeRoomsRef.current
+        const doneSetLive = completedRoomsRef.current
+        const failedSetLive = failedRoomsRef.current
+        const selectedSet = selectedRoomRef.current ? new Set([selectedRoomRef.current]) : new Set()
 
         effectsLayer.clear()
 
         floor.rooms.forEach((room) => {
           const rect = roomRects[room.id]
           if (!rect) return
-          const active = activeSet.has(room.id)
-          const done = doneSet.has(room.id)
-          const failed = failedSet.has(room.id)
+          const active = activeSetLive.has(room.id)
+          const done = doneSetLive.has(room.id)
+          const failed = failedSetLive.has(room.id)
           const selected = selectedSet.has(room.id)
 
           if (active) {
@@ -643,7 +762,7 @@ function FloorPixelMap({
 
         roomLinks.forEach((link) => {
           if (reduceMotion) return
-          if (!activeSet.has(link.fromId)) return
+          if (!activeSetLive.has(link.fromId)) return
           link.progress += link.speed
           if (link.progress >= 1) link.progress -= 1
 
@@ -658,7 +777,7 @@ function FloorPixelMap({
           effectsLayer.endFill()
         })
 
-        npcLayer.clear()
+        npcShadowLayer.clear()
 
         npcs.forEach((npc) => {
           const rect = roomRects[npc.roomId]
@@ -666,15 +785,14 @@ function FloorPixelMap({
             return
           }
 
-          const active = activeSet.has(npc.roomId)
-          const done = doneSet.has(npc.roomId)
-          const failed = failedSet.has(npc.roomId)
+          const active = activeSetLive.has(npc.roomId)
+          const done = doneSetLive.has(npc.roomId)
+          const failed = failedSetLive.has(npc.roomId)
 
-          if (Math.random() < (active ? 0.03 : done ? 0.015 : 0.006)) {
-            const target = randomTarget(rect)
-            npc.tx = target.x
-            npc.ty = target.y
-          }
+          const t = app.ticker.lastTime / 560
+          const motionScale = active ? 1 : done ? 0.35 : failed ? 0.12 : 0.2
+          npc.tx = npc.homeX + Math.sin(t + npc.phase) * npc.driftRadius * motionScale
+          npc.ty = npc.homeY + Math.cos(t * 0.8 + npc.phase) * npc.driftRadius * 0.55 * motionScale
 
           const dx = npc.tx - npc.x
           const dy = npc.ty - npc.y
@@ -682,7 +800,7 @@ function FloorPixelMap({
           if (distance > 0.4) {
             const speed = reduceMotion
               ? active ? 0.22 : failed ? 0.12 : done ? 0.15 : 0.09
-              : active ? 0.6 : failed ? 0.22 : done ? 0.26 : 0.14
+              : active ? 0.42 : failed ? 0.15 : done ? 0.2 : 0.1
             npc.x += (dx / distance) * speed
             npc.y += (dy / distance) * speed
           }
@@ -692,43 +810,51 @@ function FloorPixelMap({
           const px = Math.floor(npc.x)
           const py = Math.floor(npc.y) - bob
 
-          npcLayer.beginFill(0x1c232d)
-          npcLayer.drawRect(px - 2, py + 8, 6, 1)
-          npcLayer.endFill()
+          npcShadowLayer.beginFill(0x1c232d, 0.55)
+          npcShadowLayer.drawEllipse(px + 1, py + 8, 4, 1.8)
+          npcShadowLayer.endFill()
 
-          npcLayer.beginFill(0xefc7a0)
-          npcLayer.drawRect(px, py, 2, 2)
-          npcLayer.endFill()
+          if (npc.sprite) {
+            npc.sprite.x = px + 1
+            npc.sprite.y = py + 9
+            npc.sprite.alpha = failed ? 0.82 : done ? 0.86 : 0.96
+            npc.sprite.tint = failed ? 0xff9ab4 : active ? 0xffffff : 0xc8d8f0
+            npc.sprite.scale.set(active ? 1.2 : 1.15, active ? 1.2 : 1.15)
+          } else {
+            npcShadowLayer.beginFill(0xefc7a0)
+            npcShadowLayer.drawRect(px, py, 2, 2)
+            npcShadowLayer.endFill()
 
-          npcLayer.beginFill(failed ? 0xff89a4 : active ? 0x90d3ff : 0x7f99bd)
-          npcLayer.drawRect(px - 1, py + 2, 4, 4)
-          npcLayer.endFill()
+            npcShadowLayer.beginFill(failed ? 0xff89a4 : active ? 0x90d3ff : 0x7f99bd)
+            npcShadowLayer.drawRect(px - 1, py + 2, 4, 4)
+            npcShadowLayer.endFill()
 
-          npcLayer.beginFill(0x4b5e7a)
-          npcLayer.drawRect(px - 1, py + 6, 1, 2)
-          npcLayer.drawRect(px + 2, py + 6, 1, 2)
-          npcLayer.endFill()
+            npcShadowLayer.beginFill(0x4b5e7a)
+            npcShadowLayer.drawRect(px - 1, py + 6, 1, 2)
+            npcShadowLayer.drawRect(px + 2, py + 6, 1, 2)
+            npcShadowLayer.endFill()
+          }
 
           if (active && Math.floor(app.ticker.lastTime / 200) % 2 === 0) {
-            npcLayer.beginFill(0xf9fcff)
-            npcLayer.drawRect(px - 3, py - 9, 10, 6)
-            npcLayer.endFill()
+            npcShadowLayer.beginFill(0xf9fcff)
+            npcShadowLayer.drawRect(px - 3, py - 9, 10, 6)
+            npcShadowLayer.endFill()
 
-            npcLayer.beginFill(0x2f4766)
-            npcLayer.drawRect(px - 1, py - 7, 1, 1)
-            npcLayer.drawRect(px + 1, py - 7, 1, 1)
-            npcLayer.drawRect(px + 3, py - 7, 1, 1)
-            npcLayer.endFill()
+            npcShadowLayer.beginFill(0x2f4766)
+            npcShadowLayer.drawRect(px - 1, py - 7, 1, 1)
+            npcShadowLayer.drawRect(px + 1, py - 7, 1, 1)
+            npcShadowLayer.drawRect(px + 3, py - 7, 1, 1)
+            npcShadowLayer.endFill()
           }
 
           if (failed && Math.floor(app.ticker.lastTime / 260) % 2 === 0) {
-            npcLayer.beginFill(0xffdbdf)
-            npcLayer.drawRect(px - 2, py - 8, 8, 5)
-            npcLayer.endFill()
+            npcShadowLayer.beginFill(0xffdbdf)
+            npcShadowLayer.drawRect(px - 2, py - 8, 8, 5)
+            npcShadowLayer.endFill()
 
-            npcLayer.beginFill(0xa53a56)
-            npcLayer.drawRect(px + 1, py - 7, 1, 3)
-            npcLayer.endFill()
+            npcShadowLayer.beginFill(0xa53a56)
+            npcShadowLayer.drawRect(px + 1, py - 7, 1, 3)
+            npcShadowLayer.endFill()
           }
         })
       })
@@ -748,14 +874,10 @@ function FloorPixelMap({
       if (mountEl) mountEl.innerHTML = ''
     }
   }, [
-    completedRooms,
     floor,
     layout,
     roomRects,
     textures,
-    activeRooms,
-    failedRooms,
-    selectedRoomId,
     onRoomSelect,
     reduceMotion,
   ])

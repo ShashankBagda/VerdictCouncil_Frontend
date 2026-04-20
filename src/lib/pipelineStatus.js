@@ -13,12 +13,12 @@
 
 export const PIPELINE_AGENT_ORDER = [
   'case-processing',
-  'fact-reconstruction',
+  'complexity-routing',
   'evidence-analysis',
+  'fact-reconstruction',
   'witness-analysis',
   'legal-knowledge',
   'argument-construction',
-  'complexity-routing',
   'deliberation',
   'governance-verdict',
 ];

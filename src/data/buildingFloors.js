@@ -1,11 +1,70 @@
 // Maps VerdictCouncil's 9 agents to FloorPixelMap floor/room structure
 
 const DEFAULT_ROOM_ASSETS = {
-  wall: '/pixel-assets/l1/Wall-Graph.png',
-  desk: '/pixel-assets/l1/Desk.png',
-  monitor: '/pixel-assets/l1/Big-Office-Printer.png',
-  prop: '/pixel-assets/l1/Small-Plant.png',
+  wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+  desk: '/pixel-assets/desks/itch_wood_desk.png',
+  monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+  prop: '/pixel-assets/props/itch_bookshelf.png',
 };
+
+const ROOM_ASSET_PRESETS = {
+  intake: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+    prop: '/pixel-assets/oga/office/water-bottle.png',
+  },
+  classification: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+    prop: '/pixel-assets/oga/office/office-paper-work.png',
+  },
+  evidence: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+    prop: '/pixel-assets/props/itch_cabinet.png',
+  },
+  timeline: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+    prop: '/pixel-assets/oga/office/cup-of-pens.png',
+  },
+  witness: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+    prop: '/pixel-assets/props/itch_chair_red.png',
+  },
+  policy: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+    prop: '/pixel-assets/props/itch_bookshelf.png',
+  },
+  advocate: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+    prop: '/pixel-assets/oga/office/office-paper-work.png',
+  },
+  deliberation: {
+    wall: '/pixel-assets/walls/kenney_grass_tile.png',
+    desk: '/pixel-assets/desks/itch_wood_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_alt.png',
+    prop: '/pixel-assets/props/itch_small_drawer.png',
+  },
+  verdict: {
+    wall: '/pixel-assets/walls/kenney_dirt_tile.png',
+    desk: '/pixel-assets/desks/itch_drawer_desk.png',
+    monitor: '/pixel-assets/monitors/kenney_console_red.png',
+    prop: '/pixel-assets/oga/office/cup-of-pens.png',
+  },
+};
+
+const roomAssets = (theme) => ROOM_ASSET_PRESETS[theme] || DEFAULT_ROOM_ASSETS;
 
 export const BUILDING_FLOORS = [
   {
@@ -23,7 +82,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Evidence Quality',
         taskLabel: 'Check admissibility, contradictions, and coverage gaps.',
         npcs: 4,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('evidence'),
         linksTo: ['fact-reconstruction'],
       },
       {
@@ -35,7 +94,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Timeline Building',
         taskLabel: 'Transform evidence into structured events and timelines.',
         npcs: 4,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('timeline'),
         linksTo: ['witness-analysis'],
       },
       {
@@ -47,7 +106,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Credibility',
         taskLabel: 'Identify witnesses, simulate testimony, and score reliability.',
         npcs: 3,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('witness'),
         linksTo: ['legal-knowledge'],
       },
     ],
@@ -67,7 +126,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Statutes + Precedent',
         taskLabel: 'Retrieve rules, cases, and relevant legal standards.',
         npcs: 3,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('policy'),
         linksTo: ['argument-construction'],
       },
       {
@@ -79,7 +138,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Claim vs Defense',
         taskLabel: 'Generate and compare claimant and respondent arguments.',
         npcs: 3,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('advocate'),
         linksTo: ['deliberation'],
       },
     ],
@@ -99,7 +158,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Initialization',
         taskLabel: 'Parse intake, structure case, classify domain, and validate jurisdiction.',
         npcs: 5,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('intake'),
         linksTo: ['complexity-routing'],
       },
       {
@@ -111,7 +170,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Control Gate',
         taskLabel: 'Assess complexity, escalate if required, and route the case path.',
         npcs: 4,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('classification'),
         linksTo: ['evidence-analysis'],
       },
     ],
@@ -131,7 +190,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Judicial Reasoning',
         taskLabel: 'Synthesize facts, law, and arguments into judicial reasoning.',
         npcs: 3,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('deliberation'),
         linksTo: ['governance-verdict'],
       },
       {
@@ -143,7 +202,7 @@ export const BUILDING_FLOORS = [
         roleLabel: 'Fairness + Confidence',
         taskLabel: 'Validate fairness constraints and issue recommendation output.',
         npcs: 2,
-        assets: DEFAULT_ROOM_ASSETS,
+        assets: roomAssets('verdict'),
         linksTo: [],
       },
     ],

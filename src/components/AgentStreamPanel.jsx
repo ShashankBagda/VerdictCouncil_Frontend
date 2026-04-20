@@ -62,8 +62,6 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
     let es = null;
 
     statusByAgentRef.current = {};
-    setEvents({});
-    setUnsupportedStreamPayload(false);
 
     const appendNormalizedEvents = (payload, source) => {
       const normalized = normalizePipelineEventPayload(payload, {
@@ -150,12 +148,12 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   const selectedAgent = agentStatuses?.find((a) => a.agent_id === selectedAgentId);
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
+    <div className="flex flex-col h-full bg-gradient-to-b from-slate-950 to-slate-900 rounded-lg overflow-hidden border border-cyan-900/40 shadow-[0_18px_48px_rgba(3,10,28,0.45)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/95 border-b border-cyan-900/35">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-teal-400" />
-          <span className="text-sm font-semibold text-white">
+          <Zap className="w-4 h-4 text-cyan-300" />
+          <span className="text-sm font-semibold text-slate-100 tracking-wide">
             {selectedAgentId ? PIPELINE_AGENT_LABELS[selectedAgentId] || selectedAgentId : 'Agent Stream'}
           </span>
         </div>
@@ -181,7 +179,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
 
       {/* Agent status badge */}
       {selectedAgent && (
-        <div className="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50">
+        <div className="px-4 py-2 bg-slate-900/50 border-b border-cyan-900/25">
           <div className="flex items-center gap-2">
             <span
               className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${
@@ -197,7 +195,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
               {selectedAgent.status}
             </span>
             {selectedAgent.elapsed_seconds && (
-              <span className="text-xs text-gray-500">{selectedAgent.elapsed_seconds}s</span>
+              <span className="text-xs text-slate-400">{selectedAgent.elapsed_seconds}s</span>
             )}
           </div>
         </div>
@@ -211,8 +209,8 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         </div>
       )}
 
-      <div className="px-4 py-1.5 border-b border-gray-800 bg-gray-950/40">
-        <p className="text-[10px] text-gray-500">
+      <div className="px-4 py-1.5 border-b border-slate-800 bg-slate-950/35">
+        <p className="text-[10px] text-slate-500 tracking-wide uppercase">
           last update: {lastUpdateTs ? formatTs(lastUpdateTs) : 'none'}
         </p>
       </div>
@@ -220,7 +218,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       {/* Event stream */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 text-xs text-gray-300 space-y-2"
+        className="flex-1 overflow-y-auto p-4 text-xs text-slate-300 space-y-2"
         aria-live="polite"
         onScroll={(e) => {
           const el = e.currentTarget;
@@ -229,30 +227,30 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         }}
       >
         {!selectedAgentId && (
-          <p className="text-gray-500 italic">Click a room in the building to view its stream</p>
+          <p className="text-slate-500 italic">Click a room in the building to view its stream</p>
         )}
         {selectedAgentId && agentEvents.length === 0 && (
-          <p className="text-gray-500 italic">No events yet for this agent</p>
+          <p className="text-slate-500 italic">No events yet for this agent</p>
         )}
         {agentEvents.map((ev, i) => (
           <div
             key={`${ev.ts || 't'}-${ev.phase || 'phase'}-${i}`}
-            className={`rounded-lg border px-3 py-2 ${phaseStyles(ev.phase).card}`}
+            className={`rounded-lg border px-3 py-2 backdrop-blur-[1px] ${phaseStyles(ev.phase).card}`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className={`uppercase text-[10px] font-semibold px-2 py-0.5 rounded ${phaseStyles(ev.phase).badge}`}>
                 {ev.phase}
               </span>
-              <span className="text-[10px] text-gray-500">
+              <span className="text-[10px] text-slate-500">
                 {formatTs(ev.ts)} {ev.synthetic ? '• snapshot' : ''}
               </span>
             </div>
 
-            <p className="text-[11px] text-gray-100 leading-relaxed">
-              <span className="text-gray-400">work:</span> {ev.workSummary}
+            <p className="text-[11px] text-slate-100 leading-relaxed">
+              <span className="text-slate-400">work:</span> {ev.workSummary}
             </p>
-            <p className="text-[11px] text-gray-300 leading-relaxed mt-1">
-              <span className="text-gray-500">thought:</span> {ev.thoughtSummary}
+            <p className="text-[11px] text-slate-300 leading-relaxed mt-1">
+              <span className="text-slate-500">thought:</span> {ev.thoughtSummary}
             </p>
 
             {(ev.fromAgentId || ev.toAgentId) && (

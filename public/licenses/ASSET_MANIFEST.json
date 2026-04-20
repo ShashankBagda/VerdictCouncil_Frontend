@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "generated_on": "2026-04-20",
+  "policy": {
+    "allowed": [
+      "CC0",
+      "CC-BY",
+      "OGA-BY",
+      "custom-commercial-safe"
+    ],
+    "blocked": [
+      "non-commercial-only",
+      "unknown",
+      "GPL-for-art"
+    ]
+  },
+  "assets": [
+    {
+      "id": "pixeloffice-2dpig",
+      "path": "public/PixelOffice",
+      "source": "local bundle",
+      "source_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license": "CC0",
+      "attribution_required": false,
+      "usage_status": "approved",
+      "evidence": [
+        "public/PixelOffice/LICENSE.txt",
+        "public/PixelOffice/README.txt"
+      ],
+      "notes": "Preferred baseline set for shipping-safe pixel office assets."
+    },
+    {
+      "id": "free-office-pixel-art-arlantr",
+      "path": "public/free-office-pixel-art",
+      "source": "local bundle",
+      "source_url": "https://arlantr.itch.io/",
+      "license": "custom-commercial-safe",
+      "attribution_required": false,
+      "usage_status": "approved-with-review",
+      "evidence": [
+        "public/free-office-pixel-art/Readme.txt"
+      ],
+      "notes": "Readme says free to use any way; keep as provisional until upstream license URL is pinned in release checklist."
+    },
+    {
+      "id": "oga-office-appliances-semtex99",
+      "path": "public/pixel-assets/oga/office/office-tilemap.png",
+      "source": "OpenGameArt",
+      "source_url": "https://opengameart.org/content/indoor-office-appliances",
+      "license": "CC0",
+      "attribution_required": false,
+      "usage_status": "approved",
+      "evidence": [
+        "https://opengameart.org/content/indoor-office-appliances"
+      ],
+      "notes": "Downloaded directly from source file listing on OGA page."
+    },
+    {
+      "id": "oga-office-supplies-natural-privateer",
+      "path": "public/pixel-assets/oga/office",
+      "source": "OpenGameArt",
+      "source_url": "https://opengameart.org/content/2d-pixel-office-supplies-32x32",
+      "license": "CC0",
+      "attribution_required": false,
+      "usage_status": "approved",
+      "evidence": [
+        "https://opengameart.org/content/2d-pixel-office-supplies-32x32"
+      ],
+      "notes": "Includes water bottle, cup of pens, and office paper props."
+    },
+    {
+      "id": "khronos-gltf-sample-models",
+      "path": "public/models/cc-by/khronos",
+      "source": "KhronosGroup/glTF-Sample-Models",
+      "source_url": "https://github.com/KhronosGroup/glTF-Sample-Models",
+      "license": "CC-BY-4.0",
+      "attribution_required": true,
+      "usage_status": "approved",
+      "evidence": [
+        "https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/LICENSE.md"
+      ],
+      "notes": "Downloaded BoomBox.glb and Lantern.glb for optional Three.js hero-scene prototyping only."
+    },
+    {
+      "id": "sprout-lands-basic-cup-nooble",
+      "path": "public/Sprout Lands - Sprites - Basic pack",
+      "source": "local bundle",
+      "source_url": "https://twitter.com/Sprout_Lands",
+      "license": "non-commercial-only",
+      "attribution_required": true,
+      "usage_status": "blocked",
+      "evidence": [
+        "public/Sprout Lands - Sprites - Basic pack/read_me.txt"
+      ],
+      "notes": "Cannot be used in commercial deployment. Keep out of runtime imports and release bundles."
+    },
+    {
+      "id": "pixel-assets-l1-pack",
+      "path": "public/pixel-assets/l1",
+      "source": "legacy project assets",
+      "source_url": "",
+      "license": "unknown",
+      "attribution_required": false,
+      "usage_status": "blocked-until-verified",
+      "evidence": [],
+      "notes": "Actively used by FloorPixelMap; provenance must be verified or replaced with approved assets before production release."
+    }
+  ]
+}

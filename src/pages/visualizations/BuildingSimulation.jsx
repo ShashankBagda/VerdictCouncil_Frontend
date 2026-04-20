@@ -10,6 +10,7 @@ const FADE = { IDLE: 'idle', OUT: 'fade_out', IN: 'fade_in' };
 
 export default function BuildingSimulation() {
   const { caseId } = useParams();
+  const caseLabel = caseId || 'active-case';
   const { showError } = useAPI();
   const { updatePipelineStatus } = useCase();
 
@@ -69,7 +70,7 @@ export default function BuildingSimulation() {
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-lg shadow-sm px-4 md:px-6 py-3 border border-gray-200">
         <div>
           <h2 className="text-xl font-bold text-navy-900">Verdict Council Building</h2>
-          <p className="text-sm text-gray-600">9-agent pipeline for case {caseId}</p>
+          <p className="text-sm text-gray-600">9-agent pipeline for case {caseLabel}</p>
         </div>
         {pipelineStatus && (
           <div className="flex items-center gap-3">
@@ -206,6 +207,7 @@ export default function BuildingSimulation() {
         {/* Right: Agent stream panel */}
         <div className="w-full xl:w-[45%] min-h-[280px] md:min-h-[360px] xl:min-h-0 xl:h-[520px]">
           <AgentStreamPanel
+            key={caseId}
             caseId={caseId}
             selectedAgentId={selectedAgentId}
             agentStatuses={pipelineStatus?.agents}
@@ -213,7 +215,8 @@ export default function BuildingSimulation() {
         </div>
       </div>
 
-      {/* Agent selector row */}
+      {/* Secondary room selector row */}
+      <div className="text-[11px] uppercase tracking-wider text-gray-500">Quick room select</div>
       <div className="flex flex-wrap gap-2">
         {selectedFloor.rooms.map((room) => {
           const agentStatus = pipelineStatus?.agents?.find(
