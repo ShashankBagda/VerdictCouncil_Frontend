@@ -47,7 +47,7 @@ Rules for execution:
 - `VER-21` Escalated cases inbox + actions UI
 - `VER-22` Modify/Reject decision form
 - `VER-117` Add Documents UI + version history list
-- `VER-130` Amend decision UI + history view
+- `VER-130` Amend decision UI + history view (**deferred** — backend routes not yet implemented; frontend is empty-stated pending contract decision)
 - `VER-132` Reopen request UI + senior judge approval inbox
 
 ### Structural gaps in current frontend

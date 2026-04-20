@@ -36,8 +36,8 @@ Requires the backend API running on port 8001 (see `VerdictCouncil_Backend`).
 | `/intake` | CaseIntake | Structured case submission with file uploads and demo case loader |
 | `/cases` | CaseList | Paginated case list with status filters |
 | `/cases/:id` | CaseDetail | Individual case view with pipeline status |
-| `/cases/:id/dossier` | CaseDossier | Full analysis dossier with JSON export |
-| `/knowledge-base` | KnowledgeBase | Per-judge document management, vector search, and upload |
+| `/cases/:id/dossier` | CaseDossier | Full analysis dossier |
+| `/knowledge-base` | KnowledgeBase | Read-only status for the judicial vector store (upload/search deferred — see backend backlog) |
 | `/escalated-cases` | EscalatedCases | Cases flagged for human review |
 | `/building` | BuildingSimulation | 3D building visualization of agent pipeline |
 | `/graph` | GraphMesh | Graph mesh orchestration view |
@@ -65,6 +65,7 @@ npm run type-check    # TypeScript validation
 npm run build         # production build
 npm test              # Vitest + React Testing Library
 npm run test:watch    # watch mode
+npm run check:contract # verify every /api/v1/* call exists in backend OpenAPI spec
 ```
 
 ## Testing
