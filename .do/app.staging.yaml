@@ -1,0 +1,16 @@
+# Declarative App Platform spec for the staging frontend.
+# Apply with:   doctl apps create --spec .do/app.staging.yaml
+# Update with:  doctl apps update <app-id> --spec .do/app.staging.yaml
+name: verdictcouncil-frontend-staging
+region: nyc
+static_sites:
+  - name: web
+    github:
+      repo: ShashankBagda/VerdictCouncil_Frontend
+      branch: development
+      deploy_on_push: false
+    source_dir: /
+    build_command: npm ci && npm run build
+    output_dir: dist
+    catchall_document: index.html
+    environment_slug: node-js

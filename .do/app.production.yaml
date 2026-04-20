@@ -1,0 +1,13 @@
+name: verdictcouncil-frontend-production
+region: nyc
+static_sites:
+  - name: web
+    github:
+      repo: ShashankBagda/VerdictCouncil_Frontend
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    build_command: npm ci && npm run build
+    output_dir: dist
+    catchall_document: index.html
+    environment_slug: node-js
