@@ -47,7 +47,7 @@ export default function BuildingSimulation() {
     setSelectedAgentId(roomId);
   }, []);
 
-  const { activeRooms, completedRooms } = deriveRoomStatus(
+  const { activeRooms, completedRooms, failedRooms } = deriveRoomStatus(
     pipelineStatus?.agents,
     selectedFloor.id,
   );
@@ -195,9 +195,12 @@ export default function BuildingSimulation() {
             floor={selectedFloor}
             activeRooms={activeRooms}
             completedRooms={completedRooms}
+            failedRooms={failedRooms}
+            selectedRoomId={selectedAgentId}
+            onRoomSelect={handleSelectAgent}
           />
           <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">
-            Click an agent name below to view its stream
+            Click a room in the building to view its stream
           </div>
         </div>
 

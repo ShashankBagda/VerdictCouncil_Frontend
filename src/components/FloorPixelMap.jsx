@@ -40,7 +40,7 @@ const LEVEL_ONE_EXTRA_ASSETS = [
   '/pixel-assets/l1/Wall-Graph.png',
 ]
 
-const getExtraFloorAssets = (floorId) => (floorId === 'level-1' ? LEVEL_ONE_EXTRA_ASSETS : [])
+const getExtraFloorAssets = (floorId) => (floorId === 'floor-1' ? LEVEL_ONE_EXTRA_ASSETS : [])
 
 const floorLayout = (template, roomCount) => {
   if (template === 'split_wings') {
@@ -116,16 +116,33 @@ const createNpcs = (rooms, roomRects) =>
       return []
     }
 
-    return Array.from({ length: room.npcs }, (_, index) => ({
+    const npcCount = Number.isFinite(room.npcs) ? Math.max(0, room.npcs) : 0
+    const roomName = room.label || room.name || room.id
+
+    return Array.from({ length: npcCount }, (_, index) => ({
       id: `${room.id}-${index}`,
       roomId: room.id,
       x: rect.x + 12 + ((index * 17 + room.id.length * 9) % Math.max(10, rect.w - 24)),
-      y: rect.y + 74 + ((index * 13 + room.name.length * 3) % Math.max(10, rect.h - 86)),
+      y: rect.y + 74 + ((index * 13 + roomName.length * 3) % Math.max(10, rect.h - 86)),
       tx: rect.x + 16,
       ty: rect.y + 78,
-      phase: (index + room.name.length) % 10,
+      phase: (index + roomName.length) % 10,
     }))
   })
+
+const roomCenter = (rect) => ({
+  x: rect.x + rect.w / 2,
+  y: rect.y + rect.h / 2,
+})
+
+const mapPointerToCanvas = (view, clientX, clientY) => {
+  const bounds = view.getBoundingClientRect()
+  if (!bounds.width || !bounds.height) return null
+  return {
+    x: ((clientX - bounds.left) / bounds.width) * MAP_WIDTH,
+    y: ((clientY - bounds.top) / bounds.height) * MAP_HEIGHT,
+  }
+}
 
 const useTextureCache = (rooms, extraUrls = []) => {
   const [textures, setTextures] = useState({})
@@ -400,7 +417,14 @@ const drawStandardScene = (container, layout, roomRects, floor, textures, active
   })
 }
 
-function FloorPixelMap({ floor, activeRooms, completedRooms }) {
+function FloorPixelMap({
+  floor,
+  activeRooms,
+  completedRooms,
+  failedRooms = [],
+  selectedRoomId = null,
+  onRoomSelect = null,
+}) {
   const mountRef = useRef(null)
   const appRef = useRef(null)
 
@@ -423,6 +447,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
   useEffect(() => {
     let cancelled = false
     const mountEl = mountRef.current
+    let detachPointerHandlers = () => {}
 
     const run = async () => {
       if (!mountEl) {
@@ -451,16 +476,20 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
       mountEl.appendChild(view)
       app.stage.removeChildren()
 
+      const activeSet = new Set(activeRooms)
+      const doneSet = new Set(completedRooms)
+      const failedSet = new Set(failedRooms)
+
       const staticContainer = app.stage
-      if (floor.id === 'level-1') {
+      if (floor.id === 'floor-1') {
         drawLevelOneScene(
           staticContainer,
           layout,
           roomRects,
           floor,
           textures,
-          new Set(activeRooms),
-          new Set(completedRooms),
+          activeSet,
+          doneSet,
         )
       } else {
         drawStandardScene(
@@ -469,25 +498,144 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
           roomRects,
           floor,
           textures,
-          new Set(activeRooms),
-          new Set(completedRooms),
+          activeSet,
+          doneSet,
         )
       }
 
       const npcs = createNpcs(floor.rooms, roomRects)
+      const effectsLayer = new Graphics()
       const npcLayer = new Graphics()
+      app.stage.addChild(effectsLayer)
       app.stage.addChild(npcLayer)
 
-      const activeSet = new Set(activeRooms)
-      const doneSet = new Set(completedRooms)
+      const elevatorTarget = {
+        x: layout.shell.x + layout.shell.w - 56,
+        y: layout.shell.y + layout.shell.h / 2,
+      }
+
+      const roomLinks = floor.rooms.flatMap((room) => {
+        const fromRect = roomRects[room.id]
+        if (!fromRect) return []
+        const links = Array.isArray(room.linksTo) ? room.linksTo : []
+        return links.map((targetId, index) => {
+          const targetRect = roomRects[targetId]
+          return {
+            id: `${room.id}-${targetId}-${index}`,
+            fromId: room.id,
+            toId: targetId,
+            from: roomCenter(fromRect),
+            to: targetRect ? roomCenter(targetRect) : elevatorTarget,
+            progress: Math.random(),
+            speed: 0.006 + Math.random() * 0.008,
+          }
+        })
+      })
 
       const randomTarget = (rect) => ({
         x: rect.x + 10 + Math.random() * Math.max(8, rect.w - 22),
         y: rect.y + 70 + Math.random() * Math.max(8, rect.h - 84),
       })
 
+      const roomAtPoint = (x, y) =>
+        floor.rooms.find((room) => {
+          const rect = roomRects[room.id]
+          if (!rect) return false
+          return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+        })
+
+      const handlePointerMove = (event) => {
+        const point = mapPointerToCanvas(view, event.clientX, event.clientY)
+        if (!point) return
+        const hit = roomAtPoint(point.x, point.y)
+        view.style.cursor = hit ? 'pointer' : 'default'
+      }
+
+      const handlePointerDown = (event) => {
+        if (typeof onRoomSelect !== 'function') return
+        const point = mapPointerToCanvas(view, event.clientX, event.clientY)
+        if (!point) return
+        const hit = roomAtPoint(point.x, point.y)
+        if (hit) {
+          onRoomSelect(hit.id)
+        }
+      }
+
+      view.addEventListener('pointermove', handlePointerMove)
+      view.addEventListener('pointerdown', handlePointerDown)
+      detachPointerHandlers = () => {
+        view.removeEventListener('pointermove', handlePointerMove)
+        view.removeEventListener('pointerdown', handlePointerDown)
+      }
+
       app.ticker.maxFPS = 30
       app.ticker.add(() => {
+        const pulse = (Math.sin(app.ticker.lastTime / 240) + 1) / 2
+        const selectedSet = selectedRoomId ? new Set([selectedRoomId]) : new Set()
+
+        effectsLayer.clear()
+
+        floor.rooms.forEach((room) => {
+          const rect = roomRects[room.id]
+          if (!rect) return
+          const active = activeSet.has(room.id)
+          const done = doneSet.has(room.id)
+          const failed = failedSet.has(room.id)
+          const selected = selectedSet.has(room.id)
+
+          if (active) {
+            effectsLayer.beginFill(0x55cfff, 0.1 + pulse * 0.12)
+            effectsLayer.drawRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4)
+            effectsLayer.endFill()
+          }
+
+          if (done) {
+            effectsLayer.lineStyle(1, 0x97f5be, 0.55)
+            effectsLayer.drawRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+          }
+
+          if (failed) {
+            effectsLayer.beginFill(0xff6688, 0.09 + pulse * 0.07)
+            effectsLayer.drawRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4)
+            effectsLayer.endFill()
+            effectsLayer.lineStyle(2, 0xff6a84, 0.85)
+            effectsLayer.drawRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+          }
+
+          if (selected) {
+            effectsLayer.lineStyle(2, 0x5ce8ff, 0.95)
+            effectsLayer.drawRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4)
+          }
+
+          if (active && Math.floor(app.ticker.lastTime / 420) % 2 === 0) {
+            const c = roomCenter(rect)
+            effectsLayer.beginFill(0xf8feff, 0.88)
+            effectsLayer.drawRoundedRect(c.x - 20, rect.y - 14, 40, 10, 3)
+            effectsLayer.endFill()
+            effectsLayer.beginFill(0x2d4b6a, 0.85)
+            effectsLayer.drawRect(c.x - 8, rect.y - 10, 2, 2)
+            effectsLayer.drawRect(c.x - 2, rect.y - 10, 2, 2)
+            effectsLayer.drawRect(c.x + 4, rect.y - 10, 2, 2)
+            effectsLayer.endFill()
+          }
+        })
+
+        roomLinks.forEach((link) => {
+          if (!activeSet.has(link.fromId)) return
+          link.progress += link.speed
+          if (link.progress >= 1) link.progress -= 1
+
+          effectsLayer.lineStyle(1, 0x69d6ff, 0.25)
+          effectsLayer.moveTo(link.from.x, link.from.y)
+          effectsLayer.lineTo(link.to.x, link.to.y)
+
+          const px = link.from.x + (link.to.x - link.from.x) * link.progress
+          const py = link.from.y + (link.to.y - link.from.y) * link.progress
+          effectsLayer.beginFill(0xd8f8ff, 0.95)
+          effectsLayer.drawRect(px - 2, py - 2, 4, 4)
+          effectsLayer.endFill()
+        })
+
         npcLayer.clear()
 
         npcs.forEach((npc) => {
@@ -498,6 +646,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
 
           const active = activeSet.has(npc.roomId)
           const done = doneSet.has(npc.roomId)
+          const failed = failedSet.has(npc.roomId)
 
           if (Math.random() < (active ? 0.03 : done ? 0.015 : 0.006)) {
             const target = randomTarget(rect)
@@ -509,12 +658,12 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
           const dy = npc.ty - npc.y
           const distance = Math.hypot(dx, dy)
           if (distance > 0.4) {
-            const speed = active ? 0.55 : done ? 0.26 : 0.14
+            const speed = active ? 0.6 : failed ? 0.22 : done ? 0.26 : 0.14
             npc.x += (dx / distance) * speed
             npc.y += (dy / distance) * speed
           }
 
-          npc.phase += active ? 0.28 : 0.12
+          npc.phase += active ? 0.31 : failed ? 0.16 : 0.12
           const bob = Math.sin(npc.phase) > 0.2 ? 1 : 0
           const px = Math.floor(npc.x)
           const py = Math.floor(npc.y) - bob
@@ -527,7 +676,7 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
           npcLayer.drawRect(px, py, 2, 2)
           npcLayer.endFill()
 
-          npcLayer.beginFill(active ? 0x90d3ff : 0x7f99bd)
+          npcLayer.beginFill(failed ? 0xff89a4 : active ? 0x90d3ff : 0x7f99bd)
           npcLayer.drawRect(px - 1, py + 2, 4, 4)
           npcLayer.endFill()
 
@@ -547,6 +696,16 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
             npcLayer.drawRect(px + 3, py - 7, 1, 1)
             npcLayer.endFill()
           }
+
+          if (failed && Math.floor(app.ticker.lastTime / 260) % 2 === 0) {
+            npcLayer.beginFill(0xffdbdf)
+            npcLayer.drawRect(px - 2, py - 8, 8, 5)
+            npcLayer.endFill()
+
+            npcLayer.beginFill(0xa53a56)
+            npcLayer.drawRect(px + 1, py - 7, 1, 3)
+            npcLayer.endFill()
+          }
         })
       })
 
@@ -557,13 +716,24 @@ function FloorPixelMap({ floor, activeRooms, completedRooms }) {
 
     return () => {
       cancelled = true
+      detachPointerHandlers()
       if (appRef.current) {
         appRef.current.destroy(true)
         appRef.current = null
       }
       if (mountEl) mountEl.innerHTML = ''
     }
-  }, [completedRooms, floor, layout, roomRects, textures, activeRooms])
+  }, [
+    completedRooms,
+    floor,
+    layout,
+    roomRects,
+    textures,
+    activeRooms,
+    failedRooms,
+    selectedRoomId,
+    onRoomSelect,
+  ])
 
   return (
     <div className="pixel-map-shell">

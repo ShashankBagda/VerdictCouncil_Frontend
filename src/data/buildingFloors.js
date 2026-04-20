@@ -1,5 +1,12 @@
 // Maps VerdictCouncil's 9 agents to FloorPixelMap floor/room structure
 
+const DEFAULT_ROOM_ASSETS = {
+  wall: '/pixel-assets/l1/Wall-Graph.png',
+  desk: '/pixel-assets/l1/Desk.png',
+  monitor: '/pixel-assets/l1/Big-Office-Printer.png',
+  prop: '/pixel-assets/l1/Small-Plant.png',
+};
+
 export const BUILDING_FLOORS = [
   {
     id: 'floor-4',
@@ -7,9 +14,42 @@ export const BUILDING_FLOORS = [
     title: 'Evidence Layer',
     layoutTemplate: 'split_wings',
     rooms: [
-      { id: 'evidence-analysis', theme: 'evidence', label: 'Evidence Analysis' },
-      { id: 'fact-reconstruction', theme: 'timeline', label: 'Fact Reconstruction' },
-      { id: 'witness-analysis', theme: 'witness', label: 'Witness Analysis' },
+      {
+        id: 'evidence-analysis',
+        label: 'Evidence Analysis',
+        floorId: 'floor-4',
+        interiorTheme: 'evidence',
+        code: 'EA-03',
+        roleLabel: 'Evidence Quality',
+        taskLabel: 'Check admissibility, contradictions, and coverage gaps.',
+        npcs: 4,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['fact-reconstruction'],
+      },
+      {
+        id: 'fact-reconstruction',
+        label: 'Fact Reconstruction',
+        floorId: 'floor-4',
+        interiorTheme: 'timeline',
+        code: 'FR-04',
+        roleLabel: 'Timeline Building',
+        taskLabel: 'Transform evidence into structured events and timelines.',
+        npcs: 4,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['witness-analysis'],
+      },
+      {
+        id: 'witness-analysis',
+        label: 'Witness Analysis',
+        floorId: 'floor-4',
+        interiorTheme: 'witness',
+        code: 'WA-05',
+        roleLabel: 'Credibility',
+        taskLabel: 'Identify witnesses, simulate testimony, and score reliability.',
+        npcs: 3,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['legal-knowledge'],
+      },
     ],
   },
   {
@@ -18,8 +58,30 @@ export const BUILDING_FLOORS = [
     title: 'Legal Layer',
     layoutTemplate: 'default',
     rooms: [
-      { id: 'legal-knowledge', theme: 'policy', label: 'Legal Knowledge' },
-      { id: 'argument-construction', theme: 'advocate', label: 'Argument Construction' },
+      {
+        id: 'legal-knowledge',
+        label: 'Legal Knowledge',
+        floorId: 'floor-3',
+        interiorTheme: 'policy',
+        code: 'LK-06',
+        roleLabel: 'Statutes + Precedent',
+        taskLabel: 'Retrieve rules, cases, and relevant legal standards.',
+        npcs: 3,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['argument-construction'],
+      },
+      {
+        id: 'argument-construction',
+        label: 'Argument Construction',
+        floorId: 'floor-3',
+        interiorTheme: 'advocate',
+        code: 'AC-07',
+        roleLabel: 'Claim vs Defense',
+        taskLabel: 'Generate and compare claimant and respondent arguments.',
+        npcs: 3,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['deliberation'],
+      },
     ],
   },
   {
@@ -28,8 +90,30 @@ export const BUILDING_FLOORS = [
     title: 'Processing Layer',
     layoutTemplate: 'default',
     rooms: [
-      { id: 'case-processing', theme: 'intake', label: 'Case Processing' },
-      { id: 'complexity-routing', theme: 'classification', label: 'Complexity Routing' },
+      {
+        id: 'case-processing',
+        label: 'Case Processing',
+        floorId: 'floor-2',
+        interiorTheme: 'intake',
+        code: 'CP-01',
+        roleLabel: 'Initialization',
+        taskLabel: 'Parse intake, structure case, classify domain, and validate jurisdiction.',
+        npcs: 5,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['complexity-routing'],
+      },
+      {
+        id: 'complexity-routing',
+        label: 'Complexity Routing',
+        floorId: 'floor-2',
+        interiorTheme: 'classification',
+        code: 'CR-02',
+        roleLabel: 'Control Gate',
+        taskLabel: 'Assess complexity, escalate if required, and route the case path.',
+        npcs: 4,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['evidence-analysis'],
+      },
     ],
   },
   {
@@ -38,8 +122,30 @@ export const BUILDING_FLOORS = [
     title: 'Decision Layer',
     layoutTemplate: 'default',
     rooms: [
-      { id: 'deliberation', theme: 'deliberation', label: 'Deliberation' },
-      { id: 'governance-verdict', theme: 'verdict', label: 'Governance & Verdict' },
+      {
+        id: 'deliberation',
+        label: 'Deliberation',
+        floorId: 'floor-1',
+        interiorTheme: 'deliberation',
+        code: 'DL-08',
+        roleLabel: 'Judicial Reasoning',
+        taskLabel: 'Synthesize facts, law, and arguments into judicial reasoning.',
+        npcs: 3,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: ['governance-verdict'],
+      },
+      {
+        id: 'governance-verdict',
+        label: 'Governance & Verdict',
+        floorId: 'floor-1',
+        interiorTheme: 'verdict',
+        code: 'GV-09',
+        roleLabel: 'Fairness + Confidence',
+        taskLabel: 'Validate fairness constraints and issue recommendation output.',
+        npcs: 2,
+        assets: DEFAULT_ROOM_ASSETS,
+        linksTo: [],
+      },
     ],
   },
 ];
@@ -50,17 +156,21 @@ export const BUILDING_FLOORS = [
  */
 export function deriveRoomStatus(agentStatuses, floorId) {
   const floor = BUILDING_FLOORS.find((f) => f.id === floorId);
-  if (!floor || !agentStatuses) return { activeRooms: [], completedRooms: [] };
+  if (!floor || !agentStatuses) {
+    return { activeRooms: [], completedRooms: [], failedRooms: [] };
+  }
 
   const activeRooms = [];
   const completedRooms = [];
+  const failedRooms = [];
 
   floor.rooms.forEach((room) => {
     const agent = agentStatuses.find((a) => a.agent_id === room.id);
     if (!agent) return;
     if (agent.status === 'running') activeRooms.push(room.id);
     if (agent.status === 'completed') completedRooms.push(room.id);
+    if (agent.status === 'failed') failedRooms.push(room.id);
   });
 
-  return { activeRooms, completedRooms };
+  return { activeRooms, completedRooms, failedRooms };
 }
