@@ -6,7 +6,7 @@
  * ✅ Fully linked:
  *   POST /api/v1/auth/login          → auth.router
  *   POST /api/v1/auth/logout         → auth.router
- *   GET  /api/v1/auth/me             → auth.router (session bootstrap fallback)
+ *   GET  /api/v1/auth/me             → auth.router
  *   POST /api/v1/auth/extend         → auth.router
  *   GET  /api/v1/auth/session        → auth.router
  *   POST /api/v1/auth/request-reset  → auth.router
@@ -35,8 +35,6 @@
  *   PATCH /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
  *   POST /api/v1/cases/{id}/hearing-notes/{nid}/lock → hearing_notes.router
  *   DELETE /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
- *   POST /api/v1/cases/{id}/amend-decision      → decisions.router
- *   GET  /api/v1/cases/{id}/decision-history    → decisions.router
  *   POST /api/v1/cases/{id}/reopen-request      → reopen_requests.router
  *   GET  /api/v1/cases/{id}/reopen-requests     → reopen_requests.router
  *   PATCH /api/v1/cases/{id}/reopen-requests/{rid}/review → reopen_requests.router
@@ -52,12 +50,7 @@
  *   GET  /api/v1/cases/{id}/arguments           → case_data.router
  *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
  *   GET  /api/v1/cases/{id}/verdict             → case_data.router
- *   GET  /api/v1/cases/{id}/export              → cases.router
- *   POST /api/v1/knowledge-base/initialize   → knowledge_base.router
- *   GET  /api/v1/knowledge-base/documents    → knowledge_base.router
- *   POST /api/v1/knowledge-base/documents    → knowledge_base.router
- *   DELETE /api/v1/knowledge-base/documents/{id} → knowledge_base.router
- *   POST /api/v1/knowledge-base/search       → knowledge_base.router
+ *   POST /api/v1/cases/{id}/process             → cases.router (pipeline trigger)
  *   POST /api/v1/admin/vector-stores/refresh → admin.router
  *   POST /api/v1/admin/users/{id}/{action}   → admin.router
  *   POST /api/v1/admin/cost-config           → admin.router
@@ -291,25 +284,10 @@ export const api = {
     }
   },
   getSession: async () => {
-    try {
-      const payload = await request('GET', '/api/v1/auth/session', {
-        suppress401Redirect: true,
-      });
-      return buildSessionState(payload);
-    } catch (error) {
-      if (!(error instanceof APIError)) {
-        throw error;
-      }
-
-      if (error.status === 404) {
-        const payload = await request('GET', '/api/v1/auth/me', {
-          suppress401Redirect: true,
-        });
-        return buildSessionState(payload);
-      }
-
-      throw error;
-    }
+    const payload = await request('GET', '/api/v1/auth/session', {
+      suppress401Redirect: true,
+    });
+    return buildSessionState(payload);
   },
   requestPasswordReset: (email) =>
     request('POST', '/api/v1/auth/request-reset', { body: { email } }),
@@ -348,6 +326,8 @@ export const api = {
     );
   },
 
+  runCase: (caseId) =>
+    request('POST', `/api/v1/cases/${caseId}/process`),
   getPipelineStatus: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/status`),
   streamPipelineStatus: (caseId) =>
@@ -408,23 +388,6 @@ export const api = {
 
   getKnowledgeBaseStatus: () =>
     request('GET', '/api/v1/knowledge-base/status'),
-  initializeKB: () =>
-    request('POST', '/api/v1/knowledge-base/initialize'),
-  uploadToKB: async (file, onProgress) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return uploadWithProgress(
-      `${API_BASE_URL}/api/v1/knowledge-base/documents`,
-      formData,
-      onProgress,
-    );
-  },
-  listKBDocuments: () =>
-    request('GET', '/api/v1/knowledge-base/documents'),
-  deleteKBDocument: (fileId) =>
-    request('DELETE', `/api/v1/knowledge-base/documents/${fileId}`),
-  searchKB: (query) =>
-    request('POST', '/api/v1/knowledge-base/search', { body: { query } }),
 
   getDashboardStats: (timeWindow = '30d') =>
     request('GET', `/api/v1/dashboard/stats?window=${timeWindow}`),
@@ -434,8 +397,6 @@ export const api = {
     return request('GET', `/api/v1/audit/${caseId}/audit${query ? `?${query}` : ''}`);
   },
 
-  exportCase: (caseId, format = 'json') =>
-    request('GET', `/api/v1/cases/${caseId}/export?format=${format}`),
   generateHearingPack: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/hearing-pack`),
   createHearingNote: (caseId, body) =>
@@ -448,10 +409,6 @@ export const api = {
     request('POST', `/api/v1/cases/${caseId}/hearing-notes/${noteId}/lock`),
   deleteHearingNote: (caseId, noteId) =>
     request('DELETE', `/api/v1/cases/${caseId}/hearing-notes/${noteId}`),
-  amendDecision: (caseId, body) =>
-    request('POST', `/api/v1/cases/${caseId}/amend-decision`, { body }),
-  getDecisionHistory: (caseId) =>
-    request('GET', `/api/v1/cases/${caseId}/decision-history`),
   requestCaseReopen: (caseId, body) =>
     request('POST', `/api/v1/cases/${caseId}/reopen-request`, { body }),
   listReopenRequests: (caseId) =>
@@ -469,11 +426,11 @@ export const api = {
     request('POST', '/api/v1/admin/cost-config', { body: config }),
 
   getEscalatedCases: (page = 1) =>
-    request('GET', `/api/v1/escalated-cases?page=${page}`),
+    request('GET', `/api/v1/escalated-cases/?page=${page}`),
   actionOnEscalatedCase: (itemId, body) =>
     request('POST', `/api/v1/escalated-cases/${itemId}/action`, { body }),
   getSeniorInbox: (page = 1, perPage = 20) =>
-    request('GET', `/api/v1/senior-inbox?page=${page}&per_page=${perPage}`),
+    request('GET', `/api/v1/senior-inbox/?page=${page}&per_page=${perPage}`),
 };
 
 export default api;

@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:contract": "node scripts/check-api-contract.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.5",

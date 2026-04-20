@@ -290,6 +290,12 @@ export default function CaseIntake() {
       if (hasUploadFailure) {
         showError('Case created, but one or more files failed to upload. You can retry below.');
       } else {
+        try {
+          await api.runCase(newCaseId);
+        } catch (err) {
+          showError(getErrorMessage(err, 'Uploads succeeded but the pipeline failed to start.'));
+          return;
+        }
         showNotification('Case created successfully! Redirecting to pipeline...', 'success');
         setTimeout(() => navigate(`/case/${newCaseId}/building`), 1200);
       }
