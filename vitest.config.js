@@ -7,5 +7,17 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.js'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      include: [
+        'src/pages/auth/*.jsx',
+        'src/components/auth/*.jsx',
+      ],
+      thresholds: {
+        lines: 98,
+        statements: 98,
+      },
+    },
   },
 });

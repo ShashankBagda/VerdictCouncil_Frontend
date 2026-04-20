@@ -34,9 +34,9 @@ export default function CaseList() {
         const res = await api.listCases({
           domain_filter: domainFilter || undefined,
           status_filter: statusFilter || undefined,
-          search_term: searchTerm || undefined,
         });
-        setCases(res.data?.cases || []);
+        // Backend returns { items, total, page, per_page }
+        setCases(res?.items || res?.data?.items || res?.data?.cases || []);
       } catch (err) {
         const msg = getErrorMessage(err, 'Failed to fetch cases');
         showError(msg);

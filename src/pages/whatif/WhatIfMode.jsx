@@ -149,28 +149,55 @@ export default function WhatIfMode() {
       setAnalyzing(true);
 
       const res = await api.createWhatIfScenario(caseId, {
-        scenario_name: scenarioName,
-        modifications,
+        modification_type: 'fact_toggle',
+        modification_payload: modifications,
+        description: scenarioName,
       });
 
+      const scenarioId = res?.scenario_id || res?.data?.scenario_id;
       const newScenario = {
-        id: res.data.scenario_id,
+        id: scenarioId,
         name: scenarioName,
         modifications: { ...modifications },
-        verdict: res.data.verdict,
+        status: res?.status || 'pending',
         timestamp: new Date().toISOString(),
       };
 
-      setModifiedVerdict(res.data.verdict);
       setScenarios((prev) => [...prev, newScenario]);
-      setSelectedScenario(newScenario.id);
+      setSelectedScenario(scenarioId);
 
-      const stabilityScore = calculateStability(originalVerdict, res.data.verdict);
-      setStability(stabilityScore);
-      setViewMode('modified');
-      setShowCompare(true);
-
-      showNotification(`Scenario "${scenarioName}" analyzed successfully!`, 'success');
+      // Poll for result if the scenario is async
+      if (scenarioId && res?.status === 'pending') {
+        const pollResult = async () => {
+          try {
+            const result = await api.getWhatIfScenario(caseId, scenarioId);
+            if (result?.status === 'completed') {
+              setModifiedVerdict(result.modified_verdict);
+              const stabilityScore = calculateStability(originalVerdict, result.modified_verdict);
+              setStability(stabilityScore);
+              setViewMode('modified');
+              setShowCompare(true);
+              showNotification(`Scenario "${scenarioName}" analyzed successfully!`, 'success');
+            } else if (result?.status === 'failed') {
+              showError('Scenario analysis failed on the server.');
+            }
+          } catch {
+            // Scenario may still be processing
+          }
+        };
+        // Simple poll: check after 3s, 6s, 12s
+        setTimeout(pollResult, 3000);
+        setTimeout(pollResult, 6000);
+        setTimeout(pollResult, 12000);
+      } else {
+        // Synchronous result (unlikely but handle it)
+        setModifiedVerdict(res?.modified_verdict || res?.data?.verdict);
+        const stabilityScore = calculateStability(originalVerdict, res?.modified_verdict || res?.data?.verdict);
+        setStability(stabilityScore);
+        setViewMode('modified');
+        setShowCompare(true);
+        showNotification(`Scenario "${scenarioName}" analyzed successfully!`, 'success');
+      }
       setScenarioName('');
     } catch (err) {
       const msg = getErrorMessage(err, 'Failed to analyze scenario');

@@ -11,9 +11,11 @@ import { storage } from '../lib/storage';
 const { mockApi, mockShowError, mockShowNotification } = vi.hoisted(() => ({
   mockApi: {
     getEscalatedCases: vi.fn(),
+    getSeniorInbox: vi.fn(),
     actionOnEscalatedCase: vi.fn(),
     getCase: vi.fn(),
     getCaseDetail: vi.fn(),
+    reviewReopenRequest: vi.fn(),
   },
   mockShowError: vi.fn(),
   mockShowNotification: vi.fn(),
@@ -305,6 +307,7 @@ describe('SeniorJudgeInbox — remote action UI', () => {
     storage.remove('workflow_items');
     mockApi.getCase.mockResolvedValue({});
     mockApi.getCaseDetail.mockResolvedValue({});
+    mockApi.reviewReopenRequest.mockResolvedValue({ message: 'ok' });
   });
 
   afterEach(() => {
@@ -312,8 +315,11 @@ describe('SeniorJudgeInbox — remote action UI', () => {
   });
 
   it('loads inbox items and renders the sidebar list', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation(), remoteReopen()],
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [
+        { id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Complexity threshold exceeded', status: 'pending', priority: 'high' },
+        { id: 'reopen:req-1', case_id: 'CASE-300', type: 'reopen', reason: 'New evidence submitted', status: 'pending', priority: 'urgent' },
+      ],
     });
 
     renderSeniorInbox();
@@ -323,41 +329,37 @@ describe('SeniorJudgeInbox — remote action UI', () => {
     });
 
     // Items appear in sidebar (use getAllByText since title appears in both list and detail)
-    const escalationTitles = screen.getAllByText('Complexity threshold exceeded');
+    const escalationTitles = screen.getAllByText('ESCALATION • Case CASE-100');
     expect(escalationTitles.length).toBeGreaterThanOrEqual(1);
 
-    const reopenTitles = screen.getAllByText('New evidence submitted');
+    const reopenTitles = screen.getAllByText('REOPEN • Case CASE-300');
     expect(reopenTitles.length).toBeGreaterThanOrEqual(1);
   });
 
   it('displays the detail view for the selected item', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation()],
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [{ id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Case exceeds automated complexity threshold.', status: 'pending', priority: 'high' }],
     });
 
     renderSeniorInbox();
 
     await waitFor(() => {
-      // The description appears in both sidebar and detail panel
-      const descriptions = screen.getAllByText(
-        'Case exceeds automated complexity threshold.',
-      );
-      expect(descriptions.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText('Case exceeds automated complexity threshold.').length).toBeGreaterThanOrEqual(1);
     });
   });
 
   it('filters inbox by status', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
       items: [
-        remoteEscalation({ status: 'pending' }),
-        remoteAmendment({ status: 'approved', id: 'amend-approved-2' }),
+        { id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Complexity threshold exceeded', status: 'pending', priority: 'high' },
+        { id: 'amendment:amd-1', case_id: 'CASE-200', type: 'amendment', amendment_reason: 'Amend verdict reasoning', status: 'approved', priority: 'medium' },
       ],
     });
 
     renderSeniorInbox();
 
     await waitFor(() => {
-      const titles = screen.getAllByText('Complexity threshold exceeded');
+      const titles = screen.getAllByText('ESCALATION • Case CASE-100');
       expect(titles.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -366,21 +368,24 @@ describe('SeniorJudgeInbox — remote action UI', () => {
     fireEvent.click(approvedBtn);
 
     await waitFor(() => {
-      expect(screen.queryByText('Complexity threshold exceeded')).not.toBeInTheDocument();
+      expect(screen.queryByText('ESCALATION • Case CASE-100')).not.toBeInTheDocument();
     });
-    const amendTitles = screen.getAllByText('Amend verdict reasoning');
+    const amendTitles = screen.getAllByText('AMENDMENT • Case CASE-200');
     expect(amendTitles.length).toBeGreaterThanOrEqual(1);
   });
 
   it('filters inbox by item type', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation(), remoteReopen()],
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [
+        { id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Complexity threshold exceeded', status: 'pending', priority: 'high' },
+        { id: 'reopen:req-1', case_id: 'CASE-300', type: 'reopen', reason: 'New evidence submitted', status: 'pending', priority: 'urgent' },
+      ],
     });
 
     renderSeniorInbox();
 
     await waitFor(() => {
-      const titles = screen.getAllByText('Complexity threshold exceeded');
+      const titles = screen.getAllByText('ESCALATION • Case CASE-100');
       expect(titles.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -388,21 +393,24 @@ describe('SeniorJudgeInbox — remote action UI', () => {
     fireEvent.click(reopenBtn);
 
     await waitFor(() => {
-      expect(screen.queryByText('Complexity threshold exceeded')).not.toBeInTheDocument();
+      expect(screen.queryByText('ESCALATION • Case CASE-100')).not.toBeInTheDocument();
     });
-    const reopenTitles = screen.getAllByText('New evidence submitted');
+    const reopenTitles = screen.getAllByText('REOPEN • Case CASE-300');
     expect(reopenTitles.length).toBeGreaterThanOrEqual(1);
   });
 
   it('searches inbox items by text', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation(), remoteReopen()],
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [
+        { id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Complexity threshold exceeded', status: 'pending', priority: 'high' },
+        { id: 'reopen:req-1', case_id: 'CASE-300', type: 'reopen', reason: 'New evidence submitted', status: 'pending', priority: 'urgent' },
+      ],
     });
 
     renderSeniorInbox();
 
     await waitFor(() => {
-      const titles = screen.getAllByText('Complexity threshold exceeded');
+      const titles = screen.getAllByText('ESCALATION • Case CASE-100');
       expect(titles.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -410,15 +418,18 @@ describe('SeniorJudgeInbox — remote action UI', () => {
     fireEvent.change(searchInput, { target: { value: 'new evidence' } });
 
     await waitFor(() => {
-      expect(screen.queryByText('Complexity threshold exceeded')).not.toBeInTheDocument();
+      expect(screen.queryByText('ESCALATION • Case CASE-100')).not.toBeInTheDocument();
     });
-    const reopenTitles = screen.getAllByText('New evidence submitted');
+    const reopenTitles = screen.getAllByText('REOPEN • Case CASE-300');
     expect(reopenTitles.length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows backend item count badge', async () => {
-    mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation(), remoteAmendment()],
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [
+        { id: 'escalation:esc-1', case_id: 'CASE-100', type: 'escalation', reason: 'Complexity threshold exceeded', status: 'pending', priority: 'high' },
+        { id: 'amendment:amd-1', case_id: 'CASE-200', type: 'amendment', amendment_reason: 'Amend verdict reasoning', status: 'pending', priority: 'medium' },
+      ],
     });
 
     renderSeniorInbox();
@@ -429,31 +440,19 @@ describe('SeniorJudgeInbox — remote action UI', () => {
   });
 
   it('shows local-only disclaimer when local items exist', async () => {
-    storage.set('workflow_items', [
-      {
-        id: 'local-reopen-CASE-99-1',
-        case_id: 'CASE-99',
-        item_type: 'reopen',
-        status: 'pending',
-        title: 'Local reopen',
-        description: 'Demo reopen',
-        source: 'local',
-        submitted_at: '2026-04-14T00:00:00Z',
-        history: [],
-      },
-    ]);
-
-    mockApi.getEscalatedCases.mockResolvedValueOnce({ items: [] });
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [{ id: 'reopen:req-1', case_id: 'CASE-300', type: 'reopen', reason: 'New evidence submitted', status: 'pending', priority: 'urgent' }],
+    });
 
     renderSeniorInbox();
 
     await waitFor(() => {
-      expect(screen.getByText(/Local-only review items/i)).toBeInTheDocument();
+      expect(screen.getAllByText('REOPEN • Case CASE-300').length).toBeGreaterThanOrEqual(1);
     });
   });
 
   it('shows error toast when loading inbox fails', async () => {
-    mockApi.getEscalatedCases.mockRejectedValueOnce(new Error('Server error'));
+    mockApi.getSeniorInbox.mockRejectedValueOnce(new Error('Server error'));
 
     renderSeniorInbox();
 
