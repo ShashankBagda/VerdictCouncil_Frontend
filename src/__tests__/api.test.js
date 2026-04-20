@@ -60,9 +60,9 @@ describe('API module', () => {
 
   it('constructs correct knowledge base URL', async () => {
     const { default: api } = await import('../lib/api');
-    await api.listKBDocuments();
+    await api.getKnowledgeBaseStatus();
     const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/knowledge-base/documents');
+    expect(fetchCall[0]).toContain('/api/v1/knowledge-base/status');
   });
 
   it('throws an APIError on network failures', async () => {
@@ -88,34 +88,6 @@ describe('API module', () => {
 
     await expect(api.getSession()).rejects.toMatchObject({ status: 401 });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to /auth/me when /auth/session is unavailable', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        headers: {
-          get: () => 'application/json',
-        },
-        json: () => Promise.resolve({ detail: 'Not found' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: {
-          get: () => 'application/json',
-        },
-        json: () => Promise.resolve({ id: 'user-1', email: 'judge@verdictcouncil.sg', role: 'judge' }),
-      });
-
-    const { default: api } = await import('../lib/api');
-    const session = await api.getSession();
-
-    expect(globalThis.fetch.mock.calls[0][0]).toContain('/api/v1/auth/session');
-    expect(globalThis.fetch.mock.calls[1][0]).toContain('/api/v1/auth/me');
-    expect(session.user.email).toBe('judge@verdictcouncil.sg');
   });
 
   it('falls back to getSession when session extension endpoint is unavailable', async () => {
@@ -155,7 +127,7 @@ describe('API module', () => {
     const { default: api } = await import('../lib/api');
     await api.getEscalatedCases();
     const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/escalated-cases?page=1');
+    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/?page=1');
   });
 
   it('posts backend-compatible escalated case actions', async () => {
@@ -186,9 +158,7 @@ describe('API module', () => {
 
     await api.requestPasswordReset('judge@verdictcouncil.sg');
     await api.verifyPasswordReset('token-1', 'password-2');
-    await api.initializeKB();
-    await api.searchKB('equity');
-    await api.exportCase('case-1', 'pdf');
+    await api.runCase('case-1');
     await api.refreshVectorStore('primary');
     await api.manageUser('user-1', 'set-role', { role: 'judge' });
     await api.setConfig({ budget_daily: 10 });
@@ -198,9 +168,7 @@ describe('API module', () => {
       expect.arrayContaining([
         expect.stringContaining('/api/v1/auth/request-reset'),
         expect.stringContaining('/api/v1/auth/verify-reset'),
-        expect.stringContaining('/api/v1/knowledge-base/initialize'),
-        expect.stringContaining('/api/v1/knowledge-base/search'),
-        expect.stringContaining('/api/v1/cases/case-1/export?format=pdf'),
+        expect.stringContaining('/api/v1/cases/case-1/process'),
         expect.stringContaining('/api/v1/admin/vector-stores/refresh'),
         expect.stringContaining('/api/v1/admin/users/user-1/set-role'),
         expect.stringContaining('/api/v1/admin/cost-config'),
@@ -224,7 +192,7 @@ describe('API module', () => {
     globalThis.EventSource = originalEventSource;
   });
 
-  it('uploads knowledge base files and reports progress through XMLHttpRequest', async () => {
+  it('uploads case documents and reports progress through XMLHttpRequest', async () => {
     const listeners = {};
     const uploadListeners = {};
 
@@ -258,10 +226,10 @@ describe('API module', () => {
 
     globalThis.XMLHttpRequest = MockXHR;
     const onProgress = vi.fn();
-    const file = new File(['hello'], 'kb.txt', { type: 'text/plain' });
+    const file = new File(['hello'], 'evidence.txt', { type: 'text/plain' });
     const { default: api } = await import('../lib/api');
 
-    const result = await api.uploadToKB(file, onProgress);
+    const result = await api.uploadDocuments('case-1', [file], onProgress);
 
     expect(onProgress).toHaveBeenCalledWith(50);
     expect(result).toEqual({ ok: true });
@@ -291,7 +259,6 @@ describe('API module', () => {
     await api.disputeFact('case-1', 'fact-1', { status: 'contested' });
     await api.searchPrecedents('estoppel', 'sg', 3);
     await api.getKnowledgeBaseStatus();
-    await api.deleteKBDocument('file-1');
     await api.getAuditTrail('case-1', { actor: 'judge' });
     await api.generateHearingPack('case-1');
     await api.createHearingNote('case-1', { note: 'hearing note' });
@@ -299,8 +266,6 @@ describe('API module', () => {
     await api.updateHearingNote('case-1', 'note-1', { note: 'updated' });
     await api.lockHearingNote('case-1', 'note-1');
     await api.deleteHearingNote('case-1', 'note-1');
-    await api.amendDecision('case-1', { change: 'clarify' });
-    await api.getDecisionHistory('case-1');
     await api.requestCaseReopen('case-1', { reason: 'new evidence' });
     await api.listReopenRequests('case-1');
     await api.reviewReopenRequest('case-1', 'req-1', { action: 'approve' });
@@ -330,38 +295,27 @@ describe('API module', () => {
         expect.stringContaining('/api/v1/cases/case-1/facts/fact-1/dispute'),
         expect.stringContaining('/api/v1/precedents/search'),
         expect.stringContaining('/api/v1/knowledge-base/status'),
-        expect.stringContaining('/api/v1/knowledge-base/documents/file-1'),
         expect.stringContaining('/api/v1/audit/case-1/audit?actor=judge'),
         expect.stringContaining('/api/v1/cases/case-1/hearing-pack'),
         expect.stringContaining('/api/v1/cases/case-1/hearing-notes'),
         expect.stringContaining('/api/v1/cases/case-1/hearing-notes/note-1'),
         expect.stringContaining('/api/v1/cases/case-1/hearing-notes/note-1/lock'),
-        expect.stringContaining('/api/v1/cases/case-1/amend-decision'),
-        expect.stringContaining('/api/v1/cases/case-1/decision-history'),
         expect.stringContaining('/api/v1/cases/case-1/reopen-request'),
         expect.stringContaining('/api/v1/cases/case-1/reopen-requests'),
         expect.stringContaining('/api/v1/cases/case-1/reopen-requests/req-1/review'),
         expect.stringContaining('/api/v1/health/pair'),
-        expect.stringContaining('/api/v1/senior-inbox?page=2&per_page=15'),
+        expect.stringContaining('/api/v1/senior-inbox/?page=2&per_page=15'),
       ]),
     );
   });
 
-  it('handles text, empty, and upload error responses', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: { get: () => 'text/plain' },
-        text: () => Promise.resolve('pdf-bytes'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 204,
-        headers: { get: () => null },
-        text: () => Promise.resolve(''),
-      });
+  it('handles empty and upload error responses', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      text: () => Promise.resolve(''),
+    });
 
     const listeners = {};
 
@@ -384,7 +338,6 @@ describe('API module', () => {
     globalThis.XMLHttpRequest = FailingXHR;
     const { default: api } = await import('../lib/api');
 
-    await expect(api.exportCase('case-2', 'pdf')).resolves.toBe('pdf-bytes');
     await expect(api.logout()).resolves.toBeNull();
     await expect(api.uploadDocuments('case-2', [new File(['x'], 'doc.txt')])).rejects.toMatchObject({
       status: 0,

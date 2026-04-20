@@ -71,10 +71,3 @@ export function normalizeKnowledgeBaseStatus(payload) {
   };
 }
 
-export function normalizeKBList(payload) {
-  return extractItems(payload, ['documents', 'files', 'items']);
-}
-
-export function normalizeKBSearch(payload) {
-  return extractItems(payload, ['results', 'matches', 'items']);
-}
