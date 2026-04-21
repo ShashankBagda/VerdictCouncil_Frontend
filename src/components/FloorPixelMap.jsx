@@ -268,17 +268,30 @@ const useTextureCache = (rooms, extraUrls = []) => {
 
 const drawRect = (container, x, y, w, h, color, alpha = 1) => {
   const g = new Graphics()
-  g.beginFill(color, alpha)
-  g.drawRect(x, y, w, h)
-  g.endFill()
+  g.rect(x, y, w, h).fill({ color, alpha })
   container.addChild(g)
 }
 
 const drawStrokeRect = (container, x, y, w, h, color, width = 1, alpha = 1) => {
   const g = new Graphics()
-  g.lineStyle(width, color, alpha)
-  g.drawRect(x, y, w, h)
+  g.rect(x, y, w, h).stroke({ color, width, alpha })
   container.addChild(g)
+}
+
+const fillLayerRect = (layer, x, y, w, h, color, alpha = 1) => {
+  layer.rect(x, y, w, h).fill({ color, alpha })
+}
+
+const strokeLayerRect = (layer, x, y, w, h, color, width = 1, alpha = 1) => {
+  layer.rect(x, y, w, h).stroke({ color, width, alpha })
+}
+
+const fillLayerRoundedRect = (layer, x, y, w, h, radius, color, alpha = 1) => {
+  layer.roundRect(x, y, w, h, radius).fill({ color, alpha })
+}
+
+const fillLayerEllipse = (layer, x, y, rx, ry, color, alpha = 1) => {
+  layer.ellipse(x, y, rx, ry).fill({ color, alpha })
 }
 
 const drawSpriteRect = (container, texture, x, y, w, h) => {
@@ -704,8 +717,7 @@ function FloorPixelMap({
         view.removeEventListener('pointerdown', handlePointerDown)
       }
 
-      app.ticker.maxFPS = 30
-      app.ticker.maxFPS = reduceMotion ? 14 : 30
+      app.ticker.maxFPS = reduceMotion ? 12 : 24
       app.ticker.add(() => {
         const pulse = (Math.sin(app.ticker.lastTime / 240) + 1) / 2
         const activeSetLive = activeRoomsRef.current
@@ -724,39 +736,28 @@ function FloorPixelMap({
           const selected = selectedSet.has(room.id)
 
           if (active) {
-            effectsLayer.beginFill(0x55cfff, 0.1 + pulse * 0.12)
-            effectsLayer.drawRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4)
-            effectsLayer.endFill()
+            fillLayerRect(effectsLayer, rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4, 0x55cfff, 0.1 + pulse * 0.12)
           }
 
           if (done) {
-            effectsLayer.lineStyle(1, 0x97f5be, 0.55)
-            effectsLayer.drawRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+            strokeLayerRect(effectsLayer, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 0x97f5be, 1, 0.55)
           }
 
           if (failed) {
-            effectsLayer.beginFill(0xff6688, 0.09 + pulse * 0.07)
-            effectsLayer.drawRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4)
-            effectsLayer.endFill()
-            effectsLayer.lineStyle(2, 0xff6a84, 0.85)
-            effectsLayer.drawRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+            fillLayerRect(effectsLayer, rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4, 0xff6688, 0.09 + pulse * 0.07)
+            strokeLayerRect(effectsLayer, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 0xff6a84, 2, 0.85)
           }
 
           if (selected) {
-            effectsLayer.lineStyle(2, 0x5ce8ff, 0.95)
-            effectsLayer.drawRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4)
+            strokeLayerRect(effectsLayer, rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 0x5ce8ff, 2, 0.95)
           }
 
           if (!reduceMotion && active && Math.floor(app.ticker.lastTime / 420) % 2 === 0) {
             const c = roomCenter(rect)
-            effectsLayer.beginFill(0xf8feff, 0.88)
-            effectsLayer.drawRoundedRect(c.x - 20, rect.y - 14, 40, 10, 3)
-            effectsLayer.endFill()
-            effectsLayer.beginFill(0x2d4b6a, 0.85)
-            effectsLayer.drawRect(c.x - 8, rect.y - 10, 2, 2)
-            effectsLayer.drawRect(c.x - 2, rect.y - 10, 2, 2)
-            effectsLayer.drawRect(c.x + 4, rect.y - 10, 2, 2)
-            effectsLayer.endFill()
+            fillLayerRoundedRect(effectsLayer, c.x - 20, rect.y - 14, 40, 10, 3, 0xf8feff, 0.88)
+            fillLayerRect(effectsLayer, c.x - 8, rect.y - 10, 2, 2, 0x2d4b6a, 0.85)
+            fillLayerRect(effectsLayer, c.x - 2, rect.y - 10, 2, 2, 0x2d4b6a, 0.85)
+            fillLayerRect(effectsLayer, c.x + 4, rect.y - 10, 2, 2, 0x2d4b6a, 0.85)
           }
         })
 
@@ -766,15 +767,11 @@ function FloorPixelMap({
           link.progress += link.speed
           if (link.progress >= 1) link.progress -= 1
 
-          effectsLayer.lineStyle(1, 0x69d6ff, 0.25)
-          effectsLayer.moveTo(link.from.x, link.from.y)
-          effectsLayer.lineTo(link.to.x, link.to.y)
+          effectsLayer.moveTo(link.from.x, link.from.y).lineTo(link.to.x, link.to.y).stroke({ color: 0x69d6ff, width: 1, alpha: 0.25 })
 
           const px = link.from.x + (link.to.x - link.from.x) * link.progress
           const py = link.from.y + (link.to.y - link.from.y) * link.progress
-          effectsLayer.beginFill(0xd8f8ff, 0.95)
-          effectsLayer.drawRect(px - 2, py - 2, 4, 4)
-          effectsLayer.endFill()
+          fillLayerRect(effectsLayer, px - 2, py - 2, 4, 4, 0xd8f8ff, 0.95)
         })
 
         npcShadowLayer.clear()
@@ -810,9 +807,7 @@ function FloorPixelMap({
           const px = Math.floor(npc.x)
           const py = Math.floor(npc.y) - bob
 
-          npcShadowLayer.beginFill(0x1c232d, 0.55)
-          npcShadowLayer.drawEllipse(px + 1, py + 8, 4, 1.8)
-          npcShadowLayer.endFill()
+          fillLayerEllipse(npcShadowLayer, px + 1, py + 8, 4, 1.8, 0x1c232d, 0.55)
 
           if (npc.sprite) {
             npc.sprite.x = px + 1
@@ -821,40 +816,26 @@ function FloorPixelMap({
             npc.sprite.tint = failed ? 0xff9ab4 : active ? 0xffffff : 0xc8d8f0
             npc.sprite.scale.set(active ? 1.2 : 1.15, active ? 1.2 : 1.15)
           } else {
-            npcShadowLayer.beginFill(0xefc7a0)
-            npcShadowLayer.drawRect(px, py, 2, 2)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px, py, 2, 2, 0xefc7a0)
 
-            npcShadowLayer.beginFill(failed ? 0xff89a4 : active ? 0x90d3ff : 0x7f99bd)
-            npcShadowLayer.drawRect(px - 1, py + 2, 4, 4)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px - 1, py + 2, 4, 4, failed ? 0xff89a4 : active ? 0x90d3ff : 0x7f99bd)
 
-            npcShadowLayer.beginFill(0x4b5e7a)
-            npcShadowLayer.drawRect(px - 1, py + 6, 1, 2)
-            npcShadowLayer.drawRect(px + 2, py + 6, 1, 2)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px - 1, py + 6, 1, 2, 0x4b5e7a)
+            fillLayerRect(npcShadowLayer, px + 2, py + 6, 1, 2, 0x4b5e7a)
           }
 
           if (active && Math.floor(app.ticker.lastTime / 200) % 2 === 0) {
-            npcShadowLayer.beginFill(0xf9fcff)
-            npcShadowLayer.drawRect(px - 3, py - 9, 10, 6)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px - 3, py - 9, 10, 6, 0xf9fcff)
 
-            npcShadowLayer.beginFill(0x2f4766)
-            npcShadowLayer.drawRect(px - 1, py - 7, 1, 1)
-            npcShadowLayer.drawRect(px + 1, py - 7, 1, 1)
-            npcShadowLayer.drawRect(px + 3, py - 7, 1, 1)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px - 1, py - 7, 1, 1, 0x2f4766)
+            fillLayerRect(npcShadowLayer, px + 1, py - 7, 1, 1, 0x2f4766)
+            fillLayerRect(npcShadowLayer, px + 3, py - 7, 1, 1, 0x2f4766)
           }
 
           if (failed && Math.floor(app.ticker.lastTime / 260) % 2 === 0) {
-            npcShadowLayer.beginFill(0xffdbdf)
-            npcShadowLayer.drawRect(px - 2, py - 8, 8, 5)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px - 2, py - 8, 8, 5, 0xffdbdf)
 
-            npcShadowLayer.beginFill(0xa53a56)
-            npcShadowLayer.drawRect(px + 1, py - 7, 1, 3)
-            npcShadowLayer.endFill()
+            fillLayerRect(npcShadowLayer, px + 1, py - 7, 1, 3, 0xa53a56)
           }
         })
       })

@@ -54,6 +54,7 @@ export function usePipelineStatus(caseId, options = {}) {
   const staleTimerRef = useRef(null);
   const mountedRef = useRef(true);
   const terminalFiredRef = useRef(false);
+  const errorCountRef = useRef(0);
 
   // Keep callback refs stable to avoid re-triggering the effect
   const onStatusRef = useRef(onStatus);
@@ -93,6 +94,7 @@ export function usePipelineStatus(caseId, options = {}) {
 
     setStatus(nextStatus);
     setError(null);
+    errorCountRef.current = 0;
     setErrorCount(0);
     setIsStale(false);
     setIsGivenUp(false);
@@ -150,24 +152,21 @@ export function usePipelineStatus(caseId, options = {}) {
 
       const msg = getErrorMessage(err, 'Failed to fetch pipeline status');
       setError(msg);
+      const next = errorCountRef.current + 1;
+      errorCountRef.current = next;
+      setErrorCount(next);
 
-      setErrorCount((prev) => {
-        const next = prev + 1;
-
-        if (next >= MAX_POLL_ERRORS) {
-          // Give up — stop polling, surface the error
-          setIsGivenUp(true);
-          stopAll();
-          onErrorRef.current?.(`Pipeline polling stopped after ${next} consecutive errors: ${msg}`);
-        } else {
-          // Backoff and retry
-          const delay = getBackoffDelay(getPipelinePollingInterval(), next);
-          scheduleNext(delay);
-          onErrorRef.current?.(msg);
-        }
-
-        return next;
-      });
+      if (next >= MAX_POLL_ERRORS) {
+        // Give up — stop polling, surface the error
+        setIsGivenUp(true);
+        stopAll();
+        onErrorRef.current?.(`Pipeline polling stopped after ${next} consecutive errors: ${msg}`);
+      } else {
+        // Backoff and retry
+        const delay = getBackoffDelay(getPipelinePollingInterval(), next);
+        scheduleNext(delay);
+        onErrorRef.current?.(msg);
+      }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -194,6 +193,7 @@ export function usePipelineStatus(caseId, options = {}) {
       setLoading(false);
       setStatus(null);
       setError(null);
+      errorCountRef.current = 0;
       setErrorCount(0);
       setIsStale(false);
       setIsGivenUp(false);
@@ -205,6 +205,7 @@ export function usePipelineStatus(caseId, options = {}) {
 
     setLoading(true);
     setError(null);
+    errorCountRef.current = 0;
     setErrorCount(0);
     setIsStale(false);
     setIsGivenUp(false);
@@ -222,6 +223,7 @@ export function usePipelineStatus(caseId, options = {}) {
   const retry = useCallback(() => {
     if (!caseId || !enabled) return;
     setError(null);
+    errorCountRef.current = 0;
     setErrorCount(0);
     setIsStale(false);
     setIsGivenUp(false);

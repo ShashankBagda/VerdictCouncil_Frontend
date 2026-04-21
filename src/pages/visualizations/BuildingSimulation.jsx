@@ -10,7 +10,8 @@ const FADE = { IDLE: 'idle', OUT: 'fade_out', IN: 'fade_in' };
 
 export default function BuildingSimulation() {
   const { caseId } = useParams();
-  const caseLabel = caseId || 'active-case';
+  const hasValidCaseId = Boolean(caseId && caseId !== 'undefined');
+  const caseLabel = hasValidCaseId ? caseId : 'not-selected';
   const { showError } = useAPI();
   const { updatePipelineStatus } = useCase();
 
@@ -26,6 +27,7 @@ export default function BuildingSimulation() {
     isGivenUp,
     retry,
   } = usePipelineStatus(caseId, {
+    enabled: hasValidCaseId,
     onStatus: updatePipelineStatus,
     onError: showError,
   });
@@ -72,7 +74,7 @@ export default function BuildingSimulation() {
           <h2 className="text-xl font-bold text-navy-900">Verdict Council Building</h2>
           <p className="text-sm text-gray-600">9-agent pipeline for case {caseLabel}</p>
         </div>
-        {pipelineStatus && (
+        {hasValidCaseId && pipelineStatus && (
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-600">Progress</span>
             <div className="w-32 h-2 bg-gray-200 rounded-full">
@@ -134,7 +136,7 @@ export default function BuildingSimulation() {
       </div>
 
       {/* Connection error banner */}
-      {isGivenUp && (
+      {hasValidCaseId && isGivenUp && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2 flex items-center justify-between">
           <p className="text-sm text-rose-700">
             Pipeline polling stopped due to repeated errors.
@@ -150,7 +152,7 @@ export default function BuildingSimulation() {
       )}
 
       {/* Stale data warning — softer than give-up */}
-      {isStale && !isGivenUp && (
+      {hasValidCaseId && isStale && !isGivenUp && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-2">
           <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <p className="text-sm text-amber-700">
@@ -209,11 +211,18 @@ export default function BuildingSimulation() {
           <AgentStreamPanel
             key={caseId}
             caseId={caseId}
+            enabled={hasValidCaseId}
             selectedAgentId={selectedAgentId}
             agentStatuses={pipelineStatus?.agents}
           />
         </div>
       </div>
+
+      {!hasValidCaseId && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          No case selected. Open Building Simulation from a specific case to load live pipeline status.
+        </div>
+      )}
 
       {/* Secondary room selector row */}
       <div className="text-[11px] uppercase tracking-wider text-gray-500">Quick room select</div>

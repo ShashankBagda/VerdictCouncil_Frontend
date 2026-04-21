@@ -45,7 +45,8 @@ function formatTs(ts) {
  * AgentStreamPanel — right panel showing live pipeline events via SSE.
  * Falls back to polling GET /status every 5s if SSE fails or disconnects.
  */
-export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuses }) {
+export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuses, enabled = true }) {
+  const hasValidCase = Boolean(enabled && caseId && caseId !== 'undefined');
   const [events, setEvents] = useState({}); // keyed by agent_id
   const [sseConnected, setSseConnected] = useState(false);
   const [sseError, setSseError] = useState(false);
@@ -60,6 +61,10 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
   useEffect(() => {
     let pollInterval = null;
     let es = null;
+
+    if (!hasValidCase) {
+      return () => {};
+    }
 
     statusByAgentRef.current = {};
 
@@ -135,7 +140,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       if (es) es.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [caseId]);
+  }, [caseId, hasValidCase]);
 
   // Auto-scroll to bottom when new events arrive, unless user scrolled up
   useEffect(() => {
@@ -144,7 +149,7 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
     }
   }, [events, selectedAgentId]);
 
-  const agentEvents = selectedAgentId ? (events[selectedAgentId] || []) : [];
+  const agentEvents = hasValidCase && selectedAgentId ? (events[selectedAgentId] || []) : [];
   const selectedAgent = agentStatuses?.find((a) => a.agent_id === selectedAgentId);
 
   return (
@@ -158,7 +163,12 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {sseConnected ? (
+          {!hasValidCase ? (
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <span className="w-2 h-2 rounded-full bg-gray-500" />
+              Idle
+            </span>
+          ) : sseConnected ? (
             <span className="flex items-center gap-1 text-xs text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
               Live
@@ -227,7 +237,11 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
         }}
       >
         {!selectedAgentId && (
-          <p className="text-slate-500 italic">Click a room in the building to view its stream</p>
+          <p className="text-slate-500 italic">
+            {enabled && caseId && caseId !== 'undefined'
+              ? 'Click a room in the building to view its stream'
+              : 'Select a valid case to start live agent stream'}
+          </p>
         )}
         {selectedAgentId && agentEvents.length === 0 && (
           <p className="text-slate-500 italic">No events yet for this agent</p>
