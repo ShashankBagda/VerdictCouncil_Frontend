@@ -76,6 +76,8 @@ export function normalizeCaseDetail(payload, caseId) {
 
   return {
     ...summary,
+    gate_state: root.gate_state || null,
+    judicial_decision: root.judicial_decision || null,
     documents: documents.map((document, index) => ({
       id: document.id || document.document_id || `doc-${index}`,
       filename: document.filename || document.name || `Document ${index + 1}`,
@@ -133,6 +135,7 @@ export function normalizeTimelineResource(payload) {
     confidence: fact.confidence || null,
     status: fact.status || null,
     source_document_id: fact.source_document_id || null,
+    page_number: fact.page_number || null,
     source: fact.source_document_id || null,
     dispute_reason: fact.corroboration?.dispute_reason || null,
   }));

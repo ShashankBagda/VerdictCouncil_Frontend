@@ -420,12 +420,18 @@ export const api = {
   setConfig: (config) =>
     request('POST', '/api/v1/admin/cost-config', { body: config }),
 
-  getEscalatedCases: (page = 1, perPage = 20) =>
-    request('GET', `/api/v1/escalated-cases/?page=${page}&per_page=${perPage}`),
-  actionOnEscalatedCase: (itemId, body) =>
-    request('POST', `/api/v1/escalated-cases/${itemId}/action`, { body }),
-  getSeniorInbox: (page = 1, perPage = 20) =>
-    request('GET', `/api/v1/senior-inbox/?page=${page}&per_page=${perPage}`),
+  advanceGate: (caseId, gateName) =>
+    request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`),
+  rerunGate: (caseId, gateName, { agentName, instructions } = {}) =>
+    request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/rerun`, {
+      body: { agent_name: agentName, instructions },
+    }),
+  recordDecision: (caseId, body) =>
+    request('POST', `/api/v1/cases/${caseId}/decision`, { body }),
+  getDocumentExcerpt: (documentId, page) =>
+    request('GET', `/api/v1/documents/${documentId}/excerpt?page=${page}`),
+  updateSuggestedQuestions: (caseId, body) =>
+    request('PATCH', `/api/v1/cases/${caseId}/suggested-questions`, { body }),
 };
 
 export default api;
