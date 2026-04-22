@@ -1,4 +1,3 @@
-import React from 'react';
 import { FileSearch, Search, ExternalLink } from 'lucide-react';
 
 function MetaBadge({ children, tone = 'gray' }) {
@@ -28,14 +27,22 @@ export default function PrecedentSearchPanel({
   results = [],
   searching = false,
   searched = false,
+  searchedAt = null,
 }) {
   return (
     <div className="space-y-4">
       <div className="card-lg">
-        <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-          <FileSearch className="w-6 h-6 text-cyan-600" />
-          Live Precedent Search
-        </h2>
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <h2 className="text-2xl font-bold text-navy-900 flex items-center gap-2">
+            <FileSearch className="w-6 h-6 text-cyan-600" />
+            Live Precedent Search
+          </h2>
+          {searchedAt && (
+            <p className="text-xs text-gray-500 mt-1 flex-shrink-0">
+              Last live search: {new Date(searchedAt).toLocaleTimeString()}
+            </p>
+          )}
+        </div>
         <p className="text-sm text-gray-600 mb-6">
           Search precedents directly from the dossier to validate the current legal theory before issuing a decision.
         </p>
@@ -65,7 +72,7 @@ export default function PrecedentSearchPanel({
             ) : (
               <Search className="w-4 h-4" />
             )}
-            {searching ? 'Searching...' : 'Search'}
+            {searching ? 'Searching...' : 'Search Live Database'}
           </button>
         </div>
       </div>
@@ -91,7 +98,9 @@ export default function PrecedentSearchPanel({
                         Match {Math.round((item.score ?? item.relevance) * ((item.score ?? item.relevance) <= 1 ? 100 : 1))}%
                       </MetaBadge>
                     )}
-                    {item.source && <MetaBadge tone="gray">{item.source}</MetaBadge>}
+                    {item.source === 'live_search'
+                      ? <MetaBadge tone="amber">live</MetaBadge>
+                      : item.source && <MetaBadge tone="gray">{item.source}</MetaBadge>}
                   </div>
                 </div>
 

@@ -7,9 +7,12 @@ import {
   Clock,
   Database,
   Download,
+  Edit2,
+  FileQuestion,
   FileSearch,
   FileText,
   MessageSquare,
+  Plus,
   Scale,
   ShieldCheck,
   TriangleAlert,
@@ -29,13 +32,14 @@ import {
   normalizeWitnessResource,
 } from '../../lib/caseWorkspace';
 
-// New Components
 import EvidenceGapsPanel from '../../components/analysis/EvidenceGapsPanel';
 import PrecedentSearchPanel from '../../components/analysis/PrecedentSearchPanel';
+import SourceExcerptModal from '../../components/analysis/SourceExcerptModal';
 import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
 import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
 import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
 import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
+import DecisionEntryForm from '../../components/cases/DecisionEntryForm';
 
 const TABS = [
   { id: 'evidence', label: 'Evidence', icon: FileText, activeClass: 'bg-blue-100 text-blue-700 border-2 border-blue-300' },
@@ -45,6 +49,7 @@ const TABS = [
   { id: 'law', label: 'Law & Statutes', icon: BookOpen, activeClass: 'bg-orange-100 text-orange-700 border-2 border-orange-300' },
   { id: 'precedents', label: 'Precedents', icon: FileSearch, activeClass: 'bg-cyan-100 text-cyan-700 border-2 border-cyan-300' },
   { id: 'arguments', label: 'Arguments', icon: MessageSquare, activeClass: 'bg-rose-100 text-rose-700 border-2 border-rose-300' },
+  { id: 'questions', label: 'Suggested Questions', icon: FileQuestion, activeClass: 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300' },
   { id: 'hearing_analysis', label: 'Hearing Analysis', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
 ];
@@ -185,8 +190,13 @@ export default function CaseDossier() {
   const [precedentResults, setPrecedentResults] = useState([]);
   const [searchingPrecedents, setSearchingPrecedents] = useState(false);
   const [precedentSearched, setPrecedentSearched] = useState(false);
+  const [precedentSearchedAt, setPrecedentSearchedAt] = useState(null);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
   const [reopenRequests, setReopenRequests] = useState([]);
+  const [showDecisionForm, setShowDecisionForm] = useState(false);
+  const [excerptTarget, setExcerptTarget] = useState(null);
+  const [editingQuestions, setEditingQuestions] = useState({});
+  const [savingQuestions, setSavingQuestions] = useState(false);
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -352,6 +362,7 @@ export default function CaseDossier() {
       setPrecedentSearched(true);
       const payload = await api.searchPrecedents(precedentQuery.trim(), precedentDomain.trim() || undefined);
       setPrecedentResults(extractPrecedentItems(payload));
+      setPrecedentSearchedAt(payload?.searched_at || payload?.data?.searched_at || new Date().toISOString());
     } catch (error) {
       showError(getErrorMessage(error, 'Failed to search precedents'));
       setPrecedentResults([]);
@@ -548,6 +559,14 @@ export default function CaseDossier() {
                           <span className="font-semibold">Parties:</span> {event.participants.join(', ')}
                         </p>
                       )}
+                      {event.source_document_id && event.page_number && (
+                        <button
+                          onClick={() => setExcerptTarget({ documentId: event.source_document_id, page: event.page_number })}
+                          className="mt-2 text-xs text-purple-600 hover:text-purple-800 font-semibold underline"
+                        >
+                          View source (p.{event.page_number})
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -590,8 +609,31 @@ export default function CaseDossier() {
                       <div className="border-t p-4 bg-gray-50 space-y-3 text-sm">
                         {witness.statement && (
                           <div>
-                            <p className="font-semibold text-gray-700 mb-2">Statement</p>
+                            <p className="font-semibold text-gray-700 mb-2">Written Statement</p>
                             <p className="text-gray-700 whitespace-pre-wrap">{witness.statement}</p>
+                          </div>
+                        )}
+                        {witness.simulated_testimony && (
+                          <div className="border border-amber-200 rounded-lg overflow-hidden">
+                            <button
+                              onClick={() => toggleExpanded(`wit-sim-${idx}`)}
+                              className="w-full flex items-center justify-between px-4 py-2 bg-amber-50 hover:bg-amber-100 transition-colors"
+                            >
+                              <span className="text-xs font-semibold text-amber-700">Anticipated Testimony</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">Simulated — For Judicial Preparation Only</span>
+                                {expandedItems[`wit-sim-${idx}`] ? (
+                                  <ChevronUp className="w-4 h-4 text-amber-600" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-amber-600" />
+                                )}
+                              </div>
+                            </button>
+                            {expandedItems[`wit-sim-${idx}`] && (
+                              <div className="p-4 bg-amber-50/50">
+                                <p className="text-gray-700 whitespace-pre-wrap">{witness.simulated_testimony}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                         {witness.credibility && (
@@ -688,7 +730,7 @@ export default function CaseDossier() {
       )}
 
       {activeTab === 'precedents' && (
-        <PrecedentSearchPanel 
+        <PrecedentSearchPanel
           query={precedentQuery}
           onQueryChange={setPrecedentQuery}
           domain={precedentDomain}
@@ -697,6 +739,7 @@ export default function CaseDossier() {
           results={precedentResults}
           searching={searchingPrecedents}
           searched={precedentSearched}
+          searchedAt={precedentSearchedAt}
         />
       )}
 
@@ -787,6 +830,117 @@ export default function CaseDossier() {
         </div>
       )}
 
+      {activeTab === 'questions' && (
+        <div className="space-y-4">
+          {['claimant', 'respondent'].map((side) => {
+            const sideArgs = arguments_?.[side]?.arguments || [];
+            const allQuestions = sideArgs.flatMap((arg, argIdx) =>
+              (arg.suggested_questions || []).map((q, qIdx) => ({
+                ...q,
+                _argIdx: argIdx,
+                _qIdx: qIdx,
+                _key: `${side}-${argIdx}-${qIdx}`,
+              })),
+            );
+
+            const TAG_COLORS = {
+              factual_clarification: 'bg-blue-100 text-blue-700',
+              evidence_gap: 'bg-amber-100 text-amber-700',
+              credibility_probe: 'bg-rose-100 text-rose-700',
+              legal_interpretation: 'bg-violet-100 text-violet-700',
+            };
+
+            return (
+              <div key={side} className="card-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-navy-900 capitalize">
+                    {side === 'claimant' ? 'Claimant / Prosecution' : 'Respondent / Defense'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      const newQ = { question: '', rationale: '', question_type: 'factual_clarification', targets_weakness: '' };
+                      setEditingQuestions((prev) => ({
+                        ...prev,
+                        [`${side}-new`]: [...(prev[`${side}-new`] || []), newQ],
+                      }));
+                    }}
+                    className="flex items-center gap-1 text-sm font-semibold text-teal-600 hover:text-teal-700"
+                  >
+                    <Plus className="w-4 h-4" /> Add Question
+                  </button>
+                </div>
+                {allQuestions.length === 0 && !editingQuestions[`${side}-new`]?.length && (
+                  <p className="text-gray-500 text-sm">No suggested questions for this side yet.</p>
+                )}
+                <div className="space-y-3">
+                  {allQuestions.map((q) => (
+                    <div key={q._key} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          {editingQuestions[q._key] !== undefined ? (
+                            <input
+                              value={editingQuestions[q._key]}
+                              onChange={(e) => setEditingQuestions((prev) => ({ ...prev, [q._key]: e.target.value }))}
+                              className="input-field w-full text-sm"
+                            />
+                          ) : (
+                            <p className="text-sm text-gray-800">{q.question}</p>
+                          )}
+                          {q.question_type && (
+                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full font-semibold ${TAG_COLORS[q.question_type] || 'bg-gray-100 text-gray-700'}`}>
+                              {q.question_type.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setEditingQuestions((prev) => ({
+                            ...prev,
+                            [q._key]: prev[q._key] !== undefined ? undefined : q.question,
+                          }))}
+                          className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(editingQuestions).some((k) => k !== `${side}-new` && editingQuestions[k] !== undefined) && (
+                  <button
+                    disabled={savingQuestions}
+                    onClick={async () => {
+                      setSavingQuestions(true);
+                      try {
+                        const updatedArgs = sideArgs.map((arg, argIdx) => ({
+                          ...arg,
+                          suggested_questions: (arg.suggested_questions || []).map((q, qIdx) => {
+                            const key = `${side}-${argIdx}-${qIdx}`;
+                            return editingQuestions[key] !== undefined
+                              ? { ...q, question: editingQuestions[key] }
+                              : q;
+                          }),
+                        }));
+                        const allUpdated = updatedArgs.flatMap((a) => a.suggested_questions || []);
+                        await api.updateSuggestedQuestions(caseId, { side, questions: allUpdated });
+                        setEditingQuestions({});
+                        showNotification('Questions saved.', 'success');
+                      } catch (err) {
+                        showError(getErrorMessage(err, 'Failed to save questions'));
+                      } finally {
+                        setSavingQuestions(false);
+                      }
+                    }}
+                    className="mt-3 btn-primary text-sm"
+                  >
+                    {savingQuestions ? 'Saving...' : 'Save Edits'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {activeTab === 'hearing_analysis' && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
@@ -841,6 +995,29 @@ export default function CaseDossier() {
               )}
 
               <div className="border-t border-gray-200 pt-6">
+                {showDecisionForm ? (
+                  <DecisionEntryForm
+                    caseId={caseId}
+                    hearingAnalysis={hearingAnalysis}
+                    onDecisionRecorded={() => {
+                      setShowDecisionForm(false);
+                      showNotification('Judicial decision recorded.', 'success');
+                    }}
+                    onCancel={() => setShowDecisionForm(false)}
+                  />
+                ) : (
+                  <div className="mb-6">
+                    <button
+                      onClick={() => setShowDecisionForm(true)}
+                      className="btn-primary"
+                    >
+                      Record Decision
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-200 pt-6">
                 <h3 className="text-lg font-semibold text-navy-900 mb-3">Request Re-analysis</h3>
                 <p className="text-sm text-gray-600 mb-4">
                   If new evidence has been submitted or a procedural issue is identified, you can request the pipeline to re-run this case.
@@ -871,6 +1048,14 @@ export default function CaseDossier() {
         <FairnessAuditPanel 
           summary={fairnessSummary}
           checks={fairnessChecks}
+        />
+      )}
+
+      {excerptTarget && (
+        <SourceExcerptModal
+          documentId={excerptTarget.documentId}
+          page={excerptTarget.page}
+          onClose={() => setExcerptTarget(null)}
         />
       )}
 
