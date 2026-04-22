@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Outlet, NavLink } from 'react-router-dom';
-import { CheckCircle, FilePlus2, RefreshCw, UploadCloud } from 'lucide-react';
+import { FilePlus2, UploadCloud } from 'lucide-react';
 import { useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import {
-  normalizeCaseDetail,
-} from '../../lib/caseWorkspace';
+import { normalizeCaseDetail } from '../../lib/caseWorkspace';
+import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus';
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
 import DocumentUploadList from '../../components/cases/DocumentUploadList';
+import GateReviewPanel from '../../components/cases/GateReviewPanel';
 
 const VALID_APPEND_TYPES = [
   'application/pdf',
@@ -26,9 +26,9 @@ function StatusBadge({ status }) {
         ? 'bg-rose-100 text-rose-700'
         : status === 'completed' || status === 'ready_for_review'
           ? 'bg-emerald-100 text-emerald-700'
-          : status === 'escalated'
-            ? 'bg-amber-100 text-amber-700'
-          : 'bg-blue-100 text-blue-700';
+          : isGatePauseStatus(status)
+            ? 'bg-teal-100 text-teal-700'
+            : 'bg-blue-100 text-blue-700';
 
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${tone}`}>
@@ -186,6 +186,17 @@ export default function CaseDetail() {
           </button>
         </div>
       </div>
+
+      {isGatePauseStatus(workspaceCase?.raw_status) && (
+        <GateReviewPanel
+          caseId={caseId}
+          gateName={gateNameFromStatus(workspaceCase.raw_status)}
+          onAdvanced={async () => {
+            const payload = await api.getCaseDetail(caseId);
+            updateCaseDetail(normalizeCaseDetail(payload, caseId));
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
         <div className="min-w-0">
