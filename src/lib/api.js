@@ -299,15 +299,25 @@ export const api = {
   createCase: (caseData) =>
     request('POST', '/api/v1/cases/', { body: caseData }),
   listCases: (params = {}) => {
-    // Backend expects: ?status=...&domain=...&page=...&per_page=...
-    // Map frontend filter names to backend query param names
+    const domainMap = {
+      SCT: 'small_claims',
+      Traffic: 'traffic_violation',
+    };
     const backendParams = {};
     if (params.status || params.status_filter) {
       backendParams.status = params.status || params.status_filter;
     }
     if (params.domain || params.domain_filter) {
-      backendParams.domain = params.domain || params.domain_filter;
+      const domainValue = params.domain || params.domain_filter;
+      backendParams.domain = domainMap[domainValue] || domainValue;
     }
+    if (params.search) backendParams.search = params.search;
+    if (params.complexity) backendParams.complexity = params.complexity;
+    if (params.outcome) backendParams.outcome = params.outcome;
+    if (params.filed_from) backendParams.filed_from = params.filed_from;
+    if (params.filed_to) backendParams.filed_to = params.filed_to;
+    if (params.sort_by) backendParams.sort_by = params.sort_by;
+    if (params.sort_direction) backendParams.sort_direction = params.sort_direction;
     if (params.page) backendParams.page = params.page;
     if (params.per_page) backendParams.per_page = params.per_page;
     const query = new URLSearchParams(backendParams).toString();
@@ -425,8 +435,8 @@ export const api = {
   setConfig: (config) =>
     request('POST', '/api/v1/admin/cost-config', { body: config }),
 
-  getEscalatedCases: (page = 1) =>
-    request('GET', `/api/v1/escalated-cases/?page=${page}`),
+  getEscalatedCases: (page = 1, perPage = 20) =>
+    request('GET', `/api/v1/escalated-cases/?page=${page}&per_page=${perPage}`),
   actionOnEscalatedCase: (itemId, body) =>
     request('POST', `/api/v1/escalated-cases/${itemId}/action`, { body }),
   getSeniorInbox: (page = 1, perPage = 20) =>

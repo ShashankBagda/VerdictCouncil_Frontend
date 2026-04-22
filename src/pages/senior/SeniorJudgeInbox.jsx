@@ -3,6 +3,7 @@ import { Search, Shield } from 'lucide-react';
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import EscalationDetailView from '../../components/escalation/EscalationDetailView';
+import { normalizeWorkflowItem } from '../../lib/escalationWorkflow';
 
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
 
@@ -12,30 +13,18 @@ const rankedItems = (items) =>
       (PRIORITY_ORDER[a.priority] ?? PRIORITY_ORDER.medium) -
       (PRIORITY_ORDER[b.priority] ?? PRIORITY_ORDER.medium);
     if (priorityDiff !== 0) return priorityDiff;
-    return new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime();
+    return new Date(a.submitted_at || 0).getTime() - new Date(b.submitted_at || 0).getTime();
   });
-
-const normalizeInboxItem = (raw) => ({
-  id: raw.id,
-  backendId: raw.id,
-  case_id: raw.case_id,
-  item_type: raw.type,
-  title: `${String(raw.type || 'item').toUpperCase()} • Case ${String(raw.case_id || '').slice(0, 8)}`,
-  description: raw.reason || raw.amendment_reason || 'Pending senior judge review.',
-  context: typeof raw.context === 'string' ? raw.context : null,
-  details: typeof raw.details === 'string' ? raw.details : null,
-  submitter: 'judge',
-  submitted_at: raw.submitted_at || new Date().toISOString(),
-  status: raw.status || 'pending',
-  priority: raw.priority || 'medium',
-  source: raw.type === 'escalation' ? 'backend' : 'local',
-  history: [],
-});
 
 const parseBackendId = (backendId) => {
   const [type, id] = String(backendId || '').split(':');
   return { type, id };
 };
+
+const formatLabel = (value) =>
+  String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 
 export default function SeniorJudgeInbox() {
   const { user } = useAuth();
@@ -45,6 +34,8 @@ export default function SeniorJudgeInbox() {
   const [selectedId, setSelectedId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [judgeFilter, setJudgeFilter] = useState('all');
+  const [domainFilter, setDomainFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [processing, setProcessing] = useState(false);
 
@@ -53,7 +44,7 @@ export default function SeniorJudgeInbox() {
       try {
         setLoading(true);
         const res = await api.getSeniorInbox();
-        const remoteItems = (res?.items || res?.data?.items || []).map(normalizeInboxItem);
+        const remoteItems = (res?.items || res?.data?.items || []).map(normalizeWorkflowItem);
         const merged = rankedItems(remoteItems);
         setItems(merged);
         setSelectedId(merged[0]?.id || null);
@@ -73,9 +64,11 @@ export default function SeniorJudgeInbox() {
         items.filter((item) => {
           if (statusFilter !== 'all' && item.status !== statusFilter) return false;
           if (typeFilter !== 'all' && item.item_type !== typeFilter) return false;
+          if (judgeFilter !== 'all' && item.submitter !== judgeFilter) return false;
+          if (domainFilter !== 'all' && item.domain !== domainFilter) return false;
           if (
             search.trim() &&
-            !`${item.title} ${item.description} ${item.case_id}`
+            !`${item.title} ${item.description} ${item.case_id} ${item.submitter} ${item.domain || ''}`
               .toLowerCase()
               .includes(search.trim().toLowerCase())
           ) {
@@ -84,7 +77,23 @@ export default function SeniorJudgeInbox() {
           return true;
         }),
       ),
-    [items, search, statusFilter, typeFilter],
+    [domainFilter, items, judgeFilter, search, statusFilter, typeFilter],
+  );
+
+  const judgeOptions = useMemo(
+    () =>
+      [...new Set(items.map((item) => item.submitter).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [items],
+  );
+
+  const domainOptions = useMemo(
+    () =>
+      [...new Set(items.map((item) => item.domain).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [items],
   );
 
   const selectedItem =
@@ -163,7 +172,7 @@ export default function SeniorJudgeInbox() {
         return;
       }
 
-      showError('Amendment actions are not exposed by the backend yet.');
+      showError('Decision amendment approvals are not exposed by the backend yet.');
     } catch (error) {
       showError(getErrorMessage(error, `Failed to ${action.replace(/_/g, ' ')} request`));
     } finally {
@@ -236,6 +245,34 @@ export default function SeniorJudgeInbox() {
             ))}
           </div>
 
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <select
+              value={judgeFilter}
+              onChange={(event) => setJudgeFilter(event.target.value)}
+              className="input-field"
+            >
+              <option value="all">All originating judges</option>
+              {judgeOptions.map((judge) => (
+                <option key={judge} value={judge}>
+                  {judge}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={domainFilter}
+              onChange={(event) => setDomainFilter(event.target.value)}
+              className="input-field"
+            >
+              <option value="all">All domains</option>
+              {domainOptions.map((domain) => (
+                <option key={domain} value={domain}>
+                  {formatLabel(domain)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-2">
             {filteredItems.map((item) => (
               <button
@@ -258,6 +295,15 @@ export default function SeniorJudgeInbox() {
                   <span>{item.item_type}</span>
                   <span>&bull;</span>
                   <span>{item.status}</span>
+                  {item.domain && (
+                    <>
+                      <span>&bull;</span>
+                      <span>{formatLabel(item.domain)}</span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-1 text-[11px] text-gray-500">
+                  Originating judge: {item.submitter}
                 </div>
               </button>
             ))}

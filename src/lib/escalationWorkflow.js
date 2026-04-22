@@ -37,14 +37,25 @@ export const normalizeWorkflowItem = (item, index = 0) => {
   return {
     ...item,
     id,
+    backendId: id,
     case_id: caseId,
     item_type: itemType,
     status,
-    title: item?.title || `Case ${caseId}`,
-    description: item?.description || item?.summary || '',
-    context: item?.context || item?.details || '',
+    case_title: item?.case_title || item?.title || null,
+    title: item?.title || item?.case_title || `Case ${caseId}`,
+    description: item?.description || item?.reason || item?.preview || item?.summary || '',
+    preview: item?.preview || item?.summary || item?.description || '',
+    context: item?.context || item?.details || item?.preview || '',
     details: item?.details || item?.context || '',
-    submitter: item?.submitter || item?.requested_by || item?.created_by || 'Unknown',
+    originating_judge:
+      item?.originating_judge || item?.submitter || item?.requested_by || item?.created_by || null,
+    submitter:
+      item?.submitter ||
+      item?.originating_judge ||
+      item?.requested_by ||
+      item?.created_by ||
+      'Unknown',
+    domain: item?.domain || item?.case?.domain || null,
     submitted_at: item?.submitted_at || item?.created_at || new Date().toISOString(),
     assignee: item?.assignee || item?.assigned_to || null,
     priority: item?.priority || 'medium',

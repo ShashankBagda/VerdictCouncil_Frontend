@@ -63,7 +63,7 @@ describe('KnowledgeBase (read-only status page)', () => {
     expect(screen.getByText('Status unavailable.')).toBeInTheDocument();
   });
 
-  it('communicates that upload/search/delete flows are deferred', async () => {
+  it('communicates that the page is scoped to readiness and status', async () => {
     mockGetKnowledgeBaseStatus.mockResolvedValueOnce({
       initialized: true,
       documents_count: 1,
@@ -73,7 +73,7 @@ describe('KnowledgeBase (read-only status page)', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Upload, search, and delete flows are deferred/i),
+        screen.getByText(/focuses on the status, freshness, and readiness/i),
       ).toBeInTheDocument();
     });
   });

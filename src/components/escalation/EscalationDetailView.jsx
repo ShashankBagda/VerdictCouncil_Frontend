@@ -41,6 +41,9 @@ export default function EscalationDetailView({
 
   const isPending = item.status === 'pending';
   const isLocalItem = item.source === 'local';
+  const isRemoteEscalation = !isLocalItem && item.item_type === 'escalation';
+  const isRemoteReopen = !isLocalItem && item.item_type === 'reopen';
+  const isRemoteAmendment = !isLocalItem && item.item_type === 'amendment';
 
   const handleAction = (action) => {
     onAction(action, {
@@ -175,21 +178,29 @@ export default function EscalationDetailView({
                 </h3>
 
                 <div className="space-y-3">
-                  <div className="group">
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
-                      {isLocalItem ? 'Notes / Rationale' : 'Notes'}
-                    </label>
-                    <textarea
-                      value={reason}
-                      onChange={(event) => setReason(event.target.value)}
-                      placeholder={
-                        isLocalItem
-                          ? 'Detail the reasoning for this review outcome...'
-                          : 'Record review notes for the escalation action...'
-                      }
-                      className="input-field min-h-[120px] bg-gray-50 group-focus-within:bg-white transition-colors"
-                    />
-                  </div>
+                  {!isRemoteAmendment && (
+                    <div className="group">
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
+                        {isLocalItem
+                          ? 'Notes / Rationale'
+                          : isRemoteReopen
+                            ? 'Review Notes'
+                            : 'Notes'}
+                      </label>
+                      <textarea
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                        placeholder={
+                          isLocalItem
+                            ? 'Detail the reasoning for this review outcome...'
+                            : isRemoteReopen
+                              ? 'Record notes for approving or rejecting the reopen request...'
+                              : 'Record review notes for the escalation action...'
+                        }
+                        className="input-field min-h-[120px] bg-gray-50 group-focus-within:bg-white transition-colors"
+                      />
+                    </div>
+                  )}
 
                   {isLocalItem ? (
                     <div className="group">
@@ -203,7 +214,7 @@ export default function EscalationDetailView({
                         className="input-field bg-gray-50 group-focus-within:bg-white transition-colors"
                       />
                     </div>
-                  ) : (
+                  ) : isRemoteEscalation ? (
                     <div className="group">
                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
                         Final Order (Required for Manual Decision)
@@ -214,6 +225,14 @@ export default function EscalationDetailView({
                         placeholder="Enter the final order text if you are recording a manual decision..."
                         className="input-field min-h-[120px] bg-gray-50 group-focus-within:bg-white transition-colors"
                       />
+                    </div>
+                  ) : null}
+
+                  {isRemoteAmendment && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                      Decision amendments are visible in the senior inbox, but the backend
+                      approval endpoint has not been exposed yet. This item remains read-only until
+                      that workflow ships.
                     </div>
                   )}
 
@@ -260,7 +279,37 @@ export default function EscalationDetailView({
                         Rationale is required for rejections and information requests.
                       </p>
                     </>
-                  ) : (
+                  ) : isRemoteReopen ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button
+                          onClick={() => handleAction('approved')}
+                          disabled={processing}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <CheckCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">
+                            Approve Reopen
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={() => handleAction('rejected')}
+                          disabled={processing || !reason.trim()}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 hover:bg-rose-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <XCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">
+                            Reject
+                          </span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 italic text-center">
+                        Rejecting a reopen request requires review notes. Reassign and
+                        request-more-info actions remain pending backend support.
+                      </p>
+                    </>
+                  ) : isRemoteEscalation ? (
                     <>
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                         <button
@@ -305,6 +354,10 @@ export default function EscalationDetailView({
                         Notes are required for note entries and rejections. Manual decisions require a final order.
                       </p>
                     </>
+                  ) : (
+                    <p className="text-[10px] text-gray-400 italic text-center">
+                      This workflow item has no executable review action in the current backend.
+                    </p>
                   )}
                 </div>
               </section>

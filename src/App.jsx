@@ -93,7 +93,7 @@ export default function App() {
                     element={
                       <ProtectedRoute
                         element={<KnowledgeBase />}
-                        allowedRoles={['admin', 'senior_judge']}
+                        allowedRoles={['judge', 'admin', 'senior_judge']}
                       />
                     }
                   />

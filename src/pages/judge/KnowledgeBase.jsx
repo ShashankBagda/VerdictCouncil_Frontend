@@ -34,9 +34,8 @@ export default function KnowledgeBase() {
       </div>
       <h1 className="text-4xl font-extrabold text-navy-900 tracking-tight mb-4">Knowledge Base</h1>
       <p className="text-gray-500 mb-10 max-w-xl">
-        The private judicial knowledge base is read-only in this build. Status reporting is available;
-        upload, search, and document-management endpoints are tracked in the backend backlog and will
-        be enabled in a later release.
+        This screen focuses on the status, freshness, and readiness of the judicial knowledge base.
+        It does not attempt to mirror every backend maintenance action in the UI.
       </p>
 
       <div className="card-lg border-gray-200 p-8">
@@ -71,8 +70,8 @@ export default function KnowledgeBase() {
           <div className="flex items-center gap-3 p-3 bg-navy-50 rounded-xl border border-navy-100/50">
             <Clock className="w-4 h-4 text-navy-400 flex-shrink-0" />
             <p className="text-[11px] text-navy-700 leading-tight font-medium">
-              Upload, search, and delete flows are deferred — backend routes for document ingestion,
-              semantic search, and deletion are not yet available.
+              Judges can use this page to verify store readiness, freshness, and document volume
+              before relying on AI-supported legal retrieval in the dossier.
             </p>
           </div>
         </div>

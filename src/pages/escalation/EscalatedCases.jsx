@@ -12,12 +12,8 @@ import {
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import {
-  applyLocalWorkflowAction,
   buildWorkflowCounts,
-  getStoredWorkflowItems,
-  mergeWorkflowItems,
   normalizeWorkflowItem,
-  splitWorkflowItemsBySource,
 } from '../../lib/escalationWorkflow';
 import EscalationDetailView from '../../components/escalation/EscalationDetailView';
 
@@ -109,8 +105,7 @@ export default function EscalatedCases() {
         setLoading(true);
         const res = await api.getEscalatedCases();
         const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
-        const localItems = getStoredWorkflowItems();
-        setItems(mergeWorkflowItems(remoteItems, localItems));
+        setItems(remoteItems);
       } catch (err) {
         showError(getErrorMessage(err, 'Failed to fetch escalated cases'));
       } finally {
@@ -121,11 +116,7 @@ export default function EscalatedCases() {
     fetchInbox();
   }, [showError]);
 
-  const { remote: remoteItems, local: localItems } = useMemo(
-    () => splitWorkflowItemsBySource(items),
-    [items],
-  );
-  const remoteCounts = useMemo(() => buildWorkflowCounts(remoteItems), [remoteItems]);
+  const remoteCounts = useMemo(() => buildWorkflowCounts(items), [items]);
   const filteredItems = useMemo(
     () =>
       items.filter((item) => {
@@ -138,7 +129,6 @@ export default function EscalatedCases() {
 
   const handleAction = async (item, action, payload = {}) => {
     const reason = payload.reason?.trim() || '';
-    const assignee = payload.assignee?.trim() || '';
     const finalOrder = payload.finalOrder?.trim() || '';
 
     if (item.source !== 'local' && action === 'add_notes' && !reason) {
@@ -157,44 +147,36 @@ export default function EscalatedCases() {
     try {
       setProcessingId(item.id);
 
-      if (item.source === 'local') {
-        const updated = applyLocalWorkflowAction(item.id, action, reason, user?.email || 'senior@local', assignee);
-        setItems((prev) => prev.map((entry) => (entry.id === item.id ? updated : entry)));
-      } else {
-        const response = await api.actionOnEscalatedCase(item.id, {
-          action,
-          notes: reason || undefined,
-          final_order: finalOrder || undefined,
-        });
-        setItems((prev) => {
-          if (action !== 'add_notes') {
-            return prev.filter((entry) => entry.id !== item.id);
-          }
+      const response = await api.actionOnEscalatedCase(item.case_id, {
+        action,
+        notes: reason || undefined,
+        final_order: finalOrder || undefined,
+      });
+      setItems((prev) => {
+        if (action !== 'add_notes') {
+          return prev.filter((entry) => entry.id !== item.id);
+        }
 
-          return prev.map((entry) =>
-            entry.id === item.id
-              ? {
-                  ...entry,
-                  status: 'pending',
-                  history: [
-                    ...(entry.history || []),
-                    {
-                      id: `${entry.id}-${Date.now()}`,
-                      action,
-                      reason: reason || response?.message || 'Notes added',
-                      actor: user?.email || 'reviewer',
-                      created_at: new Date().toISOString(),
-                    },
-                  ],
-                }
-              : entry,
-          );
-        });
-        showNotification(response?.message || 'Escalation updated successfully.', 'success');
-        return;
-      }
-
-      showNotification(`Request ${action.replace(/_/g, ' ')} successfully.`, 'success');
+        return prev.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                status: 'pending',
+                history: [
+                  ...(entry.history || []),
+                  {
+                    id: `${entry.id}-${Date.now()}`,
+                    action,
+                    reason: reason || response?.message || 'Notes added',
+                    actor: user?.email || 'reviewer',
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              }
+            : entry,
+        );
+      });
+      showNotification(response?.message || 'Escalation updated successfully.', 'success');
     } catch (err) {
       showError(getErrorMessage(err, `Failed to ${action.replace(/_/g, ' ')} request`));
     } finally {
@@ -218,13 +200,8 @@ export default function EscalatedCases() {
       <div className="card-lg">
         <h1 className="text-3xl font-bold text-navy-900 mb-2">Escalated Cases</h1>
         <p className="text-gray-600">
-          Review escalations, amendment requests, and reopen requests across the current queue.
+          Review the backend escalation queue raised by routing or governance concerns.
         </p>
-        {localItems.length > 0 && (
-          <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Local-only workflow items are shown in this view for demo continuity, but they are not part of the backend queue or the shared nav badge.
-          </p>
-        )}
       </div>
 
       <div className="card-lg space-y-4">
@@ -250,11 +227,6 @@ export default function EscalatedCases() {
             </button>
           ))}
         </div>
-        {localItems.length > 0 && (
-          <p className="text-xs text-gray-500">
-            Additional local-only items visible in this page: {localItems.length}
-          </p>
-        )}
         <div className="flex flex-wrap gap-2">
           {['all', 'pending', 'approved', 'rejected'].map((status) => (
             <button

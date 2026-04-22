@@ -13,24 +13,24 @@
 
 export const PIPELINE_AGENT_ORDER = [
   'case-processing',
-  'fact-reconstruction',
+  'complexity-routing',
   'evidence-analysis',
+  'fact-reconstruction',
   'witness-analysis',
   'legal-knowledge',
   'argument-construction',
-  'complexity-routing',
   'deliberation',
   'governance-verdict',
 ];
 
 export const PIPELINE_AGENT_LABELS = {
   'case-processing': 'Case Processing',
-  'fact-reconstruction': 'Fact Reconstruction',
+  'complexity-routing': 'Complexity Routing',
   'evidence-analysis': 'Evidence Analysis',
+  'fact-reconstruction': 'Fact Reconstruction',
   'witness-analysis': 'Witness Analysis',
   'legal-knowledge': 'Legal Knowledge',
   'argument-construction': 'Argument Construction',
-  'complexity-routing': 'Complexity Routing',
   'deliberation': 'Deliberation',
   'governance-verdict': 'Governance & Verdict',
 };

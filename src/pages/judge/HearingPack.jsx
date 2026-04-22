@@ -84,8 +84,11 @@ export default function HearingPack() {
     () => ({
       parties: pack?.parties?.length || 0,
       facts: pack?.facts?.length || 0,
+      disputed: pack?.disputed_issues?.length || 0,
       evidence: pack?.evidence?.length || 0,
+      gaps: pack?.evidence_gaps?.length || 0,
       witnesses: pack?.witnesses?.length || 0,
+      questions: pack?.suggested_questions?.length || 0,
     }),
     [pack],
   );
@@ -112,6 +115,74 @@ export default function HearingPack() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
         <div className="space-y-4">
+          {pack?.case_summary && (
+            <div className="card-lg">
+              <h2 className="text-lg font-bold text-navy-900 mb-3">Case Overview</h2>
+              <p className="text-sm text-gray-700">{pack.case_summary}</p>
+            </div>
+          )}
+
+          {pack?.disputed_issues?.length > 0 && (
+            <div className="card-lg">
+              <h2 className="text-lg font-bold text-navy-900 mb-3">Disputed Issues</h2>
+              <div className="space-y-3">
+                {pack.disputed_issues.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+                    <p className="font-semibold text-navy-900">{item.description}</p>
+                    {item.dispute_reason && (
+                      <p className="text-sm text-amber-900 mt-1">{item.dispute_reason}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pack?.suggested_questions?.length > 0 && (
+            <div className="card-lg">
+              <h2 className="text-lg font-bold text-navy-900 mb-3">Suggested Questions</h2>
+              <div className="space-y-3">
+                {pack.suggested_questions.map((question) => (
+                  <div key={question.id} className="rounded-lg border border-gray-200 p-3">
+                    <p className="font-medium text-navy-900">{question.text}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {[question.side, question.type, question.linked_issue].filter(Boolean).join(' • ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pack?.weak_points?.length > 0 && (
+            <div className="card-lg">
+              <h2 className="text-lg font-bold text-navy-900 mb-3">Weak Points Per Side</h2>
+              <div className="space-y-3">
+                {pack.weak_points.map((item, index) => (
+                  <div key={`${item.side}-${index}`} className="rounded-lg border border-rose-200 bg-rose-50/30 p-3">
+                    <p className="font-semibold text-navy-900">{item.side}</p>
+                    <p className="text-sm text-gray-700 mt-1">{item.issue}</p>
+                    <p className="text-sm text-rose-900 mt-2">{item.weakness}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pack?.evidence_gaps?.length > 0 && (
+            <div className="card-lg">
+              <h2 className="text-lg font-bold text-navy-900 mb-3">Evidence Gaps</h2>
+              <div className="space-y-3">
+                {pack.evidence_gaps.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-blue-200 bg-blue-50/30 p-3">
+                    <p className="font-semibold text-navy-900">{item.description}</p>
+                    {item.status && <p className="text-xs text-gray-500 mt-1">{item.status}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <HearingNotesForm
             notes={notes}
             locked={locked}
@@ -131,8 +202,11 @@ export default function HearingPack() {
             <div className="space-y-2 text-sm text-gray-700">
               <p><span className="font-semibold">Parties:</span> {sectionCounts.parties}</p>
               <p><span className="font-semibold">Facts:</span> {sectionCounts.facts}</p>
+              <p><span className="font-semibold">Disputed issues:</span> {sectionCounts.disputed}</p>
               <p><span className="font-semibold">Evidence:</span> {sectionCounts.evidence}</p>
+              <p><span className="font-semibold">Evidence gaps:</span> {sectionCounts.gaps}</p>
               <p><span className="font-semibold">Witnesses:</span> {sectionCounts.witnesses}</p>
+              <p><span className="font-semibold">Questions:</span> {sectionCounts.questions}</p>
             </div>
           </div>
 

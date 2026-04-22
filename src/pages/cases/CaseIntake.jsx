@@ -66,9 +66,11 @@ export default function CaseIntake() {
   const [caseTitle, setCaseTitle] = useState('');
   const [domain, setDomain] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
+  const [filedDate, setFiledDate] = useState('');
   const [plaintiff, setPlaintiff] = useState('');
   const [defendant, setDefendant] = useState('');
   const [claimAmount, setClaimAmount] = useState('');
+  const [consentToHigherClaimLimit, setConsentToHigherClaimLimit] = useState(false);
   const [offenceCode, setOffenceCode] = useState('');
 
   // File state
@@ -91,7 +93,9 @@ export default function CaseIntake() {
   const isDirty =
     !caseCreated &&
     (domain !== '' ||
+      caseTitle.trim() !== '' ||
       caseDescription.trim() !== '' ||
+      filedDate !== '' ||
       plaintiff.trim() !== '' ||
       defendant.trim() !== '' ||
       files.length > 0);
@@ -110,7 +114,15 @@ export default function CaseIntake() {
 
   const descriptionMinLength = 10;
   const isStep1Valid =
-    domain !== '' && caseDescription.trim().length >= descriptionMinLength;
+    domain !== '' &&
+    caseTitle.trim().length > 0 &&
+    filedDate !== '' &&
+    caseDescription.trim().length >= descriptionMinLength &&
+    (domain === 'SCT'
+      ? claimAmount !== '' && Number.parseFloat(claimAmount) > 0
+      : domain === 'Traffic'
+        ? offenceCode.trim().length > 0
+        : true);
   const isStep2Valid =
     plaintiff.trim().length > 0 && defendant.trim().length > 0;
   const isStep3Valid = files.length > 0;
@@ -130,9 +142,11 @@ export default function CaseIntake() {
       setDomain(demo.formState.domain === 'small_claims' ? 'SCT' : 'Traffic');
       setCaseTitle(demo.formState.caseTitle || '');
       setCaseDescription(demo.description);
+      setFiledDate(demo.formState.filedDate || '');
       setPlaintiff(demo.formState.appellant);
       setDefendant(demo.formState.respondent);
       setClaimAmount(demo.formState.claimAmount || '');
+      setConsentToHigherClaimLimit(Boolean(demo.formState.consentToHigherClaimLimit));
       setOffenceCode(demo.formState.offenceCode || '');
       setFiles(demo.files || []);
       setSelectedDemoCase(demo);
@@ -252,9 +266,27 @@ export default function CaseIntake() {
 
       // ── Real path ──────────────────────────────────────────────────
       const domainMap = { SCT: 'small_claims', Traffic: 'traffic_violation' };
+      const parties =
+        domain === 'Traffic'
+          ? [
+              { name: plaintiff.trim(), role: 'prosecution' },
+              { name: defendant.trim(), role: 'accused' },
+            ]
+          : [
+              { name: plaintiff.trim(), role: 'claimant' },
+              { name: defendant.trim(), role: 'respondent' },
+            ];
       const caseData = {
         domain: domainMap[domain] || domain,
+        title: caseTitle.trim(),
         description: caseDescription.trim(),
+        filed_date: filedDate,
+        parties,
+        claim_amount: domain === 'SCT' ? Number.parseFloat(claimAmount) : undefined,
+        consent_to_higher_claim_limit:
+          domain === 'SCT' ? consentToHigherClaimLimit : undefined,
+        offence_code:
+          domain === 'Traffic' ? offenceCode.trim().toUpperCase() : undefined,
       };
 
       const createResponse = await api.createCase(caseData);
@@ -383,7 +415,7 @@ export default function CaseIntake() {
 
           <div className="mb-6">
             <label className="block text-sm font-semibold text-navy-900 mb-2">
-              Case Title <span className="text-gray-400">(optional)</span>
+              Case Title <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -395,6 +427,21 @@ export default function CaseIntake() {
             />
             {fieldErrors.title && (
               <p className="text-xs text-rose-600 mt-1">{fieldErrors.title}</p>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-navy-900 mb-2">
+              Filing Date <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={filedDate}
+              onChange={(e) => setFiledDate(e.target.value)}
+              className="input-field"
+            />
+            {fieldErrors.filed_date && (
+              <p className="text-xs text-rose-600 mt-1">{fieldErrors.filed_date}</p>
             )}
           </div>
 
@@ -451,7 +498,7 @@ export default function CaseIntake() {
           {domain === 'SCT' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                Claim Amount (SGD)
+                Claim Amount (SGD) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -462,22 +509,40 @@ export default function CaseIntake() {
                 min="0"
                 step="0.01"
               />
+              <label className="mt-3 flex items-start gap-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={consentToHigherClaimLimit}
+                  onChange={(e) => setConsentToHigherClaimLimit(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  Both parties have filed consent for the higher Small Claims Tribunal limit
+                  (up to SGD 30,000).
+                </span>
+              </label>
+              {fieldErrors.claim_amount && (
+                <p className="text-xs text-rose-600 mt-1">{fieldErrors.claim_amount}</p>
+              )}
             </div>
           )}
 
           {domain === 'Traffic' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                Offence Code
+                Offence Code <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={offenceCode}
-                onChange={(e) => setOffenceCode(e.target.value)}
-                placeholder="e.g., TA1"
+                onChange={(e) => setOffenceCode(e.target.value.toUpperCase())}
+                placeholder="e.g., RTA-S64"
                 className="input-field"
                 maxLength={20}
               />
+              {fieldErrors.offence_code && (
+                <p className="text-xs text-rose-600 mt-1">{fieldErrors.offence_code}</p>
+              )}
             </div>
           )}
 
@@ -507,7 +572,7 @@ export default function CaseIntake() {
           <div className="grid grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                {domain === 'Traffic' ? 'Appellant' : 'Plaintiff / Claimant'}{' '}
+                {domain === 'Traffic' ? 'Prosecution' : 'Claimant'}{' '}
                 <span className="text-rose-500">*</span>
               </label>
               <input
@@ -524,7 +589,7 @@ export default function CaseIntake() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                {domain === 'Traffic' ? 'Authority / Respondent' : 'Defendant / Respondent'}{' '}
+                {domain === 'Traffic' ? 'Accused' : 'Respondent'}{' '}
                 <span className="text-rose-500">*</span>
               </label>
               <input

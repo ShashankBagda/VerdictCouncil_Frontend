@@ -193,5 +193,16 @@ describe('pipelineStatus helpers', () => {
 
   it('defines exactly 9 agents in the pipeline order', () => {
     expect(PIPELINE_AGENT_ORDER).toHaveLength(9);
+    expect(PIPELINE_AGENT_ORDER).toEqual([
+      'case-processing',
+      'complexity-routing',
+      'evidence-analysis',
+      'fact-reconstruction',
+      'witness-analysis',
+      'legal-knowledge',
+      'argument-construction',
+      'deliberation',
+      'governance-verdict',
+    ]);
   });
 });
