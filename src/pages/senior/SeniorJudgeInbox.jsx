@@ -16,11 +16,6 @@ const rankedItems = (items) =>
     return new Date(a.submitted_at || 0).getTime() - new Date(b.submitted_at || 0).getTime();
   });
 
-const parseBackendId = (backendId) => {
-  const [type, id] = String(backendId || '').split(':');
-  return { type, id };
-};
-
 const formatLabel = (value) =>
   String(value || '')
     .replace(/_/g, ' ')
@@ -132,49 +127,27 @@ export default function SeniorJudgeInbox() {
     if (!selectedItem) return;
 
     const reason = payload.reason?.trim() || '';
-    const finalOrder = payload.finalOrder?.trim() || '';
+    const assignee = payload.assignee?.trim() || '';
+    const normalizedAction =
+      action === 'approved' ? 'approve' : action === 'rejected' ? 'reject' : action;
 
     try {
       setProcessing(true);
-
-      if (selectedItem.item_type === 'escalation') {
-        await api.actionOnEscalatedCase(selectedItem.case_id, {
-          action,
-          notes: reason || undefined,
-          final_order: finalOrder || undefined,
-        });
-        const nextStatus = action === 'add_notes' ? 'pending' : action === 'reject' ? 'rejected' : 'approved';
-        applyLocalUpdate(selectedItem.id, nextStatus, reason || action, action);
-        showNotification('Escalation updated successfully.', 'success');
-        return;
-      }
-
-      if (selectedItem.item_type === 'reopen') {
-        if (!['approved', 'rejected'].includes(action)) {
-          showError('Reopen requests only support approve/reject actions.');
-          return;
-        }
-        const parsed = parseBackendId(selectedItem.backendId);
-        if (parsed.type !== 'reopen' || !parsed.id) {
-          throw new Error('Invalid reopen request id');
-        }
-        const approve = action === 'approved';
-        if (!approve && !reason) {
-          showError('Please provide a reason when rejecting a reopen request.');
-          return;
-        }
-        await api.reviewReopenRequest(selectedItem.case_id, parsed.id, {
-          approve,
-          review_notes: reason || undefined,
-        });
-        applyLocalUpdate(selectedItem.id, approve ? 'approved' : 'rejected', reason, action);
-        showNotification(`Reopen request ${approve ? 'approved' : 'rejected'}.`, 'success');
-        return;
-      }
-
-      showError('Decision amendment approvals are not exposed by the backend yet.');
+      await api.takeSeniorInboxAction(selectedItem.backendId, {
+        action: normalizedAction,
+        reason: reason || undefined,
+        assignee: assignee || undefined,
+      });
+      const nextStatus =
+        normalizedAction === 'approve'
+          ? 'approved'
+          : normalizedAction === 'reject'
+            ? 'rejected'
+            : 'pending';
+      applyLocalUpdate(selectedItem.id, nextStatus, reason || normalizedAction, normalizedAction);
+      showNotification(`${formatLabel(selectedItem.item_type)} updated successfully.`, 'success');
     } catch (error) {
-      showError(getErrorMessage(error, `Failed to ${action.replace(/_/g, ' ')} request`));
+      showError(getErrorMessage(error, `Failed to ${normalizedAction.replace(/_/g, ' ')} request`));
     } finally {
       setProcessing(false);
     }
@@ -311,7 +284,12 @@ export default function SeniorJudgeInbox() {
         </aside>
 
         <section className="h-[calc(100vh-280px)] xl:h-auto min-h-[600px]">
-          <EscalationDetailView item={selectedItem} onAction={handleAction} processing={processing} />
+          <EscalationDetailView
+            item={selectedItem}
+            onAction={handleAction}
+            processing={processing}
+            seniorReviewMode
+          />
         </section>
       </div>
     </div>

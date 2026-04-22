@@ -425,6 +425,8 @@ export const api = {
     request('GET', `/api/v1/cases/${caseId}/reopen-requests`),
   reviewReopenRequest: (caseId, requestId, body) =>
     request('PATCH', `/api/v1/cases/${caseId}/reopen-requests/${requestId}/review`, { body }),
+  takeSeniorInboxAction: (itemId, body) =>
+    request('POST', `/api/v1/senior-inbox/${encodeURIComponent(itemId)}/action`, { body }),
 
   refreshVectorStore: (store) =>
     request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
