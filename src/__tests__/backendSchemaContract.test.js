@@ -120,22 +120,6 @@ describe('backend OpenAPI schema contract', () => {
       outcome_summary: 'Recommend partial refund and replacement costs.',
       escalation_reason: null,
       reopen_state: null,
-      amendment_state: null,
-      latest_decision: {
-        decision_type: 'modify',
-        reason: 'Reduce the recommended quantum.',
-        recorded_at: '2026-04-22T10:00:00Z',
-        recorded_by: 'judge-1',
-      },
-      decision_history: [
-        {
-          decision_type: 'modify',
-          reason: 'Reduce the recommended quantum.',
-          final_order: 'Partial refund ordered.',
-          recorded_at: '2026-04-22T10:00:00Z',
-          recorded_by: 'judge-1',
-        },
-      ],
       documents: [
         {
           id: 'doc-1',
@@ -185,7 +169,6 @@ describe('backend OpenAPI schema contract', () => {
     expect(caseDetail.party_1).toBe('Ms Lim');
     expect(caseDetail.pipeline_progress).toBe(100);
     expect(caseDetail.documents[0].openai_file_id).toBe('file-123');
-    expect(caseDetail.decision_history[0].decision_type).toBe('modify');
 
     expect(workflowItem.item_type).toBe('reopen');
     expect(workflowItem.originating_judge).toBe('judge-1');

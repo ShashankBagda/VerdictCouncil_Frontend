@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
-  CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -19,15 +18,14 @@ import {
 import { useParams } from 'react-router-dom';
 import { useAuth, useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import { 
-  extractItems, 
+import {
+  extractItems,
   normalizeArgumentsResource,
-  normalizeDeliberationResource,
+  normalizeHearingAnalysis,
   normalizeEvidenceResource,
   normalizeKnowledgeBaseStatus,
   normalizeStatutesResource,
   normalizeTimelineResource,
-  normalizeVerdict,
   normalizeWitnessResource,
 } from '../../lib/caseWorkspace';
 
@@ -37,7 +35,6 @@ import PrecedentSearchPanel from '../../components/analysis/PrecedentSearchPanel
 import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
 import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
 import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
-import DecisionForm from '../../components/cases/DecisionForm';
 import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
 
 const TABS = [
@@ -48,9 +45,8 @@ const TABS = [
   { id: 'law', label: 'Law & Statutes', icon: BookOpen, activeClass: 'bg-orange-100 text-orange-700 border-2 border-orange-300' },
   { id: 'precedents', label: 'Precedents', icon: FileSearch, activeClass: 'bg-cyan-100 text-cyan-700 border-2 border-cyan-300' },
   { id: 'arguments', label: 'Arguments', icon: MessageSquare, activeClass: 'bg-rose-100 text-rose-700 border-2 border-rose-300' },
-  { id: 'deliberation', label: 'Deliberation', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
+  { id: 'hearing_analysis', label: 'Hearing Analysis', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
-  { id: 'verdict', label: 'Verdict', icon: CheckCircle, activeClass: 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300' },
 ];
 const extractEvidenceGapItems = (payload) => {
   const root = payload?.data || payload || {};
@@ -179,14 +175,9 @@ export default function CaseDossier() {
   const [witnesses, setWitnesses] = useState(null);
   const [statutes, setStatutes] = useState(null);
   const [arguments_, setArguments] = useState(null);
-  const [deliberation, setDeliberation] = useState(null);
-  const [verdict, setVerdict] = useState(null);
+  const [hearingAnalysis, setHearingAnalysis] = useState(null);
   const [fairnessAudit, setFairnessAudit] = useState(null);
   const [knowledgeBaseStatus, setKnowledgeBaseStatus] = useState(null);
-  const [decisionType, setDecisionType] = useState('accept');
-  const [decisionReason, setDecisionReason] = useState('');
-  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
-  const [decisionLocked, setDecisionLocked] = useState(false);
   const [disputeReason, setDisputeReason] = useState({});
   const [disputeSubmitting, setDisputeSubmitting] = useState({});
   const [precedentQuery, setPrecedentQuery] = useState('');
@@ -210,7 +201,6 @@ export default function CaseDossier() {
           statutesRes,
           argumentsRes,
           deliberationRes,
-          verdictRes,
           fairnessRes,
           kbRes,
           reopenRequestsRes,
@@ -222,7 +212,6 @@ export default function CaseDossier() {
           api.getStatutes(caseId),
           api.getArguments(caseId),
           api.getDeliberation(caseId),
-          api.getVerdict(caseId),
           api.getFairnessAudit(caseId),
           api.getKnowledgeBaseStatus(),
           api.listReopenRequests(caseId),
@@ -250,12 +239,11 @@ export default function CaseDossier() {
             ? normalizeArgumentsResource(argumentsRes.value)
             : null,
         );
-        setDeliberation(
+        setHearingAnalysis(
           deliberationRes.status === 'fulfilled'
-            ? normalizeDeliberationResource(deliberationRes.value)
+            ? normalizeHearingAnalysis(deliberationRes.value)
             : null,
         );
-        setVerdict(verdictRes.status === 'fulfilled' ? normalizeVerdict(verdictRes.value) : null);
         setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
         setKnowledgeBaseStatus(
           kbRes.status === 'fulfilled' ? normalizeKnowledgeBaseStatus(kbRes.value) : null,
@@ -265,13 +253,6 @@ export default function CaseDossier() {
             ? reopenRequestsRes.value?.items || reopenRequestsRes.value?.data?.items || []
             : [],
         );
-
-        if (verdictRes.status === 'fulfilled') {
-          const normalizedVerdict = normalizeVerdict(verdictRes.value);
-          if (normalizedVerdict?.judge_decision || normalizedVerdict?.decision_recorded_at) {
-            setDecisionLocked(true);
-          }
-        }
       } catch (err) {
         showError(getErrorMessage(err, 'Failed to fetch case analysis'));
       } finally {
@@ -304,11 +285,10 @@ export default function CaseDossier() {
       witnesses: witnesses || null,
       statutes: statutes || null,
       arguments: arguments_ || null,
-      deliberation: deliberation || null,
+      hearing_analysis: hearingAnalysis || null,
       fairness_audit: fairnessAudit || null,
       knowledge_base_status: knowledgeBaseStatus || null,
       precedent_search_results: precedentResults || [],
-      verdict: verdict || null,
     };
 
     const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
@@ -320,38 +300,6 @@ export default function CaseDossier() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  const handleDecisionSubmit = async () => {
-    const requiresReason = decisionType === 'modify' || decisionType === 'reject';
-
-    if (requiresReason && !decisionReason.trim()) {
-      showError('Modify and Reject decisions require a written reason.');
-      return;
-    }
-
-    try {
-      setDecisionSubmitting(true);
-      const payload = await api.recordDecision(caseId, {
-        decision_type: decisionType,
-        reason: decisionReason.trim() || undefined,
-      });
-
-      const nextVerdict = normalizeVerdict(payload);
-      setVerdict({
-        ...verdict,
-        ...nextVerdict,
-        judge_decision: decisionType,
-        judge_reason: decisionReason.trim() || null,
-        decision_recorded_at: new Date().toISOString(),
-      });
-      setDecisionLocked(true);
-      showNotification('Decision recorded successfully.', 'success');
-    } catch (error) {
-      showError(getErrorMessage(error, 'Failed to record decision'));
-    } finally {
-      setDecisionSubmitting(false);
-    }
   };
 
   const handleDisputeFact = async (fact, idx) => {
@@ -839,36 +787,36 @@ export default function CaseDossier() {
         </div>
       )}
 
-      {activeTab === 'deliberation' && (
+      {activeTab === 'hearing_analysis' && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
             <Scale className="w-6 h-6" />
-            Deliberation & Reasoning
+            Hearing Analysis & Reasoning
           </h2>
 
-          {deliberation ? (
+          {hearingAnalysis ? (
             <div className="space-y-6">
-              {deliberation.preliminary_conclusion && (
+              {hearingAnalysis.preliminary_conclusion && (
                 <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
                   <h3 className="text-lg font-semibold text-navy-900 mb-2">Preliminary Conclusion</h3>
-                  <p className="text-sm text-gray-800">{deliberation.preliminary_conclusion}</p>
+                  <p className="text-sm text-gray-800">{hearingAnalysis.preliminary_conclusion}</p>
                 </div>
               )}
 
-              {deliberation.reasoning && (
+              {hearingAnalysis.reasoning && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Reasoning Chain</h3>
                   <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-800 max-h-96 overflow-y-auto">
-                    {deliberation.reasoning}
+                    {hearingAnalysis.reasoning}
                   </div>
                 </div>
               )}
 
-              {deliberation.key_points && deliberation.key_points.length > 0 && (
+              {hearingAnalysis.key_points && hearingAnalysis.key_points.length > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Key Points</h3>
                   <ul className="space-y-2">
-                    {deliberation.key_points.map((point, idx) => (
+                    {hearingAnalysis.key_points.map((point, idx) => (
                       <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                         <span className="text-cyan-600 font-bold text-lg mt-0.5">{idx + 1}.</span>
                         <span className="text-gray-700">{point}</span>
@@ -878,11 +826,11 @@ export default function CaseDossier() {
                 </div>
               )}
 
-              {deliberation.risks && deliberation.risks.length > 0 && (
+              {hearingAnalysis.risks && hearingAnalysis.risks.length > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Potential Risks</h3>
                   <div className="space-y-2">
-                    {deliberation.risks.map((risk, idx) => (
+                    {hearingAnalysis.risks.map((risk, idx) => (
                       <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                         <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                         <span className="text-amber-900">{risk}</span>
@@ -891,9 +839,30 @@ export default function CaseDossier() {
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-semibold text-navy-900 mb-3">Request Re-analysis</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  If new evidence has been submitted or a procedural issue is identified, you can request the pipeline to re-run this case.
+                </p>
+                <ReopenRequestForm
+                  onSubmit={handleReopenRequest}
+                  submitting={reopenSubmitting}
+                />
+                {reopenRequests.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-gray-700">Submitted requests:</p>
+                    {reopenRequests.map((req, idx) => (
+                      <div key={idx} className="text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">
+                        {req.reason} — <span className="capitalize">{req.status || 'pending'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-gray-600 text-center py-8">No deliberation available yet</p>
+            <p className="text-gray-600 text-center py-8">No hearing analysis available yet</p>
           )}
         </div>
       )}
@@ -903,117 +872,6 @@ export default function CaseDossier() {
           summary={fairnessSummary}
           checks={fairnessChecks}
         />
-      )}
-
-      {activeTab === 'verdict' && (
-        <div className="space-y-6">
-          <DecisionForm 
-            verdict={verdict}
-            decisionType={decisionType}
-            setDecisionType={setDecisionType}
-            decisionReason={decisionReason}
-            setDecisionReason={setDecisionReason}
-            onSubmit={handleDecisionSubmit}
-            submitting={decisionSubmitting}
-            locked={decisionLocked}
-            caseId={caseId}
-          />
-
-          {decisionLocked && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <div className="card-lg">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-2">
-                  Amend Decision
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Amending a published decision is not yet available. This capability is tracked
-                  in the backend backlog and will be enabled once the endpoint ships.
-                </p>
-              </div>
-              <ReopenRequestForm onSubmit={handleReopenRequest} submitting={reopenSubmitting} />
-            </div>
-          )}
-
-          {reopenRequests.length > 0 && (
-            <div className="card-lg">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-3">Reopen Requests</h3>
-              <div className="space-y-3">
-                {reopenRequests.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-200 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-navy-900">{item.reason}</p>
-                      <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">
-                        {item.status}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-700 mt-1">{item.justification}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {verdict ? (
-            <div className="space-y-6">
-              {verdict.recommendation && (
-                <div className="border-l-4 border-emerald-500 pl-6 py-4">
-                  <p className="text-sm text-gray-600 uppercase tracking-wide font-semibold mb-2">Recommendation</p>
-                  <p className="text-xl font-bold text-navy-900 mb-2">{verdict.recommendation}</p>
-                  {verdict.recommendation_reason && <p className="text-gray-700">{verdict.recommendation_reason}</p>}
-                </div>
-              )}
-
-              {verdict.confidence !== undefined && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-6">
-                  <p className="text-sm text-gray-600 uppercase tracking-wide font-semibold mb-2">Confidence Score</p>
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="w-full bg-gray-300 rounded-full h-3">
-                        <div className="bg-emerald-600 h-3 rounded-full transition-all" style={{ width: `${verdict.confidence}%` }} />
-                      </div>
-                    </div>
-                    <span className="text-3xl font-bold text-emerald-600 min-w-max">{verdict.confidence}%</span>
-                  </div>
-                  {verdict.confidence_reason && <p className="text-sm text-gray-700 mt-3">{verdict.confidence_reason}</p>}
-                </div>
-              )}
-
-              {verdict.remedy && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Remedy / Outcome</h3>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-gray-800 whitespace-pre-wrap">
-                    {verdict.remedy}
-                  </div>
-                </div>
-              )}
-
-              {verdict.fairness_assessment && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Fairness Assessment</h3>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-gray-800">
-                    {verdict.fairness_assessment}
-                  </div>
-                </div>
-              )}
-
-              {verdict.conditions && verdict.conditions.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Conditions & Notes</h3>
-                  <ul className="space-y-2">
-                    {verdict.conditions.map((condition, idx) => (
-                      <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
-                        <span className="text-blue-600 font-semibold">&bull;</span>
-                        <span className="text-gray-700">{condition}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-600 text-center py-8">No verdict available yet</p>
-          )}
-        </div>
       )}
 
       {!knowledgeBaseStatus?.initialized && (

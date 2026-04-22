@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   applyLocalWorkflowAction,
   buildWorkflowCounts,
-  createAmendmentRequest,
   createReopenRequest,
   getStoredWorkflowItems,
   mergeWorkflowItems,
@@ -15,17 +14,16 @@ describe('escalationWorkflow', () => {
     storage.remove('workflow_items');
   });
 
-  it('creates and persists amendment and reopen requests', () => {
-    createAmendmentRequest('CASE-1', { description: 'Need to amend' }, 'judge@example.com');
+  it('creates and persists reopen requests', () => {
     createReopenRequest('CASE-2', { description: 'Need to reopen' }, 'judge@example.com');
 
     const items = getStoredWorkflowItems();
-    expect(items).toHaveLength(2);
-    expect(items.map((item) => item.item_type)).toEqual(['amendment', 'reopen']);
+    expect(items).toHaveLength(1);
+    expect(items.map((item) => item.item_type)).toEqual(['reopen']);
   });
 
   it('updates local workflow actions with history entries', () => {
-    const item = createAmendmentRequest('CASE-1', { description: 'Need to amend' }, 'judge@example.com');
+    const item = createReopenRequest('CASE-1', { description: 'Need to reopen' }, 'judge@example.com');
     const updated = applyLocalWorkflowAction(item.id, 'approved', 'Looks valid', 'senior@example.com');
 
     expect(updated.status).toBe('approved');
@@ -57,5 +55,16 @@ describe('escalationWorkflow', () => {
     });
 
     expect(item.status).toBe('pending');
+  });
+
+  it('maps legacy amendment item_type to escalation', () => {
+    const item = normalizeWorkflowItem({
+      id: 'amendment-1',
+      case_id: 'CASE-5',
+      item_type: 'amendment',
+      status: 'pending',
+    });
+
+    expect(item.item_type).toBe('escalation');
   });
 });

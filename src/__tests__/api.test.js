@@ -114,15 +114,6 @@ describe('API module', () => {
     expect(result.user.email).toBe('judge@verdictcouncil.sg');
   });
 
-  it('normalizes decision payloads for backend compatibility', async () => {
-    const { default: api } = await import('../lib/api');
-    await api.recordDecision('case-123', { decision_type: 'modify', reason: 'Adjust remedy' });
-
-    const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/cases/case-123/decision');
-    expect(fetchCall[1].body).toBe(JSON.stringify({ action: 'modify', notes: 'Adjust remedy', final_order: undefined }));
-  });
-
   it('constructs correct escalated cases URL', async () => {
     const { default: api } = await import('../lib/api');
     await api.getEscalatedCases();
@@ -249,7 +240,6 @@ describe('API module', () => {
     await api.getPrecedents('case-1');
     await api.getArguments('case-1');
     await api.getDeliberation('case-1');
-    await api.getVerdict('case-1');
     await api.getEvidenceGaps('case-1');
     await api.getFairnessAudit('case-1');
     await api.createWhatIfScenario('case-1', { prompt: 'what if' });
@@ -286,7 +276,6 @@ describe('API module', () => {
         expect.stringContaining('/api/v1/cases/case-1/precedents'),
         expect.stringContaining('/api/v1/cases/case-1/arguments'),
         expect.stringContaining('/api/v1/cases/case-1/deliberation'),
-        expect.stringContaining('/api/v1/cases/case-1/verdict'),
         expect.stringContaining('/api/v1/cases/case-1/evidence-gaps'),
         expect.stringContaining('/api/v1/cases/case-1/fairness-audit'),
         expect.stringContaining('/api/v1/cases/case-1/what-if'),

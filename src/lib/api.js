@@ -14,7 +14,6 @@
  *   POST /api/v1/cases/              → cases.router (create case)
  *   GET  /api/v1/cases/              → cases.router (list cases)
  *   GET  /api/v1/cases/{id}          → cases.router (full case detail with nested entities)
- *   POST /api/v1/cases/{id}/decision → decisions.router
  *   PATCH /api/v1/cases/{id}/facts/{fid}/dispute → judge.router
  *   GET  /api/v1/cases/{id}/evidence-gaps       → judge.router
  *   GET  /api/v1/cases/{id}/fairness-audit      → judge.router
@@ -49,7 +48,6 @@
  *   GET  /api/v1/cases/{id}/precedents          → case_data.router
  *   GET  /api/v1/cases/{id}/arguments           → case_data.router
  *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
- *   GET  /api/v1/cases/{id}/verdict             → case_data.router
  *   POST /api/v1/cases/{id}/process             → cases.router (pipeline trigger)
  *   POST /api/v1/admin/vector-stores/refresh → admin.router
  *   POST /api/v1/admin/users/{id}/{action}   → admin.router
@@ -359,23 +357,10 @@ export const api = {
     request('GET', `/api/v1/cases/${caseId}/arguments`),
   getDeliberation: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/deliberation`),
-  getVerdict: (caseId) =>
-    request('GET', `/api/v1/cases/${caseId}/verdict`),
   getEvidenceGaps: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/evidence-gaps`),
   getFairnessAudit: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/fairness-audit`),
-
-  recordDecision: (caseId, decision) => {
-    // Backend DecisionRequest expects { action, notes, final_order }
-    // Frontend callers may send { decision_type, reason } — normalize here
-    const body = {
-      action: decision.action || decision.decision_type || 'accept',
-      notes: decision.notes || decision.reason || undefined,
-      final_order: decision.final_order || undefined,
-    };
-    return request('POST', `/api/v1/cases/${caseId}/decision`, { body });
-  },
 
   createWhatIfScenario: (caseId, scenario) =>
     request('POST', `/api/v1/cases/${caseId}/what-if`, { body: scenario }),

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, Shield } from 'lucide-react';
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
@@ -172,7 +172,7 @@ export default function SeniorJudgeInbox() {
         return;
       }
 
-      showError('Decision amendment approvals are not exposed by the backend yet.');
+      showError('Unsupported item type.');
     } catch (error) {
       showError(getErrorMessage(error, `Failed to ${action.replace(/_/g, ' ')} request`));
     } finally {
@@ -195,7 +195,7 @@ export default function SeniorJudgeInbox() {
           <div>
             <h1 className="text-3xl font-bold text-navy-900">Senior Judge Inbox</h1>
             <p className="text-gray-600 mt-2">
-              Ranked senior-review queue for escalations, amendments, and reopen requests.
+              Ranked senior-review queue for escalations and reopen requests.
             </p>
           </div>
           <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-2">
@@ -232,7 +232,7 @@ export default function SeniorJudgeInbox() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {['all', 'escalation', 'amendment', 'reopen'].map((type) => (
+            {['all', 'escalation', 'reopen'].map((type) => (
               <button
                 key={type}
                 onClick={() => setTypeFilter(type)}

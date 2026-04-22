@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -153,7 +152,7 @@ describe('EscalatedCases — backend workflow queue', () => {
 
   it('loads and displays backend escalation items from the API', async () => {
     mockApi.getEscalatedCases.mockResolvedValueOnce({
-      items: [remoteEscalation(), remoteAmendment()],
+      items: [remoteEscalation(), remoteReopen()],
     });
 
     renderEscalatedCases();
@@ -162,7 +161,7 @@ describe('EscalatedCases — backend workflow queue', () => {
       expect(screen.getByText('Complexity threshold exceeded')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Amendment review')).toBeInTheDocument();
+    expect(screen.getByText('Reopen request')).toBeInTheDocument();
     expect(mockApi.getEscalatedCases).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +209,6 @@ describe('EscalatedCases — backend workflow queue', () => {
     mockApi.getEscalatedCases.mockResolvedValueOnce({
       items: [
         remoteEscalation(),
-        remoteAmendment({ status: 'approved', id: 'amend-approved' }),
         remoteReopen({ item_type: 'reopen', title: 'Reopen for review' }),
       ],
     });
@@ -221,19 +219,18 @@ describe('EscalatedCases — backend workflow queue', () => {
       expect(screen.getByText('Complexity threshold exceeded')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Amendments/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Reopen/i }));
 
     await waitFor(() => {
       expect(screen.queryByText('Complexity threshold exceeded')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('Amendment review')).toBeInTheDocument();
+    expect(screen.getByText('Reopen for review')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'approved' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Amendment review')).toBeInTheDocument();
+      expect(screen.queryByText('Reopen for review')).not.toBeInTheDocument();
     });
-    expect(screen.queryByText('Reopen for review')).not.toBeInTheDocument();
   });
 
   it('shows an error toast when loading the queue fails', async () => {

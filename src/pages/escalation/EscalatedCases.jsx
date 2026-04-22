@@ -1,14 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle,
-  Clock,
-  Filter,
-  MessageSquare,
-  User,
-  XCircle,
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, ArrowRight, Filter } from 'lucide-react';
 import { useAuth, useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import {
@@ -19,7 +10,6 @@ import EscalationDetailView from '../../components/escalation/EscalationDetailVi
 
 const TYPE_META = {
   escalation: { label: 'Escalation', tone: 'bg-rose-100 text-rose-700', icon: AlertCircle },
-  amendment: { label: 'Amendment', tone: 'bg-blue-100 text-blue-700', icon: MessageSquare },
   reopen: { label: 'Reopen', tone: 'bg-purple-100 text-purple-700', icon: ArrowRight },
 };
 
@@ -213,7 +203,6 @@ export default function EscalatedCases() {
           {[
             { key: 'all', label: `All (${remoteCounts.all})` },
             { key: 'escalation', label: `Escalations (${remoteCounts.escalation})` },
-            { key: 'amendment', label: `Amendments (${remoteCounts.amendment})` },
             { key: 'reopen', label: `Reopen (${remoteCounts.reopen})` },
           ].map((option) => (
             <button
