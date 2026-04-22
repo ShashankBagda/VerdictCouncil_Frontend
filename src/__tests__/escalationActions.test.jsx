@@ -14,6 +14,7 @@ const { mockApi, mockShowError, mockShowNotification } = vi.hoisted(() => ({
     getCase: vi.fn(),
     getCaseDetail: vi.fn(),
     reviewReopenRequest: vi.fn(),
+    takeSeniorInboxAction: vi.fn(),
   },
   mockShowError: vi.fn(),
   mockShowNotification: vi.fn(),
@@ -254,6 +255,7 @@ describe('SeniorJudgeInbox — backend review workflow', () => {
     mockApi.getCase.mockResolvedValue({});
     mockApi.getCaseDetail.mockResolvedValue({});
     mockApi.reviewReopenRequest.mockResolvedValue({ message: 'ok' });
+    mockApi.takeSeniorInboxAction.mockResolvedValue({ message: 'ok' });
   });
 
   afterEach(() => {
@@ -380,7 +382,7 @@ describe('SeniorJudgeInbox — backend review workflow', () => {
     });
   });
 
-  it('approves reopen requests through the backend review endpoint', async () => {
+  it('approves reopen requests through the senior inbox action endpoint', async () => {
     mockApi.getSeniorInbox.mockResolvedValueOnce({
       items: [remoteReopen()],
     });
@@ -388,18 +390,47 @@ describe('SeniorJudgeInbox — backend review workflow', () => {
     renderSeniorInbox();
 
     await waitFor(() => {
-      expect(screen.getByText('Approve Reopen')).toBeInTheDocument();
+      expect(screen.getByText('Approve')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Approve Reopen'));
+    fireEvent.click(screen.getByText('Approve'));
 
     await waitFor(() => {
-      expect(mockApi.reviewReopenRequest).toHaveBeenCalledWith('CASE-300', 'req-1', {
-        approve: true,
-        review_notes: undefined,
+      expect(mockApi.takeSeniorInboxAction).toHaveBeenCalledWith('reopen:req-1', {
+        action: 'approve',
+        reason: undefined,
+        assignee: undefined,
       });
     });
-    expect(mockShowNotification).toHaveBeenCalledWith('Reopen request approved.', 'success');
+    expect(mockShowNotification).toHaveBeenCalledWith('Reopen updated successfully.', 'success');
+  });
+
+  it('supports request-more-info for amendment items', async () => {
+    mockApi.getSeniorInbox.mockResolvedValueOnce({
+      items: [remoteAmendment({ id: 'amendment:amd-1' })],
+    });
+
+    renderSeniorInbox();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Amendment review').length).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.change(
+      screen.getByPlaceholderText(
+        'Record approval notes, rejection rationale, or the information you need from the originating judge...',
+      ),
+      { target: { value: 'Please attach the hearing-note excerpt that supports this correction.' } },
+    );
+    fireEvent.click(screen.getByText('Info Req'));
+
+    await waitFor(() => {
+      expect(mockApi.takeSeniorInboxAction).toHaveBeenCalledWith('amendment:amd-1', {
+        action: 'request_more_info',
+        reason: 'Please attach the hearing-note excerpt that supports this correction.',
+        assignee: undefined,
+      });
+    });
   });
 
   it('shows an error toast when loading inbox fails', async () => {

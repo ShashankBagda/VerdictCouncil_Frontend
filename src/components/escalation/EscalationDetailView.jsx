@@ -22,6 +22,7 @@ export default function EscalationDetailView({
   item,
   onAction,
   processing = false,
+  seniorReviewMode = false,
 }) {
   const [activeTab, setActiveTab] = useState('details');
   const [reason, setReason] = useState('');
@@ -44,6 +45,7 @@ export default function EscalationDetailView({
   const isRemoteEscalation = !isLocalItem && item.item_type === 'escalation';
   const isRemoteReopen = !isLocalItem && item.item_type === 'reopen';
   const isRemoteAmendment = !isLocalItem && item.item_type === 'amendment';
+  const isSeniorRemoteItem = seniorReviewMode && !isLocalItem;
 
   const handleAction = (action) => {
     onAction(action, {
@@ -178,12 +180,14 @@ export default function EscalationDetailView({
                 </h3>
 
                 <div className="space-y-3">
-                  {!isRemoteAmendment && (
+                  {(!isRemoteAmendment || isSeniorRemoteItem) && (
                     <div className="group">
                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
                         {isLocalItem
                           ? 'Notes / Rationale'
-                          : isRemoteReopen
+                          : isSeniorRemoteItem
+                            ? 'Review Notes / Question'
+                            : isRemoteReopen
                             ? 'Review Notes'
                             : 'Notes'}
                       </label>
@@ -193,6 +197,8 @@ export default function EscalationDetailView({
                         placeholder={
                           isLocalItem
                             ? 'Detail the reasoning for this review outcome...'
+                            : isSeniorRemoteItem
+                              ? 'Record approval notes, rejection rationale, or the information you need from the originating judge...'
                             : isRemoteReopen
                               ? 'Record notes for approving or rejecting the reopen request...'
                               : 'Record review notes for the escalation action...'
@@ -202,10 +208,10 @@ export default function EscalationDetailView({
                     </div>
                   )}
 
-                  {isLocalItem ? (
+                  {isLocalItem || isSeniorRemoteItem ? (
                     <div className="group">
                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
-                        Reassignment (Optional)
+                        Reassignment {isSeniorRemoteItem ? '(Required for Reassign)' : '(Optional)'}
                       </label>
                       <input
                         value={assignee}
@@ -228,7 +234,7 @@ export default function EscalationDetailView({
                     </div>
                   ) : null}
 
-                  {isRemoteAmendment && (
+                  {isRemoteAmendment && !isSeniorRemoteItem && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                       Decision amendments are visible in the senior inbox, but the backend
                       approval endpoint has not been exposed yet. This item remains read-only until
@@ -236,7 +242,50 @@ export default function EscalationDetailView({
                     </div>
                   )}
 
-                  {isLocalItem ? (
+                  {isSeniorRemoteItem ? (
+                    <>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                        <button
+                          onClick={() => handleAction('approved')}
+                          disabled={processing}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <CheckCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Approve</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleAction('rejected')}
+                          disabled={processing || !reason.trim()}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 hover:bg-rose-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <XCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Reject</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleAction('request_more_info')}
+                          disabled={processing || !reason.trim()}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-violet-50 border border-violet-100 text-violet-700 hover:bg-violet-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Info Req</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleAction('reassign')}
+                          disabled={processing || !assignee.trim()}
+                          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 hover:bg-blue-600 hover:text-white transition-all group disabled:opacity-50"
+                        >
+                          <ArrowRight className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Reassign</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 italic text-center">
+                        Rejections and request-more-info actions require written notes.
+                      </p>
+                    </>
+                  ) : isLocalItem ? (
                     <>
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                         <button
