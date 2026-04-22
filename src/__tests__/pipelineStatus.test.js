@@ -5,6 +5,7 @@ import {
   getPipelinePollingInterval,
   isDemoCaseId,
   isTerminalOverallStatus,
+  isTerminalPipelineSseEvent,
   isTerminalPipelineStatus,
   MAX_POLL_ERRORS,
   normalizePipelineStatus,
@@ -193,5 +194,45 @@ describe('pipelineStatus helpers', () => {
 
   it('defines exactly 9 agents in the pipeline order', () => {
     expect(PIPELINE_AGENT_ORDER).toHaveLength(9);
+  });
+
+  // ── isTerminalPipelineSseEvent ──────────────────────────────────────────
+
+  it('treats governance-verdict completed/failed as a terminal SSE event', () => {
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'completed' }),
+    ).toBe(true);
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'failed' }),
+    ).toBe(true);
+  });
+
+  it('treats the pipeline/terminal event as a terminal SSE event', () => {
+    expect(
+      isTerminalPipelineSseEvent({
+        agent: 'pipeline',
+        phase: 'terminal',
+        detail: { reason: 'l2_barrier_timeout', stopped_at: 'layer2-aggregator' },
+      }),
+    ).toBe(true);
+  });
+
+  it('does not treat per-agent started/completed events as terminal', () => {
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'case-processing', phase: 'started' }),
+    ).toBe(false);
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'deliberation', phase: 'completed' }),
+    ).toBe(false);
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'started' }),
+    ).toBe(false);
+  });
+
+  it('is safe against null / undefined / non-object inputs', () => {
+    expect(isTerminalPipelineSseEvent(null)).toBe(false);
+    expect(isTerminalPipelineSseEvent(undefined)).toBe(false);
+    expect(isTerminalPipelineSseEvent('not-an-object')).toBe(false);
+    expect(isTerminalPipelineSseEvent({})).toBe(false);
   });
 });
