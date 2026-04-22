@@ -1,24 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Zap } from 'lucide-react';
 import api from '../lib/api';
-import { PIPELINE_AGENT_LABELS, normalizePipelineStatus } from '../lib/pipelineStatus';
+import {
+  PIPELINE_AGENT_LABELS,
+  isTerminalPipelineSseEvent,
+  normalizePipelineStatus,
+} from '../lib/pipelineStatus';
 
 /**
  * AgentStreamPanel — right panel showing live pipeline events via SSE.
- * Falls back to polling GET /status every 5s if SSE fails or disconnects.
+ * Falls back to polling GET /status every 5s if SSE fails or disconnects
+ * *before* the pipeline has sent a terminal close event.
  */
-export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuses }) {
+export default function AgentStreamPanel({
+  caseId,
+  selectedAgentId,
+  agentStatuses,
+  onTerminal,
+}) {
   const [events, setEvents] = useState({}); // keyed by agent_id
   const [sseConnected, setSseConnected] = useState(false);
   const [sseError, setSseError] = useState(false);
   const eventSourceRef = useRef(null);
   const scrollRef = useRef(null);
   const isManualScrollRef = useRef(false);
+  const onTerminalRef = useRef(onTerminal);
+  useEffect(() => {
+    onTerminalRef.current = onTerminal;
+  }, [onTerminal]);
 
   // Connect SSE on mount, reconnect on caseId change
   useEffect(() => {
     let pollInterval = null;
     let es = null;
+    // The backend closes the stream after emitting a terminal event; any
+    // subsequent `onerror` the browser fires is the spec-mandated retry
+    // signal, not a real failure. Suppress the polling fallback in that
+    // case so we don't keep querying /status for a finished case.
+    let terminalReached = false;
 
     const connectSSE = () => {
       if (es) es.close();
@@ -35,23 +54,50 @@ export default function AgentStreamPanel({ caseId, selectedAgentId, agentStatuse
       };
 
       es.onmessage = (event) => {
+        let data;
         try {
-          const data = JSON.parse(event.data);
-          if (data.agent) {
-            setEvents((prev) => ({
-              ...prev,
-              [data.agent]: [...(prev[data.agent] || []), data],
-            }));
-          }
+          data = JSON.parse(event.data);
         } catch {
-          // ignore parse errors
+          return;
+        }
+
+        if (isTerminalPipelineSseEvent(data)) {
+          terminalReached = true;
+          setSseConnected(false);
+          setSseError(false);
+          if (es) {
+            es.close();
+            es = null;
+          }
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          onTerminalRef.current?.(data);
+          // Per-agent terminal phases (governance-verdict completed/failed)
+          // are still useful UI state, so let them fall through to the
+          // append below. The synthetic `pipeline` event has no per-agent
+          // bucket and would just clutter an empty pane, so drop it.
+          if (data.agent === 'pipeline') return;
+        }
+
+        if (data.agent) {
+          setEvents((prev) => ({
+            ...prev,
+            [data.agent]: [...(prev[data.agent] || []), data],
+          }));
         }
       };
 
       es.onerror = () => {
         setSseConnected(false);
+        if (es) es.close();
+        if (terminalReached) {
+          // Clean post-terminal close — not an error worth surfacing or
+          // backfilling with polling.
+          return;
+        }
         setSseError(true);
-        es.close();
         // Fall back to polling
         if (!pollInterval) {
           pollInterval = setInterval(async () => {

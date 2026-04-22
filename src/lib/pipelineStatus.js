@@ -185,6 +185,35 @@ export function isTerminalOverallStatus(overallStatus) {
   return overallStatus === 'completed' || overallStatus === 'failed';
 }
 
+const GOVERNANCE_TERMINAL_PHASES = new Set(['completed', 'failed']);
+
+/**
+ * Returns `true` when an SSE event carries a run-level close signal.
+ *
+ * The backend emits two kinds of close events on
+ * `GET /api/v1/cases/{case_id}/status/stream`:
+ *   - `agent="governance-verdict"` + phase `completed`/`failed` — the
+ *     happy-path close after the 9th agent resolves.
+ *   - `agent="pipeline"` + phase `terminal` — the run-level halt owned by
+ *     the orchestrator (L1 complexity escalation, L2 barrier timeout,
+ *     governance halt, orchestrator exception, SSE watchdog timeout).
+ *
+ * Subscribers must close cleanly on either and skip polling fallbacks —
+ * otherwise the browser's default EventSource reconnect behaviour keeps
+ * hammering an already-terminal case.
+ */
+export function isTerminalPipelineSseEvent(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (data.agent === 'pipeline' && data.phase === 'terminal') return true;
+  if (
+    data.agent === 'governance-verdict' &&
+    GOVERNANCE_TERMINAL_PHASES.has(data.phase)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // ── Demo pipeline builder ───────────────────────────────────────────────────
 
 export function buildDemoPipelineStatus(caseId) {
