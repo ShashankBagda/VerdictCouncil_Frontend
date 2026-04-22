@@ -20,9 +20,15 @@ import { useParams } from 'react-router-dom';
 import { useAuth, useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import { 
-  normalizeVerdict, 
   extractItems, 
-  normalizeKnowledgeBaseStatus
+  normalizeArgumentsResource,
+  normalizeDeliberationResource,
+  normalizeEvidenceResource,
+  normalizeKnowledgeBaseStatus,
+  normalizeStatutesResource,
+  normalizeTimelineResource,
+  normalizeVerdict,
+  normalizeWitnessResource,
 } from '../../lib/caseWorkspace';
 
 // New Components
@@ -46,24 +52,90 @@ const TABS = [
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
   { id: 'verdict', label: 'Verdict', icon: CheckCircle, activeClass: 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300' },
 ];
-const extractEvidenceGapItems = (payload) =>
-  extractItems(payload, ['gaps', 'items', 'evidence_gaps', 'missing_evidence']);
+const extractEvidenceGapItems = (payload) => {
+  const root = payload?.data || payload || {};
+  const weakEvidence = extractItems(root, ['weak_evidence']).map((item, index) => ({
+    id: item.id || `weak-evidence-${index}`,
+    title: `Weak ${item.evidence_type || 'evidence'} item`,
+    description:
+      Object.keys(item.admissibility_flags || {}).length > 0
+        ? `Admissibility flags: ${Object.keys(item.admissibility_flags).join(', ')}`
+        : 'This evidence item needs corroboration or closer admissibility review.',
+    severity: item.strength === 'weak' ? 'significant' : 'medium',
+    status: item.strength || 'unrated',
+    next_step: 'Probe authenticity, corroboration, and legal sufficiency at hearing.',
+  }));
+  const uncorroboratedFacts = extractItems(root, ['uncorroborated_facts']).map((item, index) => ({
+    id: item.id || `uncorroborated-${index}`,
+    title: 'Uncorroborated fact',
+    description: item.description || 'A fact record lacks corroborating support.',
+    severity: item.confidence === 'high' ? 'significant' : 'medium',
+    status: item.status || 'uncorroborated',
+    next_step: 'Seek corroborating testimony or source material.',
+  }));
+  return [...weakEvidence, ...uncorroboratedFacts];
+};
 
 const extractDisputedFacts = (payload) =>
-  extractItems(payload, ['disputed_facts', 'facts', 'items']);
+  extractItems(payload, ['events', 'disputed_facts', 'facts', 'items']).filter(
+    (fact) => String(fact?.status || '').toLowerCase() === 'disputed',
+  );
 
 const extractFairnessChecks = (payload) =>
-  extractItems(payload, ['checks', 'items', 'audit_checks']);
+  extractItems(payload, ['governance_checks', 'checks', 'items', 'audit_checks']).map(
+    (check, index) => ({
+      id: check.id || check.audit_log_id || `fairness-${index}`,
+      title: check.title || check.action || `Governance Check ${index + 1}`,
+      description:
+        check.description ||
+        check.summary ||
+        JSON.stringify(check.fairness_data || {}, null, 2),
+      status:
+        check.status ||
+        check.fairness_data?.status ||
+        check.fairness_data?.result ||
+        'review',
+      recommendation:
+        check.recommendation ||
+        check.fairness_data?.recommendation ||
+        check.fairness_data?.action ||
+        null,
+    }),
+  );
 
 const extractPrecedentItems = (payload) =>
-  extractItems(payload, ['results', 'precedents', 'items']);
+  extractItems(payload, ['results', 'precedents', 'items']).map((item) => ({
+    ...item,
+    title: item.title || item.citation || item.case_name || item.name,
+    summary:
+      item.summary || item.reasoning_summary || item.snippet || item.holding || null,
+    score: item.score ?? item.relevance_score ?? item.similarity_score ?? null,
+    url: item.url || item.link || item.elitigation_url || null,
+  }));
 
 const getFairnessSummary = (payload, checks) => {
   const root = payload?.data || payload || {};
+  const fairnessReport = root.verdict_fairness_report || {};
   return {
-    score: root.score ?? root.fairness_score ?? root.overall_score ?? null,
-    summary: root.summary || root.assessment || root.notes || null,
-    flagged: root.flagged_issues ?? root.issue_count ?? checks.filter((check) => !isCheckPassing(check)).length,
+    score:
+      fairnessReport.score ??
+      fairnessReport.overall_score ??
+      root.score ??
+      root.fairness_score ??
+      root.overall_score ??
+      null,
+    summary:
+      fairnessReport.summary ||
+      root.summary ||
+      root.assessment ||
+      root.notes ||
+      null,
+    flagged:
+      fairnessReport.flagged_issues ??
+      fairnessReport.issue_count ??
+      root.flagged_issues ??
+      root.issue_count ??
+      checks.filter((check) => !isCheckPassing(check)).length,
   };
 };
 
@@ -156,13 +228,33 @@ export default function CaseDossier() {
           api.listReopenRequests(caseId),
         ]);
 
-        setEvidence(evidenceRes.status === 'fulfilled' ? evidenceRes.value?.data : null);
+        setEvidence(
+          evidenceRes.status === 'fulfilled' ? normalizeEvidenceResource(evidenceRes.value) : null,
+        );
         setEvidenceGaps(evidenceGapsRes.status === 'fulfilled' ? evidenceGapsRes.value : null);
-        setTimeline(timelineRes.status === 'fulfilled' ? timelineRes.value?.data : null);
-        setWitnesses(witnessesRes.status === 'fulfilled' ? witnessesRes.value?.data : null);
-        setStatutes(statutesRes.status === 'fulfilled' ? statutesRes.value?.data : null);
-        setArguments(argumentsRes.status === 'fulfilled' ? argumentsRes.value?.data : null);
-        setDeliberation(deliberationRes.status === 'fulfilled' ? deliberationRes.value?.data : null);
+        setTimeline(
+          timelineRes.status === 'fulfilled' ? normalizeTimelineResource(timelineRes.value) : null,
+        );
+        setWitnesses(
+          witnessesRes.status === 'fulfilled'
+            ? normalizeWitnessResource(witnessesRes.value)
+            : null,
+        );
+        setStatutes(
+          statutesRes.status === 'fulfilled'
+            ? normalizeStatutesResource(statutesRes.value)
+            : null,
+        );
+        setArguments(
+          argumentsRes.status === 'fulfilled'
+            ? normalizeArgumentsResource(argumentsRes.value)
+            : null,
+        );
+        setDeliberation(
+          deliberationRes.status === 'fulfilled'
+            ? normalizeDeliberationResource(deliberationRes.value)
+            : null,
+        );
         setVerdict(verdictRes.status === 'fulfilled' ? normalizeVerdict(verdictRes.value) : null);
         setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
         setKnowledgeBaseStatus(
@@ -191,7 +283,7 @@ export default function CaseDossier() {
   }, [caseId, showError]);
 
   const evidenceGapItems = useMemo(() => extractEvidenceGapItems(evidenceGaps), [evidenceGaps]);
-  const disputedFacts = useMemo(() => extractDisputedFacts(evidenceGaps), [evidenceGaps]);
+  const disputedFacts = useMemo(() => extractDisputedFacts(timeline), [timeline]);
   const fairnessChecks = useMemo(() => extractFairnessChecks(fairnessAudit), [fairnessAudit]);
   const fairnessSummary = useMemo(
     () => getFairnessSummary(fairnessAudit, fairnessChecks),
@@ -274,28 +366,22 @@ export default function CaseDossier() {
     try {
       setDisputeSubmitting((prev) => ({ ...prev, [factId]: true }));
       await api.disputeFact(caseId, factId, { reason });
-      setEvidenceGaps((current) => {
+      setTimeline((current) => {
         if (!current) return current;
-        const nextFacts = extractDisputedFacts(current).map((item, itemIdx) => {
-          const itemKey = item?.id || item?.fact_id || item?.uuid || itemIdx;
-          if (String(itemKey) !== String(factId)) return item;
+        if (Array.isArray(current?.events)) {
           return {
-            ...item,
-            status: 'disputed',
-            disputed: true,
-            dispute_reason: reason,
+            ...current,
+            events: current.events.map((item, itemIdx) => {
+              const itemKey = item?.id || item?.fact_id || item?.uuid || itemIdx;
+              if (String(itemKey) !== String(factId)) return item;
+              return {
+                ...item,
+                status: 'disputed',
+                disputed: true,
+                dispute_reason: reason,
+              };
+            }),
           };
-        });
-
-        if (Array.isArray(current)) return nextFacts;
-        if (Array.isArray(current?.disputed_facts)) {
-          return { ...current, disputed_facts: nextFacts };
-        }
-        if (Array.isArray(current?.facts)) {
-          return { ...current, facts: nextFacts };
-        }
-        if (Array.isArray(current?.items)) {
-          return { ...current, items: nextFacts };
         }
         return current;
       });
@@ -684,6 +770,11 @@ export default function CaseDossier() {
                         <div key={idx} className="bg-rose-50 border border-rose-200 rounded-lg p-4">
                           <p className="font-semibold text-navy-900 mb-2">{arg.title || `Argument ${idx + 1}`}</p>
                           <p className="text-sm text-gray-700 mb-3">{arg.text}</p>
+                          {arg.weaknesses && (
+                            <p className="text-xs text-rose-800 mb-3">
+                              <span className="font-semibold">Weakness:</span> {arg.weaknesses}
+                            </p>
+                          )}
                           {arg.strength && (
                             <div className="flex items-center gap-2 text-xs">
                               <span className="font-semibold text-gray-600">Strength:</span>
@@ -714,6 +805,11 @@ export default function CaseDossier() {
                         <div key={idx} className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                           <p className="font-semibold text-navy-900 mb-2">{arg.title || `Argument ${idx + 1}`}</p>
                           <p className="text-sm text-gray-700 mb-3">{arg.text}</p>
+                          {arg.weaknesses && (
+                            <p className="text-xs text-emerald-800 mb-3">
+                              <span className="font-semibold">Weakness:</span> {arg.weaknesses}
+                            </p>
+                          )}
                           {arg.strength && (
                             <div className="flex items-center gap-2 text-xs">
                               <span className="font-semibold text-gray-600">Strength:</span>
@@ -752,6 +848,13 @@ export default function CaseDossier() {
 
           {deliberation ? (
             <div className="space-y-6">
+              {deliberation.preliminary_conclusion && (
+                <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-navy-900 mb-2">Preliminary Conclusion</h3>
+                  <p className="text-sm text-gray-800">{deliberation.preliminary_conclusion}</p>
+                </div>
+              )}
+
               {deliberation.reasoning && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Reasoning Chain</h3>
@@ -927,4 +1030,3 @@ export default function CaseDossier() {
     </div>
   );
 }
-

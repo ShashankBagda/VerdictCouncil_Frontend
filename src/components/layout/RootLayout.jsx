@@ -15,7 +15,8 @@ export function RootLayout() {
     isAuthResolved,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [inboxCount, setInboxCount] = React.useState(0);
+  const [escalationCount, setEscalationCount] = React.useState(0);
+  const [seniorInboxCount, setSeniorInboxCount] = React.useState(0);
 
   const roleLabel = user?.role
     ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
@@ -28,7 +29,8 @@ export function RootLayout() {
 
   React.useEffect(() => {
     if (!isAuthResolved || !isAuthenticated) {
-      setInboxCount(0);
+      setEscalationCount(0);
+      setSeniorInboxCount(0);
       return undefined;
     }
 
@@ -36,14 +38,29 @@ export function RootLayout() {
 
     const loadInboxCount = async () => {
       try {
-        const res = await api.getEscalatedCases();
+        const escalatedRes = await api.getEscalatedCases();
         if (!isMounted) return;
-        const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
-        const counts = buildWorkflowCounts(remoteItems);
-        setInboxCount(counts.pending);
+        const escalatedItems = (escalatedRes?.data?.items || escalatedRes?.items || []).map(
+          normalizeWorkflowItem,
+        );
+        const escalatedCounts = buildWorkflowCounts(escalatedItems);
+        setEscalationCount(escalatedCounts.pending);
+
+        if (hasAnyRole(['admin', 'senior_judge'])) {
+          const seniorRes = await api.getSeniorInbox();
+          if (!isMounted) return;
+          const seniorItems = (seniorRes?.data?.items || seniorRes?.items || []).map(
+            normalizeWorkflowItem,
+          );
+          const seniorCounts = buildWorkflowCounts(seniorItems);
+          setSeniorInboxCount(seniorCounts.pending);
+        } else {
+          setSeniorInboxCount(0);
+        }
       } catch {
         if (isMounted) {
-          setInboxCount(0);
+          setEscalationCount(0);
+          setSeniorInboxCount(0);
         }
       }
     };
@@ -55,7 +72,7 @@ export function RootLayout() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [isAuthenticated, isAuthResolved]);
+  }, [hasAnyRole, isAuthenticated, isAuthResolved]);
 
   if (!isAuthResolved) {
     return (
@@ -116,7 +133,7 @@ export function RootLayout() {
             label="Escalated Cases"
             onClick={() => navigate('/escalated-cases')}
             show={sidebarOpen}
-            badge={inboxCount > 0 ? String(inboxCount) : null}
+            badge={escalationCount > 0 ? String(escalationCount) : null}
           />
           {hasAnyRole(['admin', 'senior_judge']) && (
             <NavItem
@@ -124,10 +141,10 @@ export function RootLayout() {
               label="Senior Inbox"
               onClick={() => navigate('/senior-inbox')}
               show={sidebarOpen}
-              badge={inboxCount > 0 ? String(inboxCount) : null}
+              badge={seniorInboxCount > 0 ? String(seniorInboxCount) : null}
             />
           )}
-          {hasAnyRole(['admin', 'senior_judge']) && (
+          {hasAnyRole(['judge', 'admin', 'senior_judge']) && (
             <NavItem
               icon={<Database size={20} />}
               label="Knowledge Base"

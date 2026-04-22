@@ -24,8 +24,10 @@ function StatusBadge({ status }) {
       ? 'bg-gray-100 text-gray-700'
       : status === 'failed'
         ? 'bg-rose-100 text-rose-700'
-        : status === 'completed'
+        : status === 'completed' || status === 'ready_for_review'
           ? 'bg-emerald-100 text-emerald-700'
+          : status === 'escalated'
+            ? 'bg-amber-100 text-amber-700'
           : 'bg-blue-100 text-blue-700';
 
   return (
@@ -166,8 +168,10 @@ export default function CaseDetail() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-4xl font-bold text-navy-900">Case {caseId}</h1>
-              <StatusBadge status={workspaceCase?.status} />
+              <h1 className="text-4xl font-bold text-navy-900">
+                {workspaceCase?.title || `Case ${caseId}`}
+              </h1>
+              <StatusBadge status={workspaceCase?.raw_status || workspaceCase?.status} />
             </div>
             <p className="text-gray-600 max-w-3xl">
               {workspaceCase?.case_description || 'Case workspace for evidence, analysis, and judge actions.'}

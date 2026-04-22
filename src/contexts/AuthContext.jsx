@@ -83,7 +83,7 @@ export function AuthProvider({ children }) {
       } catch (err) {
         if (!isMounted) return;
 
-        if (err instanceof APIError && (err.status === 401 || err.status === 404)) {
+        if (err instanceof APIError && (err.status === 401 || err.status === 404 || err.status === 0)) {
           clearSession();
         } else {
           clearSession();

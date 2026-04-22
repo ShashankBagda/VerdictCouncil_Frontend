@@ -127,7 +127,7 @@ describe('API module', () => {
     const { default: api } = await import('../lib/api');
     await api.getEscalatedCases();
     const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/?page=1');
+    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/?page=1&per_page=20');
   });
 
   it('posts backend-compatible escalated case actions', async () => {

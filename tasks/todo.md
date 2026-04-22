@@ -84,3 +84,25 @@ PR: https://github.com/ShashankBagda/VerdictCouncil_Frontend/pull/141 (`feat/do-
 - [ ] After one clean prod App Platform deploy: delete `cd.yml` (or trim to `build-artifact` only if a consumer of the artifact is identified). Grep for artifact consumers before ripping it out.
 - [ ] Remove the `github-pages` environment from repo settings if no other workflow uses it.
 - [ ] Root submodule bump: once PR lands on `main`, `cd /Users/douglasswm/Project/AAS/VER && git add VerdictCouncil_Frontend && git commit -m "chore: bump frontend to <sha> (DO App Platform deploys)" && git push origin main`
+
+---
+
+# Story-aligned integration remediation
+
+Goal: rework the frontend to follow `01-user-stories.md` and `/Users/douglasswm/Project/AAS/VER/AGENT_ARCHITECTURE.md` as the product contract, rather than preserving accidental assumptions from earlier local adapters.
+
+## Checklist
+- [x] Replace intake payload assumptions with the structured case metadata required by US-001, US-003, and US-028
+- [x] Align the pipeline visualisation and status mapping to the fixed 9-agent order from the architecture doc
+- [x] Refactor the dossier adapters and sections to consume real backend shapes for evidence, facts, disputes, witnesses, statutes, precedents, arguments, deliberation, verdict, and fairness outputs
+- [x] Standardize escalation, senior-inbox, amendment, and reopen UI flows around shared workflow-item fields
+- [x] Bring dashboard, knowledge-base, hearing-pack, and export surfaces in line with the user stories that are actually implemented
+- [x] Add schema-aware tests that lock the frontend against the story-aligned backend contract
+
+## Review
+- Intake, case list, case detail, dossier, hearing pack, dashboard, knowledge-base, escalation queue, and senior inbox were all reworked to treat the backend user-story contract as the source of truth rather than preserving older client-side assumptions.
+- The frontend pipeline view now uses the architecture-defined 9-agent order and the dossier normalizers consume the backend’s real field names for evidence, facts, witnesses, statutes, precedents, arguments, deliberation, verdict, fairness, and workflow history.
+- Exception handling is now truthful: reopen requests go through the backend flow, while amendment actions remain explicitly read-only until the backend exposes the missing endpoint instead of pretending local-only completion.
+- Added schema-aware frontend contract coverage in `src/__tests__/backendSchemaContract.test.js`, alongside the existing path-contract guard, so the UI is checked against the committed backend OpenAPI snapshot as well as representative story-aligned payloads.
+- Verification passed with `npm run lint`, `npm test`, `npm run build`, and `npm run check:contract`.
+- Residual frontend gaps are now explicit instead of masked: amendment submission / approval remains blocked by missing backend support, some senior-judge actions from `US-040` are still absent, and unrelated pre-existing React `act(...)` warnings remain in `src/contexts/AuthContext.jsx` tests.
