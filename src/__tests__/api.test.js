@@ -114,34 +114,23 @@ describe('API module', () => {
     expect(result.user.email).toBe('judge@verdictcouncil.sg');
   });
 
-  it('constructs correct escalated cases URL', async () => {
+  it('constructs correct gate advance URL', async () => {
     const { default: api } = await import('../lib/api');
-    await api.getEscalatedCases();
+    try { await api.advanceGate('case-123', 'gate1'); } catch { /* ignore */ }
     const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/?page=1&per_page=20');
+    expect(fetchCall[0]).toContain('/api/v1/cases/case-123/gates/gate1/advance');
+    expect(fetchCall[1].method).toBe('POST');
   });
 
-  it('posts backend-compatible escalated case actions', async () => {
+  it('posts backend-compatible gate rerun request', async () => {
     const { default: api } = await import('../lib/api');
     try {
-      await api.actionOnEscalatedCase('case-123', {
-        action: 'manual_decision',
-        notes: 'Reviewed by senior judge',
-        final_order: 'Appeal dismissed.',
-      });
-    } catch {
-      // ignore
-    }
+      await api.rerunGate('case-123', 'gate2', { agentName: 'evidence-analysis', instructions: 'Focus on financials' });
+    } catch { /* ignore */ }
     const fetchCall = globalThis.fetch.mock.calls[0];
-    expect(fetchCall[0]).toContain('/api/v1/escalated-cases/case-123/action');
+    expect(fetchCall[0]).toContain('/api/v1/cases/case-123/gates/gate2/rerun');
     expect(fetchCall[1].method).toBe('POST');
-    expect(fetchCall[1].body).toBe(
-      JSON.stringify({
-        action: 'manual_decision',
-        notes: 'Reviewed by senior judge',
-        final_order: 'Appeal dismissed.',
-      }),
-    );
+    expect(JSON.parse(fetchCall[1].body)).toMatchObject({ agent_name: 'evidence-analysis', instructions: 'Focus on financials' });
   });
 
   it('constructs all newly implemented phase5 contract URLs', async () => {
@@ -260,7 +249,8 @@ describe('API module', () => {
     await api.listReopenRequests('case-1');
     await api.reviewReopenRequest('case-1', 'req-1', { action: 'approve' });
     await api.getAdminHealth();
-    await api.getSeniorInbox(2, 15);
+    await api.recordDecision('case-1', { verdict_text: 'In favour of claimant.', ai_engagements: [] });
+    await api.getDocumentExcerpt('doc-1', 3);
 
     const calledUrls = globalThis.fetch.mock.calls.map((call) => call[0]);
     expect(calledUrls).toEqual(
@@ -293,7 +283,8 @@ describe('API module', () => {
         expect.stringContaining('/api/v1/cases/case-1/reopen-requests'),
         expect.stringContaining('/api/v1/cases/case-1/reopen-requests/req-1/review'),
         expect.stringContaining('/api/v1/health/pair'),
-        expect.stringContaining('/api/v1/senior-inbox/?page=2&per_page=15'),
+        expect.stringContaining('/api/v1/cases/case-1/decision'),
+        expect.stringContaining('/api/v1/documents/doc-1/excerpt?page=3'),
       ]),
     );
   });

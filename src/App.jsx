@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { APIProvider } from './contexts/APIContext';
@@ -28,9 +27,6 @@ import WhatIfMode from './pages/whatif/WhatIfMode';
 import HearingPack from './pages/judge/HearingPack';
 import KnowledgeBase from './pages/judge/KnowledgeBase';
 
-// Pages - Escalation
-import EscalatedCases from './pages/escalation/EscalatedCases';
-import SeniorJudgeInbox from './pages/senior/SeniorJudgeInbox';
 import NotFound from './pages/NotFound';
 
 // Layout
@@ -90,25 +86,7 @@ export default function App() {
 
                   <Route
                     path="/knowledge-base"
-                    element={
-                      <ProtectedRoute
-                        element={<KnowledgeBase />}
-                        allowedRoles={['judge', 'admin', 'senior_judge']}
-                      />
-                    }
-                  />
-                  <Route
-                    path="/escalated-cases"
-                    element={<ProtectedRoute element={<EscalatedCases />} />}
-                  />
-                  <Route
-                    path="/senior-inbox"
-                    element={
-                      <ProtectedRoute
-                        element={<SeniorJudgeInbox />}
-                        allowedRoles={['admin', 'senior_judge']}
-                      />
-                    }
+                    element={<ProtectedRoute element={<KnowledgeBase />} />}
                   />
                 </Route>
 

@@ -1,78 +1,24 @@
 import React from 'react';
 import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
-import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-react';
-import api from '../../lib/api';
-import { buildWorkflowCounts, normalizeWorkflowItem } from '../../lib/escalationWorkflow';
+import { Menu, LogOut, Home, FileText, Settings, Database } from 'lucide-react';
 
 export function RootLayout() {
   const navigate = useNavigate();
   const {
     logout,
     user,
-    hasAnyRole,
     isAuthenticated,
     isAuthResolved,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [escalationCount, setEscalationCount] = React.useState(0);
-  const [seniorInboxCount, setSeniorInboxCount] = React.useState(0);
 
-  const roleLabel = user?.role
-    ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-    : 'Authenticated User';
+  const roleLabel = 'Judge';
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
-
-  React.useEffect(() => {
-    if (!isAuthResolved || !isAuthenticated) {
-      setEscalationCount(0);
-      setSeniorInboxCount(0);
-      return undefined;
-    }
-
-    let isMounted = true;
-
-    const loadInboxCount = async () => {
-      try {
-        const escalatedRes = await api.getEscalatedCases();
-        if (!isMounted) return;
-        const escalatedItems = (escalatedRes?.data?.items || escalatedRes?.items || []).map(
-          normalizeWorkflowItem,
-        );
-        const escalatedCounts = buildWorkflowCounts(escalatedItems);
-        setEscalationCount(escalatedCounts.pending);
-
-        if (hasAnyRole(['admin', 'senior_judge'])) {
-          const seniorRes = await api.getSeniorInbox();
-          if (!isMounted) return;
-          const seniorItems = (seniorRes?.data?.items || seniorRes?.items || []).map(
-            normalizeWorkflowItem,
-          );
-          const seniorCounts = buildWorkflowCounts(seniorItems);
-          setSeniorInboxCount(seniorCounts.pending);
-        } else {
-          setSeniorInboxCount(0);
-        }
-      } catch {
-        if (isMounted) {
-          setEscalationCount(0);
-          setSeniorInboxCount(0);
-        }
-      }
-    };
-
-    loadInboxCount();
-    const intervalId = window.setInterval(loadInboxCount, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [hasAnyRole, isAuthenticated, isAuthResolved]);
 
   if (!isAuthResolved) {
     return (
@@ -129,29 +75,11 @@ export function RootLayout() {
             show={sidebarOpen}
           />
           <NavItem
-            icon={<Users size={20} />}
-            label="Escalated Cases"
-            onClick={() => navigate('/escalated-cases')}
+            icon={<Database size={20} />}
+            label="Knowledge Base"
+            onClick={() => navigate('/knowledge-base')}
             show={sidebarOpen}
-            badge={escalationCount > 0 ? String(escalationCount) : null}
           />
-          {hasAnyRole(['admin', 'senior_judge']) && (
-            <NavItem
-              icon={<Users size={20} />}
-              label="Senior Inbox"
-              onClick={() => navigate('/senior-inbox')}
-              show={sidebarOpen}
-              badge={seniorInboxCount > 0 ? String(seniorInboxCount) : null}
-            />
-          )}
-          {hasAnyRole(['judge', 'admin', 'senior_judge']) && (
-            <NavItem
-              icon={<Database size={20} />}
-              label="Knowledge Base"
-              onClick={() => navigate('/knowledge-base')}
-              show={sidebarOpen}
-            />
-          )}
           <NavItem
             icon={<Settings size={20} />}
             label="Settings"
