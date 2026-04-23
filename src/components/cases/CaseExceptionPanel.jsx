@@ -1,15 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   FilePenLine,
   History,
   ShieldCheck,
-  History as HistoryIcon,
-  CircleAlert,
-  Gavel,
 } from 'lucide-react';
 import { useAPI } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import { getCaseDecisionHistory } from '../../lib/escalationWorkflow';
 import ReopenRequestForm from '../judge/ReopenRequestForm';
 
 function ReopenStatusBadge({ status }) {
@@ -31,7 +27,6 @@ export default function CaseExceptionPanel({ caseId, caseDetail }) {
   const { showError, showNotification } = useAPI();
   const [reopenItems, setReopenItems] = useState([]);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
-  const decisionHistory = useMemo(() => getCaseDecisionHistory(caseDetail), [caseDetail]);
   const normalizedStatus = String(caseDetail?.status || '').toLowerCase();
   const isClosed = ['closed', 'completed', 'decided', 'rejected'].includes(normalizedStatus);
 
@@ -120,52 +115,6 @@ export default function CaseExceptionPanel({ caseId, caseDetail }) {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="card-lg bg-navy-900 border-navy-800 text-white overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-navy-800 flex items-center justify-between">
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2">
-            <Gavel className="w-5 h-5 text-emerald-400" />
-            Decision History
-          </h2>
-          <HistoryIcon className="w-4 h-4 text-navy-400" />
-        </div>
-
-        <div className="p-6">
-          {decisionHistory.length > 0 ? (
-            <div className="space-y-4">
-              {decisionHistory.map((entry) => (
-                <div key={entry.id} className="relative pl-6 pb-2 border-l border-navy-700 last:pb-0">
-                  <div className="absolute left-[-5px] top-0 w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                  <div className="flex items-center justify-between gap-4 mb-2">
-                    <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
-                      {String(entry.decision_type || 'recorded').replace(/_/g, ' ')}
-                    </p>
-                    <span className="text-[9px] font-bold text-navy-400 uppercase">
-                      {new Date(entry.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  {entry.reason && (
-                    <p className="text-xs text-navy-100 font-medium leading-relaxed bg-navy-800/50 p-2.5 rounded-lg border border-navy-800">
-                      {entry.reason}
-                    </p>
-                  )}
-                  <p className="text-[9px] text-navy-400 font-bold uppercase tracking-wider mt-2 flex items-center gap-1.5 px-2">
-                    <span className="w-1 h-1 rounded-full bg-navy-600" />
-                    {entry.actor}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center bg-navy-800/20 rounded-2xl border border-navy-800 border-dashed">
-              <CircleAlert className="w-8 h-8 text-navy-700 mx-auto mb-3" />
-              <p className="text-xs text-navy-400 font-black uppercase tracking-widest">
-                Order Pending
-              </p>
-            </div>
-          )}
         </div>
       </div>
 

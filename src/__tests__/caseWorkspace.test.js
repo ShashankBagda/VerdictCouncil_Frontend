@@ -4,12 +4,11 @@ import {
   normalizeArgumentsResource,
   normalizeCaseDetail,
   normalizeCaseSummary,
-  normalizeDeliberationResource,
+  normalizeHearingAnalysis,
   normalizeEvidenceResource,
   normalizeKnowledgeBaseStatus,
   normalizeStatutesResource,
   normalizeTimelineResource,
-  normalizeVerdict,
   normalizeWitnessResource,
 } from '../lib/caseWorkspace';
 
@@ -27,15 +26,6 @@ describe('caseWorkspace normalizers', () => {
       respondent_name: 'FurniturePlus',
       pipeline_progress: { pipeline_progress_percent: 78, current_agent: 'deliberation' },
       documents: [{ id: 'doc-1', filename: 'invoice.pdf' }],
-      latest_decision: { decision_type: 'modify', reason: 'Adjust damages' },
-      decision_history: [
-        {
-          decision_type: 'modify',
-          reason: 'Adjust damages',
-          recorded_at: '2026-04-22T10:00:00Z',
-          recorded_by: 'judge-1',
-        },
-      ],
     };
 
     const summary = normalizeCaseSummary(payload);
@@ -46,7 +36,6 @@ describe('caseWorkspace normalizers', () => {
     expect(summary.party_1).toBe('Lim');
     expect(summary.pipeline_progress).toBe(78);
     expect(detail.documents).toHaveLength(1);
-    expect(detail.decision_history[0].decision_type).toBe('modify');
   });
 
   it('normalizes evidence, facts, witnesses, statutes, and precedent arrays from raw backend payloads', () => {
@@ -145,7 +134,7 @@ describe('caseWorkspace normalizers', () => {
     expect(groupedArguments.claimant.arguments).toHaveLength(1);
     expect(groupedArguments.respondent.arguments).toHaveLength(1);
 
-    const deliberation = normalizeDeliberationResource([
+    const hearingAnalysis = normalizeHearingAnalysis([
       {
         id: 'd-1',
         reasoning_chain: { key_points: ['Latent defect remains the pivot issue.'] },
@@ -154,24 +143,11 @@ describe('caseWorkspace normalizers', () => {
       },
     ]);
 
-    expect(deliberation.key_points[0]).toContain('Latent defect');
-    expect(deliberation.risks[0]).toContain('patent');
+    expect(hearingAnalysis.key_points[0]).toContain('Latent defect');
+    expect(hearingAnalysis.risks[0]).toContain('patent');
   });
 
-  it('normalizes verdict and knowledge-base status payloads', () => {
-    const verdict = normalizeVerdict([
-      {
-        id: 'v-1',
-        recommended_outcome: 'Damages awarded',
-        confidence_score: 72,
-        fairness_report: { summary: 'Balanced treatment across both parties.' },
-      },
-    ]);
-
-    expect(verdict.recommendation).toBe('Damages awarded');
-    expect(verdict.confidence).toBe(72);
-    expect(verdict.fairness_assessment).toContain('Balanced treatment');
-
+  it('normalizes knowledge-base status payloads', () => {
     const kbStatus = normalizeKnowledgeBaseStatus({
       initialized: true,
       documents_count: 342,

@@ -19,8 +19,8 @@ export const PIPELINE_AGENT_ORDER = [
   'witness-analysis',
   'legal-knowledge',
   'argument-construction',
-  'deliberation',
-  'governance-verdict',
+  'hearing-analysis',
+  'hearing-governance',
 ];
 
 export const PIPELINE_AGENT_LABELS = {
@@ -31,9 +31,25 @@ export const PIPELINE_AGENT_LABELS = {
   'witness-analysis': 'Witness Analysis',
   'legal-knowledge': 'Legal Knowledge',
   'argument-construction': 'Argument Construction',
-  'deliberation': 'Deliberation',
-  'governance-verdict': 'Governance & Verdict',
+  'hearing-analysis': 'Hearing Analysis',
+  'hearing-governance': 'Hearing Governance',
 };
+
+export const GATE_PAUSE_STATUSES = new Set([
+  'awaiting_review_gate1',
+  'awaiting_review_gate2',
+  'awaiting_review_gate3',
+  'awaiting_review_gate4',
+]);
+
+export function isGatePauseStatus(status) {
+  return GATE_PAUSE_STATUSES.has(status);
+}
+
+export function gateNameFromStatus(status) {
+  const match = /^awaiting_review_(gate\d)$/.exec(status);
+  return match ? match[1] : null;
+}
 
 const AGENT_ORDER_INDEX = PIPELINE_AGENT_ORDER.reduce((acc, agentId, index) => {
   acc[agentId] = index;
@@ -205,8 +221,9 @@ const GOVERNANCE_TERMINAL_PHASES = new Set(['completed', 'failed']);
 export function isTerminalPipelineSseEvent(data) {
   if (!data || typeof data !== 'object') return false;
   if (data.agent === 'pipeline' && data.phase === 'terminal') return true;
+  if (data.agent === 'pipeline' && data.phase === 'awaiting_review') return true;
   if (
-    data.agent === 'governance-verdict' &&
+    data.agent === 'hearing-governance' &&
     GOVERNANCE_TERMINAL_PHASES.has(data.phase)
   ) {
     return true;

@@ -40,11 +40,8 @@ describe('backend OpenAPI schema contract', () => {
       'pipeline_progress',
       'filed_date',
       'parties',
-      'outcome_summary',
       'escalation_reason',
       'reopen_state',
-      'amendment_state',
-      'latest_decision',
     ]);
 
     expectProperties('CaseDetailResponse', [
@@ -55,26 +52,15 @@ describe('backend OpenAPI schema contract', () => {
       'legal_rules',
       'precedents',
       'arguments',
-      'deliberations',
-      'verdicts',
-      'decision_history',
+      'hearing_analyses',
       'audit_logs',
     ]);
   });
 
   it('declares the workflow, hearing-pack, and knowledge-base fields needed by story-driven surfaces', () => {
-    expectProperties('EscalatedCaseResponse', [
-      'case_id',
-      'item_type',
-      'case_title',
-      'domain',
-      'originating_judge',
-      'reason',
-      'priority',
-      'submitted_at',
-      'status',
-      'preview',
-      'history',
+    expectProperties('JudicialDecisionCreate', [
+      'verdict_text',
+      'ai_engagements',
     ]);
 
     expectProperties('HearingPackResponse', [
@@ -120,22 +106,6 @@ describe('backend OpenAPI schema contract', () => {
       outcome_summary: 'Recommend partial refund and replacement costs.',
       escalation_reason: null,
       reopen_state: null,
-      amendment_state: null,
-      latest_decision: {
-        decision_type: 'modify',
-        reason: 'Reduce the recommended quantum.',
-        recorded_at: '2026-04-22T10:00:00Z',
-        recorded_by: 'judge-1',
-      },
-      decision_history: [
-        {
-          decision_type: 'modify',
-          reason: 'Reduce the recommended quantum.',
-          final_order: 'Partial refund ordered.',
-          recorded_at: '2026-04-22T10:00:00Z',
-          recorded_by: 'judge-1',
-        },
-      ],
       documents: [
         {
           id: 'doc-1',
@@ -185,7 +155,6 @@ describe('backend OpenAPI schema contract', () => {
     expect(caseDetail.party_1).toBe('Ms Lim');
     expect(caseDetail.pipeline_progress).toBe(100);
     expect(caseDetail.documents[0].openai_file_id).toBe('file-123');
-    expect(caseDetail.decision_history[0].decision_type).toBe('modify');
 
     expect(workflowItem.item_type).toBe('reopen');
     expect(workflowItem.originating_judge).toBe('judge-1');

@@ -27,37 +27,6 @@ const formatReasonMap = (value) => {
   return null;
 };
 
-const normalizeDecisionHistory = (caseDetail) => {
-  const entries = asArray(caseDetail?.decision_history);
-  if (entries.length > 0) {
-    return entries.map((entry, index) => ({
-      id: entry.id || `decision-${index}`,
-      decision_type: entry.decision_type || entry.action || 'decision',
-      reason: entry.reason || '',
-      actor: entry.recorded_by || entry.actor || 'Judge',
-      created_at: entry.recorded_at || entry.created_at || new Date().toISOString(),
-      final_order: entry.final_order || null,
-      source: 'backend',
-    }));
-  }
-
-  if (caseDetail?.latest_decision) {
-    return [
-      {
-        id: 'decision-latest',
-        decision_type: caseDetail.latest_decision.decision_type || 'decision',
-        reason: caseDetail.latest_decision.reason || '',
-        actor: caseDetail.latest_decision.recorded_by || 'Judge',
-        created_at: caseDetail.latest_decision.recorded_at || new Date().toISOString(),
-        final_order: caseDetail.latest_decision.final_order || null,
-        source: 'backend',
-      },
-    ];
-  }
-
-  return [];
-};
-
 export function normalizeCaseSummary(payload) {
   const root = getRoot(payload);
   const parties = asArray(root.parties);
@@ -93,7 +62,6 @@ export function normalizeCaseSummary(payload) {
     escalation_reason: root.escalation_reason || null,
     outcome_summary: root.outcome_summary || null,
     reopen_state: root.reopen_state || null,
-    amendment_state: root.amendment_state || null,
     jurisdiction: root.jurisdiction || null,
     claim_amount: root.claim_amount ?? null,
     consent_to_higher_claim_limit: Boolean(root.consent_to_higher_claim_limit),
@@ -108,6 +76,8 @@ export function normalizeCaseDetail(payload, caseId) {
 
   return {
     ...summary,
+    gate_state: root.gate_state || null,
+    judicial_decision: root.judicial_decision || null,
     documents: documents.map((document, index) => ({
       id: document.id || document.document_id || `doc-${index}`,
       filename: document.filename || document.name || `Document ${index + 1}`,
@@ -117,8 +87,6 @@ export function normalizeCaseDetail(payload, caseId) {
       status: document.status || 'uploaded',
       openai_file_id: document.openai_file_id || null,
     })),
-    decision_history: normalizeDecisionHistory(root),
-    latest_decision: root.latest_decision || null,
   };
 }
 
@@ -167,6 +135,7 @@ export function normalizeTimelineResource(payload) {
     confidence: fact.confidence || null,
     status: fact.status || null,
     source_document_id: fact.source_document_id || null,
+    page_number: fact.page_number || null,
     source: fact.source_document_id || null,
     dispute_reason: fact.corroboration?.dispute_reason || null,
   }));
@@ -259,7 +228,7 @@ const stringListFromUnknown = (value) => {
   return [String(value)];
 };
 
-export function normalizeDeliberationResource(payload) {
+export function normalizeHearingAnalysis(payload) {
   const items = asArray(getRoot(payload));
   const deliberation = items[items.length - 1] || getRoot(payload);
   const reasoningChain = deliberation.reasoning_chain || {};
@@ -275,48 +244,6 @@ export function normalizeDeliberationResource(payload) {
     risks: stringListFromUnknown(deliberation.uncertainty_flags),
     confidence_score: deliberation.confidence_score ?? null,
     preliminary_conclusion: deliberation.preliminary_conclusion || null,
-  };
-}
-
-export function normalizeVerdict(payload) {
-  const root = getRoot(payload);
-  const verdicts = asArray(root);
-  const verdict = verdicts[verdicts.length - 1] || root;
-
-  return {
-    ...verdict,
-    recommendation:
-      verdict.recommended_outcome || verdict.recommendation || verdict.decision || null,
-    recommendation_reason:
-      verdict.alternative_outcomes?.recommended_reasoning ||
-      verdict.recommendation_reason ||
-      null,
-    confidence:
-      verdict.confidence_score ?? verdict.confidence ?? null,
-    confidence_reason:
-      verdict.alternative_outcomes?.pivot_factors?.join(' • ') ||
-      verdict.confidence_reason ||
-      null,
-    remedy:
-      verdict.sentence != null
-        ? formatReasonMap(verdict.sentence)
-        : verdict.recommended_outcome || verdict.outcome || null,
-    fairness_assessment:
-      verdict.fairness_report?.summary ||
-      formatReasonMap(verdict.fairness_report) ||
-      null,
-    conditions:
-      verdict.alternative_outcomes?.uncertainty_factors ||
-      verdict.alternative_outcomes?.pivot_factors ||
-      [],
-    judge_decision:
-      verdict.decision_type || verdict.judge_decision || null,
-    judge_reason:
-      verdict.reason || verdict.judge_reason || null,
-    decision_recorded_at:
-      verdict.recorded_at || verdict.decision_recorded_at || null,
-    recorded_by:
-      verdict.recorded_by || verdict.judge_id || null,
   };
 }
 

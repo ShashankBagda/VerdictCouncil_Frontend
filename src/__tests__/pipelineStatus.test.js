@@ -202,19 +202,25 @@ describe('pipelineStatus helpers', () => {
       'witness-analysis',
       'legal-knowledge',
       'argument-construction',
-      'deliberation',
-      'governance-verdict',
+      'hearing-analysis',
+      'hearing-governance',
     ]);
   });
 
   // ── isTerminalPipelineSseEvent ──────────────────────────────────────────
 
-  it('treats governance-verdict completed/failed as a terminal SSE event', () => {
+  it('treats hearing-governance completed/failed as a terminal SSE event', () => {
     expect(
-      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'completed' }),
+      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'completed' }),
     ).toBe(true);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'failed' }),
+      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'failed' }),
+    ).toBe(true);
+  });
+
+  it('treats pipeline/awaiting_review as a terminal SSE event (gate-pause close)', () => {
+    expect(
+      isTerminalPipelineSseEvent({ agent: 'pipeline', phase: 'awaiting_review' }),
     ).toBe(true);
   });
 
@@ -233,10 +239,10 @@ describe('pipelineStatus helpers', () => {
       isTerminalPipelineSseEvent({ agent: 'case-processing', phase: 'started' }),
     ).toBe(false);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'deliberation', phase: 'completed' }),
+      isTerminalPipelineSseEvent({ agent: 'hearing-analysis', phase: 'completed' }),
     ).toBe(false);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'governance-verdict', phase: 'started' }),
+      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'started' }),
     ).toBe(false);
   });
 
