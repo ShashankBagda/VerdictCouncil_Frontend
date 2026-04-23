@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Upload, FileText, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Upload, FileText, AlertTriangle, CheckCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import api, { getErrorMessage } from '../../lib/api';
 
 const ALLOWED_MIME_TYPES = [
@@ -45,6 +45,7 @@ export default function DomainManagement() {
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Create domain form state
   const [createOpen, setCreateOpen] = useState(false);
@@ -128,18 +129,22 @@ export default function DomainManagement() {
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
+    const input = e.target;
     if (!file || !selectedDomain) return;
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       alert('Unsupported file type. Allowed: PDF, TXT, Markdown, DOCX');
       return;
     }
+    setUploading(true);
     try {
       const doc = await api.uploadDomainDocument(selectedDomain.id, file);
       setDocuments((prev) => [doc, ...prev]);
     } catch (err) {
       alert(getErrorMessage(err));
+    } finally {
+      setUploading(false);
+      input.value = '';
     }
-    e.target.value = '';
   };
 
   const handleDeleteDoc = async (docId) => {
@@ -193,8 +198,8 @@ export default function DomainManagement() {
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
           <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
           <div>
-            <strong>File uploads are temporarily disabled</strong> while content sanitization is
-            being hardened. Contact the platform team for manual domain corpus seeding.
+            <strong>File uploads are disabled</strong> by the platform administrator. Contact the
+            platform team to re-enable.
           </div>
         </div>
       )}
@@ -266,14 +271,31 @@ export default function DomainManagement() {
                   {selectedDomain.name} — Documents
                 </h2>
                 {capabilities.uploads_enabled && (
-                  <label className="flex items-center gap-2 bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors text-sm">
-                    <Upload className="h-3.5 w-3.5" />
-                    Upload
+                  <label
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      uploading
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
+                    }`}
+                    title={uploading ? 'Running 2-layer security scan…' : 'Upload a document'}
+                  >
+                    {uploading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400" />
+                        Scanning…
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload
+                      </>
+                    )}
                     <input
                       type="file"
                       className="hidden"
                       accept=".pdf,.txt,.md,.docx"
                       onChange={handleUpload}
+                      disabled={uploading}
                     />
                   </label>
                 )}
@@ -296,6 +318,14 @@ export default function DomainManagement() {
                             {doc.filename}
                           </span>
                           <DocStatusBadge status={doc.status} />
+                          {doc.status === 'indexed' && (
+                            <span
+                              title="Content passed 2-layer security scan (regex + semantic classifier)"
+                              className="flex items-center text-green-600"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                            </span>
+                          )}
                         </div>
                         {doc.error_reason && (
                           <p className="text-xs text-red-600 mt-1">{doc.error_reason}</p>
@@ -318,7 +348,7 @@ export default function DomainManagement() {
                     <div className="text-center py-8 text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
                       {capabilities.uploads_enabled
                         ? 'No documents yet. Upload one to populate the knowledge base.'
-                        : 'Uploads disabled. Contact platform team for corpus seeding.'}
+                        : 'Document uploads are disabled by the platform administrator.'}
                     </div>
                   )}
                 </div>
