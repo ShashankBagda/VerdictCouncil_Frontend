@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Trash2, Upload, FileText, AlertTriangle, CheckCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import api, { getErrorMessage } from '../../lib/api';
 
@@ -46,6 +46,16 @@ export default function DomainManagement() {
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const pollingRef = useRef(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   // Create domain form state
   const [createOpen, setCreateOpen] = useState(false);
@@ -86,6 +96,7 @@ export default function DomainManagement() {
   }, []);
 
   const handleSelectDomain = (domain) => {
+    stopPolling();
     setSelectedDomain(domain);
     fetchDocuments(domain.id);
   };
@@ -139,6 +150,19 @@ export default function DomainManagement() {
     try {
       const doc = await api.uploadDomainDocument(selectedDomain.id, file);
       setDocuments((prev) => [doc, ...prev]);
+
+      const domainId = selectedDomain.id;
+      stopPolling();
+      pollingRef.current = setInterval(async () => {
+        try {
+          const docs = await api.listDomainDocuments(domainId);
+          setDocuments(docs);
+          const hasInProgress = docs.some((d) => !['indexed', 'failed'].includes(d.status));
+          if (!hasInProgress) stopPolling();
+        } catch {
+          stopPolling();
+        }
+      }, 2500);
     } catch (err) {
       alert(getErrorMessage(err));
     } finally {
