@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
+import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
 import {
   PIPELINE_AGENT_LABELS,
@@ -395,12 +396,30 @@ export default function BuildingSimulation() {
       };
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !terminalReached) {
+        connect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     connect();
     return () => {
       es?.close();
       if (pollInterval) clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [caseId]);
+
+  // Force an immediate status poll when the tab regains focus so that
+  // gate-pause transitions aren't missed while the tab was hidden.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') retry();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [retry]);
 
   const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001';
 
@@ -556,17 +575,13 @@ export default function BuildingSimulation() {
         </div>
       )}
 
-      {/* ── Gate review banner ── */}
+      {/* ── Gate review panel ── */}
       {currentGate && (
-        <div className="flex items-center gap-3 bg-amber-950/50 border border-amber-600/40 rounded-xl px-4 py-2.5">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
-          <span className="text-sm text-amber-300 font-semibold">
-            Pipeline paused at {currentGate.replace('gate', 'Gate ')} — awaiting judge review
-          </span>
-          <span className="text-xs text-amber-500 ml-1">
-            Use the ▷ buttons on the highlighted agents to re-run from that point, or advance the gate from the case workspace.
-          </span>
-        </div>
+        <GateReviewPanel
+          caseId={caseId}
+          gateName={currentGate}
+          onAdvanced={retry}
+        />
       )}
 
       {/* ── Agent grid ── */}
