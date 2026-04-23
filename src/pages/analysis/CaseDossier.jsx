@@ -26,6 +26,7 @@ import api, { getErrorMessage } from '../../lib/api';
 import {
   extractItems,
   normalizeArgumentsResource,
+  normalizeCaseDetail,
   normalizeHearingAnalysis,
   normalizeEvidenceResource,
   normalizeKnowledgeBaseStatus,
@@ -187,7 +188,7 @@ export default function CaseDossier() {
   const { caseId } = useParams();
   useAuth();
   const { showError, showNotification } = useAPI();
-  const { activeTab, setActiveTab } = useCase();
+  const { activeTab, setActiveTab, caseDetail: contextCaseDetail, updateCaseDetail } = useCase();
 
   const [loading, setLoading] = useState(true);
   const [caseDetail, setCaseDetail] = useState(null);
@@ -305,6 +306,18 @@ export default function CaseDossier() {
     [fairnessAudit, fairnessChecks],
   );
 
+  // Resolved raw case status: global context (updated by CaseDetail on uploads/restart)
+  // takes precedence over the local caseDetail fetched on mount.
+  const caseRawStatus = contextCaseDetail?.raw_status || caseDetail?.status || null;
+
+  // Resolved documents: global context is always up-to-date after uploads.
+  // Fall back to the locally-fetched caseDetail if context isn't populated yet.
+  const resolvedDocuments = useMemo(() => {
+    const contextDocs = contextCaseDetail?.documents;
+    if (Array.isArray(contextDocs) && contextDocs.length > 0) return contextDocs;
+    return caseDetail?.documents || [];
+  }, [contextCaseDetail?.documents, caseDetail?.documents]);
+
   const toggleExpanded = (id) => {
     setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -414,9 +427,10 @@ export default function CaseDossier() {
       setRestarting(true);
       await api.restartPipeline(caseId);
       showNotification('Pipeline restarted — processing will begin shortly.', 'success');
-      // Refresh case detail so the status badge updates
+      // Refresh both local and global context so status badges update everywhere
       const updated = await api.getCaseDetail(caseId);
       setCaseDetail(updated);
+      updateCaseDetail(normalizeCaseDetail(updated, caseId));
     } catch (err) {
       showError(getErrorMessage(err, 'Failed to restart pipeline'));
     } finally {
@@ -461,7 +475,7 @@ export default function CaseDossier() {
           </div>
 
           <div className="flex items-center gap-2">
-            {RESTARTABLE_STATUSES.has(caseDetail?.status) && (
+            {RESTARTABLE_STATUSES.has(caseRawStatus) && (
               <button
                 onClick={handleRestartPipeline}
                 disabled={restarting}
@@ -512,17 +526,17 @@ export default function CaseDossier() {
             Case Documents
           </h2>
 
-          {RESTARTABLE_STATUSES.has(caseDetail?.status) && (
+          {RESTARTABLE_STATUSES.has(caseRawStatus) && (
             <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-300 bg-rose-50 px-5 py-4">
               <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold text-rose-900">
-                  Pipeline {caseDetail.status === 'escalated' ? 'escalated' : 'failed'}
+                  Pipeline {caseRawStatus === 'escalated' ? 'escalated' : 'failed'}
                 </p>
                 <p className="text-sm text-rose-800 mt-1">
-                  {caseDetail.status === 'failed_retryable'
+                  {caseRawStatus === 'failed_retryable'
                     ? 'The pipeline was interrupted before completing. You can restart it using the button above.'
-                    : caseDetail.status === 'escalated'
+                    : caseRawStatus === 'escalated'
                     ? 'This case was escalated for human review. You may restart the pipeline if the issue has been resolved.'
                     : 'The pipeline encountered an error and could not complete. Check the audit log for details, then restart the pipeline.'}
                 </p>
@@ -539,7 +553,7 @@ export default function CaseDossier() {
           )}
 
           {(() => {
-            const docs = caseDetail?.documents || [];
+            const docs = resolvedDocuments;
             if (docs.length === 0) {
               return (
                 <div className="text-center py-12">

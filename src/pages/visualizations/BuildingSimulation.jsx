@@ -26,6 +26,9 @@ const AGENT_GATE = {
 // Statuses from which the full pipeline can be (re-)started
 const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
 
+// Statuses from which a failed/escalated pipeline can be restarted
+const RESTARTABLE_STATUSES = new Set(['failed', 'escalated']);
+
 // Map overall_status → gate name
 function currentGateFromStatus(overallStatus) {
   const m = String(overallStatus || '').match(/^awaiting_review_(gate\d)$/);
@@ -46,10 +49,10 @@ const AGENT_LAYER = {
 };
 
 const LAYER_COLORS = {
-  Intake: { bg: 'bg-violet-950/60', border: 'border-violet-700/50', badge: 'bg-violet-800 text-violet-200', dot: 'bg-violet-400' },
-  Evidence: { bg: 'bg-teal-950/60', border: 'border-teal-700/50', badge: 'bg-teal-800 text-teal-200', dot: 'bg-teal-400' },
-  Legal: { bg: 'bg-blue-950/60', border: 'border-blue-700/50', badge: 'bg-blue-800 text-blue-200', dot: 'bg-blue-400' },
-  Decision: { bg: 'bg-amber-950/60', border: 'border-amber-700/50', badge: 'bg-amber-800 text-amber-200', dot: 'bg-amber-400' },
+  Intake:   { bg: 'bg-violet-900/75', border: 'border-violet-500/60', badge: 'bg-violet-700 text-violet-100', dot: 'bg-violet-400' },
+  Evidence: { bg: 'bg-teal-900/75',   border: 'border-teal-500/60',   badge: 'bg-teal-700 text-teal-100',   dot: 'bg-teal-400' },
+  Legal:    { bg: 'bg-blue-900/75',   border: 'border-blue-500/60',   badge: 'bg-blue-700 text-blue-100',   dot: 'bg-blue-400' },
+  Decision: { bg: 'bg-amber-900/75',  border: 'border-amber-500/60',  badge: 'bg-amber-700 text-amber-100', dot: 'bg-amber-400' },
 };
 
 // ── Status colours ──────────────────────────────────────────────────────────
@@ -103,7 +106,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
       style={{ minHeight: '220px' }}
     >
       {/* Card header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-black/20">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/35">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusDot(status)}`} />
           <span className="text-sm font-semibold text-white truncate">{label}</span>
@@ -184,7 +187,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
         }}
       >
         {events.length === 0 ? (
-          <span className="text-gray-600 italic">
+          <span className="text-gray-400 italic">
             {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
           </span>
         ) : (
@@ -198,7 +201,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
 // ── Individual event line ────────────────────────────────────────────────────
 function EventLine({ ev }) {
   if (ev.synthetic) {
-    return <span className="text-gray-600">~ status update: {ev.event}</span>;
+    return <span className="text-gray-400">~ status update: {ev.event}</span>;
   }
   switch (ev.event) {
     case 'agent_started':
@@ -220,40 +223,40 @@ function EventLine({ ev }) {
       );
     case 'thinking':
       return (
-        <span className="text-gray-400">
-          <span className="text-amber-500/70">💭 </span>
+        <span className="text-gray-200">
+          <span className="text-amber-400">💭 </span>
           {ev.content || ev.message || JSON.stringify(ev)}
         </span>
       );
     case 'tool_call':
       return (
-        <span className="text-cyan-400/80">
+        <span className="text-cyan-300">
           ⚙ {ev.tool_name || 'tool'}
           {ev.args ? (
-            <span className="text-gray-500 ml-1">{JSON.stringify(ev.args).slice(0, 80)}</span>
+            <span className="text-gray-400 ml-1">{JSON.stringify(ev.args).slice(0, 80)}</span>
           ) : null}
         </span>
       );
     case 'tool_result':
       return (
-        <span className="text-cyan-300/60">
+        <span className="text-cyan-200">
           ↩ {ev.tool_name || 'result'}
           {ev.result ? (
-            <span className="text-gray-500 ml-1">{String(ev.result).slice(0, 100)}</span>
+            <span className="text-gray-400 ml-1">{String(ev.result).slice(0, 100)}</span>
           ) : null}
         </span>
       );
     case 'llm_response':
     case 'response':
       return (
-        <span className="text-white/80">
-          <span className="text-teal-400/70">◆ </span>
+        <span className="text-white">
+          <span className="text-teal-400">◆ </span>
           {(ev.content || ev.message || '').slice(0, 300)}
         </span>
       );
     default:
       return (
-        <span className="text-gray-500">
+        <span className="text-gray-300">
           {ev.event ? <span className="text-gray-400">[{ev.event}] </span> : null}
           {ev.content || ev.message || JSON.stringify(ev).slice(0, 160)}
         </span>
@@ -409,6 +412,7 @@ export default function BuildingSimulation() {
   const overallStatus = pipelineStatus?.overall_status || '';
   const currentGate = currentGateFromStatus(overallStatus);
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
+  const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
 
   // Run the full pipeline (when pending/failed)
   const handleRunPipeline = useCallback(async () => {
@@ -419,6 +423,20 @@ export default function BuildingSimulation() {
       showNotification('Pipeline started', 'success');
     } catch (err) {
       showError(err?.detail || err?.message || 'Failed to start pipeline');
+    } finally {
+      setPipelinePending(false);
+    }
+  }, [caseId, pipelinePending, showError, showNotification]);
+
+  // Restart the pipeline after a failure/escalation
+  const handleRestartPipeline = useCallback(async () => {
+    if (pipelinePending) return;
+    try {
+      setPipelinePending(true);
+      await api.restartPipeline(caseId);
+      showNotification('Pipeline restart enqueued', 'success');
+    } catch (err) {
+      showError(err?.detail || err?.message || 'Failed to restart pipeline');
     } finally {
       setPipelinePending(false);
     }
@@ -492,6 +510,21 @@ export default function BuildingSimulation() {
               ? <span className="w-3 h-3 rounded-full border border-emerald-400 border-t-transparent animate-spin" />
               : <Play className="w-3.5 h-3.5" fill="currentColor" />}
             Run Pipeline
+          </button>
+        )}
+
+        {/* ── Restart Pipeline button (only when failed/escalated) ── */}
+        {isRestartable && (
+          <button
+            onClick={handleRestartPipeline}
+            disabled={pipelinePending}
+            className="flex items-center gap-1.5 text-xs font-semibold text-rose-300 hover:text-rose-200 border border-rose-700/50 hover:border-rose-500/60 bg-rose-900/20 hover:bg-rose-800/30 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Restart the pipeline from the beginning"
+          >
+            {pipelinePending
+              ? <span className="w-3 h-3 rounded-full border border-rose-400 border-t-transparent animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5" />}
+            Restart Pipeline
           </button>
         )}
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, Outlet, NavLink } from 'react-router-dom';
-import { FilePlus2, UploadCloud } from 'lucide-react';
+import { FilePlus2, RefreshCw, UploadCloud } from 'lucide-react';
 import { useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
 import { normalizeCaseDetail } from '../../lib/caseWorkspace';
@@ -8,6 +8,8 @@ import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus'
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
 import DocumentUploadList from '../../components/cases/DocumentUploadList';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
+
+const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
 
 const VALID_APPEND_TYPES = [
   'application/pdf',
@@ -44,6 +46,7 @@ export default function CaseDetail() {
   const { caseDetail, updateCaseDetail, selectCase } = useCase();
 
   const [loading, setLoading] = useState(true);
+  const [restarting, setRestarting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [uploadErrors, setUploadErrors] = useState({});
@@ -84,6 +87,20 @@ export default function CaseDetail() {
 
     return caseDetail;
   }, [caseDetail, caseId]);
+
+  const handleRestartPipeline = useCallback(async () => {
+    try {
+      setRestarting(true);
+      await api.restartPipeline(caseId);
+      showNotification('Pipeline restart enqueued successfully.', 'success');
+      const payload = await api.getCaseDetail(caseId);
+      updateCaseDetail(normalizeCaseDetail(payload, caseId));
+    } catch (error) {
+      showError(getErrorMessage(error, 'Failed to restart pipeline'));
+    } finally {
+      setRestarting(false);
+    }
+  }, [caseId, showError, showNotification, updateCaseDetail]);
 
   const handleFileSelection = (fileList) => {
     const files = Array.from(fileList || []);
@@ -177,13 +194,25 @@ export default function CaseDetail() {
               {workspaceCase?.case_description || 'Case workspace for evidence, analysis, and judge actions.'}
             </p>
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-primary flex items-center gap-2"
-          >
-            <FilePlus2 className="w-4 h-4" />
-            Add Documents
-          </button>
+          <div className="flex items-center gap-2">
+            {RESTARTABLE_STATUSES.has(workspaceCase?.raw_status) && (
+              <button
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </button>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-primary flex items-center gap-2"
+            >
+              <FilePlus2 className="w-4 h-4" />
+              Add Documents
+            </button>
+          </div>
         </div>
       </div>
 
@@ -260,6 +289,18 @@ export default function CaseDetail() {
               }
             >
               Hearing Pack
+            </NavLink>
+            <NavLink
+              to={`/case/${caseId}/orchestrator`}
+              className={({ isActive }) =>
+                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+                  isActive
+                    ? 'border-violet-600 text-violet-600 font-semibold'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`
+              }
+            >
+              Orchestrator
             </NavLink>
           </div>
 

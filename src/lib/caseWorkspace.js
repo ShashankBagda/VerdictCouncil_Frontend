@@ -81,6 +81,7 @@ export function normalizeCaseDetail(payload, caseId) {
     documents: documents.map((document, index) => ({
       id: document.id || document.document_id || `doc-${index}`,
       filename: document.filename || document.name || `Document ${index + 1}`,
+      file_type: document.file_type || document.mime_type || null,
       uploaded_at: document.uploaded_at || document.created_at || null,
       version: document.version || index + 1,
       affected_stages: document.affected_stages || document.retriggered_agents || [],
