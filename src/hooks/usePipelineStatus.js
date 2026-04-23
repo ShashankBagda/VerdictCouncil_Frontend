@@ -5,6 +5,7 @@ import {
   getBackoffDelay,
   getPipelinePollingInterval,
   isDemoCaseId,
+  isGatePauseStatus,
   isTerminalPipelineStatus,
   isTerminalOverallStatus,
   MAX_POLL_ERRORS,
@@ -105,10 +106,11 @@ export function usePipelineStatus(caseId, options = {}) {
       if (mountedRef.current) setIsStale(true);
     }, STALE_THRESHOLD_MS);
 
-    // Terminal detection
+    // Terminal detection — gate pauses are not terminal (pipeline resumes after judge approval)
     const isTerminal =
-      isTerminalPipelineStatus(nextStatus) ||
-      isTerminalOverallStatus(nextStatus?.overall_status);
+      !isGatePauseStatus(nextStatus?.overall_status) &&
+      (isTerminalPipelineStatus(nextStatus) ||
+        isTerminalOverallStatus(nextStatus?.overall_status));
 
     if (isTerminal) {
       stopAll();
@@ -140,8 +142,9 @@ export function usePipelineStatus(caseId, options = {}) {
 
       // If not terminal, schedule next poll at base interval
       if (
-        !isTerminalPipelineStatus(normalized) &&
-        !isTerminalOverallStatus(normalized?.overall_status)
+        isGatePauseStatus(normalized?.overall_status) ||
+        (!isTerminalPipelineStatus(normalized) &&
+          !isTerminalOverallStatus(normalized?.overall_status))
       ) {
         scheduleNext(getPipelinePollingInterval());
       }

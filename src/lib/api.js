@@ -469,7 +469,7 @@ export const api = {
     request('DELETE', `/api/v1/domains/admin/${domainId}/documents/${docId}`),
 
   advanceGate: (caseId, gateName) =>
-    request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`),
+    request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`, { body: {} }),
   rerunGate: (caseId, gateName, { agentName, instructions } = {}) =>
     request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/rerun`, {
       body: { agent_name: agentName, instructions },
