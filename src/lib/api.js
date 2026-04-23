@@ -159,9 +159,13 @@ async function request(method, path, options = {}) {
   }
 
   if (!response.ok) {
+    const rawDetail = payload?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail.map((e) => e.msg || String(e)).join('; ')
+      : rawDetail || (typeof payload === 'string' ? payload : `HTTP ${response.status}`);
     throw new APIError(
       response.status,
-      payload?.detail || (typeof payload === 'string' ? payload : `HTTP ${response.status}`),
+      detail,
       payload?.fieldErrors || {},
       payload?.code || null,
       payload,

@@ -72,6 +72,7 @@ export default function CaseIntakeChat() {
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
   const esRef = useRef(null);
+  const completedRef = useRef(false);
 
   // Subscribe to the backend intake SSE for this case.
   useEffect(() => {
@@ -88,7 +89,9 @@ export default function CaseIntakeChat() {
       handleEvent(data);
     };
     es.onerror = () => {
-      setStreamError('Lost connection to the intake stream.');
+      if (!completedRef.current) {
+        setStreamError('Lost connection to the intake stream.');
+      }
     };
     return () => {
       es.close();
@@ -119,10 +122,12 @@ export default function CaseIntakeChat() {
         },
       ]);
     } else if (event.type === 'done') {
+      if (completedRef.current) return;
+      completedRef.current = true;
       setExtraction(event.extraction || null);
       setPending(false);
       setMessages((prev) => [
-        ...prev,
+        ...prev.map((m) => (m.kind === 'status' ? { ...m, kind: 'status-done' } : m)),
         {
           id: `done-${Date.now()}`,
           role: 'assistant',
@@ -139,6 +144,8 @@ export default function CaseIntakeChat() {
   }, []);
 
   const retryExtraction = async () => {
+    completedRef.current = false;
+    setMessages([]);
     setPending(true);
     setStreamError(null);
     try {
@@ -201,6 +208,11 @@ export default function CaseIntakeChat() {
                   {m.kind === 'status' ? (
                     <span className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 data-icon="inline-start" className="animate-spin" />
+                      {m.text}
+                    </span>
+                  ) : m.kind === 'status-done' ? (
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 data-icon="inline-start" className="text-green-600" />
                       {m.text}
                     </span>
                   ) : (
