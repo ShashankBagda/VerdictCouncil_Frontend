@@ -77,7 +77,6 @@ No `src/api/` folder — the API client lives at `src/lib/api.js`.
 | Route | Page | Allowed roles |
 |-------|------|---------------|
 | `/knowledge-base` | KnowledgeBase | `admin`, `senior_judge` |
-| `/senior-inbox` | SeniorJudgeInbox | `admin`, `senior_judge` |
 
 ## Auth
 
