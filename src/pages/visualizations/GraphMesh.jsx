@@ -22,27 +22,27 @@ const STATUS_CONFIG = {
 
 const AGENT_POSITIONS = {
   'case-processing': { x: 0, y: 0 },
-  'fact-reconstruction': { x: -180, y: 130 },
-  'evidence-analysis': { x: 0, y: 130 },
-  'witness-analysis': { x: 180, y: 130 },
-  'legal-knowledge': { x: -110, y: 280 },
-  'argument-construction': { x: 110, y: 280 },
-  'complexity-routing': { x: 0, y: 430 },
-  'deliberation': { x: -120, y: 580 },
-  'governance-verdict': { x: 120, y: 580 },
+  'complexity-routing': { x: 0, y: 150 },
+  'evidence-analysis': { x: -200, y: 300 },
+  'fact-reconstruction': { x: 0, y: 300 },
+  'witness-analysis': { x: 200, y: 300 },
+  'legal-knowledge': { x: -200, y: 450 },
+  'argument-construction': { x: 100, y: 450 },
+  'hearing-analysis': { x: -100, y: 600 },
+  'hearing-governance': { x: 100, y: 600 },
 };
 
 const AGENT_EDGES = [
-  { source: 'case-processing', target: 'fact-reconstruction' },
-  { source: 'case-processing', target: 'evidence-analysis' },
-  { source: 'case-processing', target: 'witness-analysis' },
-  { source: 'fact-reconstruction', target: 'argument-construction' },
+  { source: 'case-processing', target: 'complexity-routing' },
+  { source: 'complexity-routing', target: 'evidence-analysis' },
+  { source: 'complexity-routing', target: 'fact-reconstruction' },
+  { source: 'complexity-routing', target: 'witness-analysis' },
   { source: 'evidence-analysis', target: 'legal-knowledge' },
+  { source: 'fact-reconstruction', target: 'argument-construction' },
   { source: 'witness-analysis', target: 'argument-construction' },
-  { source: 'legal-knowledge', target: 'complexity-routing' },
-  { source: 'argument-construction', target: 'complexity-routing' },
-  { source: 'complexity-routing', target: 'deliberation' },
-  { source: 'complexity-routing', target: 'governance-verdict' },
+  { source: 'legal-knowledge', target: 'hearing-analysis' },
+  { source: 'argument-construction', target: 'hearing-analysis' },
+  { source: 'hearing-analysis', target: 'hearing-governance' },
 ];
 
 export default function GraphMesh() {
@@ -84,8 +84,8 @@ export default function GraphMesh() {
         id: agent.agent_id,
         data: {
           label: (
-            <div className="text-center text-xs font-semibold">
-              <div className="text-sm">
+            <div className="text-center font-semibold">
+              <div className="text-xs leading-tight">
                 {PIPELINE_AGENT_LABELS[agent.agent_id] || agent.name}
               </div>
               <div className="text-xs mt-1 text-gray-600 capitalize">{agent.status}</div>
@@ -97,13 +97,15 @@ export default function GraphMesh() {
           background: config.color,
           border: `2px solid ${config.textColor}`,
           borderRadius: '8px',
-          padding: '12px',
-          width: '150px',
+          padding: '10px',
+          width: '160px',
           color: config.textColor,
           fontWeight: 500,
           cursor: 'pointer',
           transition: 'all 0.3s ease',
           boxShadow: agent.status === 'running' ? `0 0 10px ${config.color}` : 'none',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
         },
       };
     });
