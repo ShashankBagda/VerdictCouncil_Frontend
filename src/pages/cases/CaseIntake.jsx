@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { useAPI } from '@/hooks';
 import api, { getErrorMessage } from '@/lib/api';
-import DocumentSlotGrid, { SLOT_SCHEMA } from '@/components/DocumentSlotGrid';
+import DocumentSlotGrid, { SLOT_SCHEMA, REQUIRED_GROUP_HINTS } from '@/components/DocumentSlotGrid';
 
 const DEFAULT_DOMAIN_CODE = 'traffic_violation';
 
@@ -54,15 +54,22 @@ export default function CaseIntake() {
     [domains, selectedDomainCode],
   );
 
-  // Does the judge have enough to advance? For domains with a typed-slot
-  // schema, we require every slot marked `required`. Domains without a
-  // schema (e.g. small_claims for now) fall back to the legacy form.
+  // Does the judge have enough to advance? Two kinds of requirements:
+  //   1. `required: true` — the slot must have a file.
+  //   2. `requiredGroup: <name>` — at least one slot in the group must
+  //      have a file (any one satisfies the group).
+  // Domains without a schema (e.g. small_claims for now) fall back to
+  // the legacy form.
   const slots = SLOT_SCHEMA[selectedDomainCode] || [];
   const hasSchema = slots.length > 0;
-  const requiredSlotsFilled = slots
-    .filter((s) => s.required)
-    .every((s) => (filesByKind[s.kind] || []).length > 0);
-  const canContinue = hasSchema && requiredSlotsFilled && !submitting;
+  const slotHasFile = (s) => (filesByKind[s.kind] || []).length > 0;
+  const requiredSlotsFilled = slots.filter((s) => s.required).every(slotHasFile);
+  const requiredGroups = [...new Set(slots.map((s) => s.requiredGroup).filter(Boolean))];
+  const unsatisfiedGroups = requiredGroups.filter(
+    (group) => !slots.filter((s) => s.requiredGroup === group).some(slotHasFile),
+  );
+  const canContinue =
+    hasSchema && requiredSlotsFilled && unsatisfiedGroups.length === 0 && !submitting;
 
   const handleSlotFiles = (kind, newFiles) => {
     setFilesByKind((prev) => {
@@ -187,6 +194,13 @@ export default function CaseIntake() {
           onRemove={handleSlotRemove}
           disabled={submitting}
         />
+        {unsatisfiedGroups.length > 0 && (
+          <ul className="text-xs text-muted-foreground">
+            {unsatisfiedGroups.map((group) => (
+              <li key={group}>{REQUIRED_GROUP_HINTS[group] || `Required: ${group}`}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {!hasSchema && !domainsLoading && (
