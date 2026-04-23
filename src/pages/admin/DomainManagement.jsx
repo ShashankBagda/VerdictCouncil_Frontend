@@ -21,18 +21,29 @@ function StatusBadge({ isActive }) {
   );
 }
 
+const STATUS_META = {
+  pending:  { label: 'Queued',    color: 'bg-gray-100 text-gray-600',     spin: false },
+  uploading:{ label: 'Uploading', color: 'bg-blue-100 text-blue-700',     spin: true  },
+  parsed:   { label: 'Scanning',  color: 'bg-yellow-100 text-yellow-700', spin: true  },
+  indexing: { label: 'Indexing',  color: 'bg-yellow-100 text-yellow-700', spin: true  },
+  indexed:  { label: 'Ready',     color: 'bg-green-100 text-green-800',   spin: false },
+  failed:   { label: 'Failed',    color: 'bg-red-100 text-red-700',       spin: false },
+};
+
+const STEP_DESCRIPTIONS = {
+  uploading: 'Step 1/3 — Uploading to OpenAI',
+  parsed:    'Step 2/3 — Running security scan',
+  indexing:  'Step 3/3 — Building vector index',
+};
+
 function DocStatusBadge({ status }) {
-  const colors = {
-    pending: 'bg-gray-100 text-gray-600',
-    uploading: 'bg-blue-100 text-blue-700',
-    parsed: 'bg-yellow-100 text-yellow-700',
-    indexing: 'bg-yellow-100 text-yellow-700',
-    indexed: 'bg-green-100 text-green-800',
-    failed: 'bg-red-100 text-red-700',
-  };
+  const meta = STATUS_META[status] || STATUS_META.pending;
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[status] || colors.pending}`}>
-      {status}
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${meta.color}`}>
+      {meta.spin && (
+        <span className="inline-block w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
+      )}
+      {meta.label}
     </span>
   );
 }
@@ -301,12 +312,12 @@ export default function DomainManagement() {
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
                     }`}
-                    title={uploading ? 'Running 2-layer security scan…' : 'Upload a document'}
+                    title={uploading ? 'Sending file to server…' : 'Upload a document'}
                   >
                     {uploading ? (
                       <>
                         <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400" />
-                        Scanning…
+                        Uploading…
                       </>
                     ) : (
                       <>
@@ -353,6 +364,9 @@ export default function DomainManagement() {
                         </div>
                         {doc.error_reason && (
                           <p className="text-xs text-red-600 mt-1">{doc.error_reason}</p>
+                        )}
+                        {STEP_DESCRIPTIONS[doc.status] && (
+                          <p className="text-xs text-blue-500 mt-0.5">{STEP_DESCRIPTIONS[doc.status]}</p>
                         )}
                         {doc.size_bytes && (
                           <p className="text-xs text-gray-400 mt-0.5">
