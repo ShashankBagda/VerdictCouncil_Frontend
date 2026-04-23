@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, Square, WifiOff } from 'lucide-react';
+import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import api from '../../lib/api';
 import {
@@ -122,18 +122,22 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
             <span className="text-[10px] text-gray-500">{agentStatus.elapsed_seconds}s</span>
           )}
 
-          {/* ── Agent action buttons ── */}
-          <div className="flex items-center gap-1 ml-1">
-            {/* Run / Re-run button */}
+          {/* ── Agent action button (single) ── */}
+          {isRunning ? (
+            <span
+              className="flex items-center justify-center w-5 h-5 rounded bg-blue-600/30 border border-blue-500/40 text-blue-300"
+              title="Agent is currently running"
+            >
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            </span>
+          ) : (
             <button
               onClick={onRun}
               disabled={!canRun || isActionPending}
               title={
                 canRun
                   ? `Re-run ${label} from this agent`
-                  : isRunning
-                    ? 'Agent is currently running'
-                    : 'Available when pipeline is paused at this gate for review'
+                  : 'Available when pipeline is paused at this gate for review'
               }
               className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
                 canRun && !isActionPending
@@ -145,16 +149,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
                 ? <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
                 : <Play className="w-2.5 h-2.5" fill="currentColor" />}
             </button>
-
-            {/* Stop button — no backend cancel endpoint; always disabled */}
-            <button
-              disabled
-              title="Stop is not supported — agents cannot be cancelled mid-run"
-              className="flex items-center justify-center w-5 h-5 rounded bg-gray-700/30 text-gray-600 border border-gray-700/30 cursor-not-allowed"
-            >
-              <Square className="w-2.5 h-2.5" fill="currentColor" />
-            </button>
-          </div>
+          )}
         </div>
       </div>
 

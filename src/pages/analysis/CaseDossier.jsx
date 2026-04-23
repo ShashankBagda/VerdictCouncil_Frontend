@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   AlertCircle,
   BookOpen,
@@ -188,21 +188,19 @@ export default function CaseDossier() {
   const { caseId } = useParams();
   useAuth();
   const { showError, showNotification } = useAPI();
-  const { activeTab, setActiveTab, caseDetail: contextCaseDetail, updateCaseDetail } = useCase();
+  const {
+    activeTab,
+    setActiveTab,
+    caseDetail: contextCaseDetail,
+    updateCaseDetail,
+    pipelineStatus,
+    dossierCache,
+    updateDossierCache,
+  } = useCase();
 
-  const [loading, setLoading] = useState(true);
-  const [caseDetail, setCaseDetail] = useState(null);
+  // ── UI-only local state (does NOT need to survive tab navigation) ─────────
   const [restarting, setRestarting] = useState(false);
   const [expandedItems, setExpandedItems] = useState({});
-  const [evidence, setEvidence] = useState(null);
-  const [evidenceGaps, setEvidenceGaps] = useState(null);
-  const [timeline, setTimeline] = useState(null);
-  const [witnesses, setWitnesses] = useState(null);
-  const [statutes, setStatutes] = useState(null);
-  const [arguments_, setArguments] = useState(null);
-  const [hearingAnalysis, setHearingAnalysis] = useState(null);
-  const [fairnessAudit, setFairnessAudit] = useState(null);
-  const [knowledgeBaseStatus, setKnowledgeBaseStatus] = useState(null);
   const [disputeReason, setDisputeReason] = useState({});
   const [disputeSubmitting, setDisputeSubmitting] = useState({});
   const [precedentQuery, setPrecedentQuery] = useState('');
@@ -212,91 +210,146 @@ export default function CaseDossier() {
   const [precedentSearched, setPrecedentSearched] = useState(false);
   const [precedentSearchedAt, setPrecedentSearchedAt] = useState(null);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
-  const [reopenRequests, setReopenRequests] = useState([]);
   const [showDecisionForm, setShowDecisionForm] = useState(false);
   const [excerptTarget, setExcerptTarget] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState({});
   const [savingQuestions, setSavingQuestions] = useState(false);
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);
+  // ── Shorthand aliases from the shared cache ──────────────────────────────
+  const loading = dossierCache.dossierLoading;
+  const caseDetail = dossierCache.caseDetail;
+  const evidence = dossierCache.evidence;
+  const evidenceGaps = dossierCache.evidenceGaps;
+  const timeline = dossierCache.timeline;
+  const witnesses = dossierCache.witnesses;
+  const statutes = dossierCache.statutes;
+  const arguments_ = dossierCache.arguments_;
+  const hearingAnalysis = dossierCache.hearingAnalysis;
+  const fairnessAudit = dossierCache.fairnessAudit;
+  const knowledgeBaseStatus = dossierCache.knowledgeBaseStatus;
+  const reopenRequests = dossierCache.reopenRequests;
 
-        const [
-          caseDetailRes,
-          evidenceRes,
-          evidenceGapsRes,
-          timelineRes,
-          witnessesRes,
-          statutesRes,
-          argumentsRes,
-          deliberationRes,
-          fairnessRes,
-          kbRes,
-          reopenRequestsRes,
-        ] = await Promise.allSettled([
-          api.getCaseDetail(caseId),
-          api.getEvidence(caseId),
-          api.getEvidenceGaps(caseId),
-          api.getTimeline(caseId),
-          api.getWitnesses(caseId),
-          api.getStatutes(caseId),
-          api.getArguments(caseId),
-          api.getHearingAnalysis(caseId),
-          api.getFairnessAudit(caseId),
-          api.getKnowledgeBaseStatus(),
-          api.listReopenRequests(caseId),
-        ]);
+  // ── Helpers for local updates that must also persist to cache ─────────────
+  const setTimeline = useCallback(
+    (updater) => {
+      const next = typeof updater === 'function' ? updater(dossierCache.timeline) : updater;
+      updateDossierCache({ timeline: next });
+    },
+    [dossierCache.timeline, updateDossierCache],
+  );
 
-        setCaseDetail(caseDetailRes.status === 'fulfilled' ? caseDetailRes.value : null);
-        setEvidence(
-          evidenceRes.status === 'fulfilled' ? normalizeEvidenceResource(evidenceRes.value) : null,
-        );
-        setEvidenceGaps(evidenceGapsRes.status === 'fulfilled' ? evidenceGapsRes.value : null);
-        setTimeline(
-          timelineRes.status === 'fulfilled' ? normalizeTimelineResource(timelineRes.value) : null,
-        );
-        setWitnesses(
-          witnessesRes.status === 'fulfilled'
-            ? normalizeWitnessResource(witnessesRes.value)
-            : null,
-        );
-        setStatutes(
-          statutesRes.status === 'fulfilled'
-            ? normalizeStatutesResource(statutesRes.value)
-            : null,
-        );
-        setArguments(
-          argumentsRes.status === 'fulfilled'
-            ? normalizeArgumentsResource(argumentsRes.value)
-            : null,
-        );
-        setHearingAnalysis(
-          deliberationRes.status === 'fulfilled'
-            ? normalizeHearingAnalysis(deliberationRes.value)
-            : null,
-        );
-        setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
-        setKnowledgeBaseStatus(
-          kbRes.status === 'fulfilled' ? normalizeKnowledgeBaseStatus(kbRes.value) : null,
-        );
-        setReopenRequests(
-          reopenRequestsRes.status === 'fulfilled'
-            ? reopenRequestsRes.value?.items || reopenRequestsRes.value?.data?.items || []
-            : [],
-        );
-      } catch (err) {
-        // intentional fall-through — individual fetch failures are already
-        // handled above; only truly unexpected errors reach here
-        showError(getErrorMessage(err, 'Failed to fetch case analysis'));
-      } finally {
-        setLoading(false);
-      }
-    };
+  const setReopenRequests = useCallback(
+    (updater) => {
+      const next = typeof updater === 'function' ? updater(dossierCache.reopenRequests) : updater;
+      updateDossierCache({ reopenRequests: next });
+    },
+    [dossierCache.reopenRequests, updateDossierCache],
+  );
 
-    fetchAllData();
+  // ── Data fetcher (writes directly into shared cache) ─────────────────────
+  const fetchAllData = useCallback(async () => {
+    updateDossierCache({ dossierLoading: true });
+    try {
+      const [
+        caseDetailRes,
+        evidenceRes,
+        evidenceGapsRes,
+        timelineRes,
+        witnessesRes,
+        statutesRes,
+        argumentsRes,
+        deliberationRes,
+        fairnessRes,
+        kbRes,
+        reopenRequestsRes,
+      ] = await Promise.allSettled([
+        api.getCaseDetail(caseId),
+        api.getEvidence(caseId),
+        api.getEvidenceGaps(caseId),
+        api.getTimeline(caseId),
+        api.getWitnesses(caseId),
+        api.getStatutes(caseId),
+        api.getArguments(caseId),
+        api.getHearingAnalysis(caseId),
+        api.getFairnessAudit(caseId),
+        api.getKnowledgeBaseStatus(),
+        api.listReopenRequests(caseId),
+      ]);
+
+      updateDossierCache({
+        cachedForCaseId: caseId,
+        caseDetail: caseDetailRes.status === 'fulfilled' ? caseDetailRes.value : dossierCache.caseDetail,
+        evidence: evidenceRes.status === 'fulfilled'
+          ? normalizeEvidenceResource(evidenceRes.value)
+          : dossierCache.evidence,
+        evidenceGaps: evidenceGapsRes.status === 'fulfilled'
+          ? evidenceGapsRes.value
+          : dossierCache.evidenceGaps,
+        timeline: timelineRes.status === 'fulfilled'
+          ? normalizeTimelineResource(timelineRes.value)
+          : dossierCache.timeline,
+        witnesses: witnessesRes.status === 'fulfilled'
+          ? normalizeWitnessResource(witnessesRes.value)
+          : dossierCache.witnesses,
+        statutes: statutesRes.status === 'fulfilled'
+          ? normalizeStatutesResource(statutesRes.value)
+          : dossierCache.statutes,
+        arguments_: argumentsRes.status === 'fulfilled'
+          ? normalizeArgumentsResource(argumentsRes.value)
+          : dossierCache.arguments_,
+        hearingAnalysis: deliberationRes.status === 'fulfilled'
+          ? normalizeHearingAnalysis(deliberationRes.value)
+          : dossierCache.hearingAnalysis,
+        fairnessAudit: fairnessRes.status === 'fulfilled'
+          ? fairnessRes.value
+          : dossierCache.fairnessAudit,
+        knowledgeBaseStatus: kbRes.status === 'fulfilled'
+          ? normalizeKnowledgeBaseStatus(kbRes.value)
+          : dossierCache.knowledgeBaseStatus,
+        reopenRequests: reopenRequestsRes.status === 'fulfilled'
+          ? (reopenRequestsRes.value?.items || reopenRequestsRes.value?.data?.items || [])
+          : dossierCache.reopenRequests,
+      });
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to fetch case analysis'));
+    } finally {
+      updateDossierCache({ dossierLoading: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, showError]);
+
+  // ── Initial load: only fetch when cache is cold / belongs to a different case
+  useEffect(() => {
+    if (dossierCache.cachedForCaseId !== caseId && !dossierCache.dossierLoading) {
+      fetchAllData();
+    }
+  // fetchAllData is stable per caseId; we only want to run on mount or caseId change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId]);
+
+  // ── Auto-refresh when pipeline transitions to a terminal / gate-pause state
+  const pipelineOverallStatus = pipelineStatus?.overall_status;
+  const prevPipelineStatusRef = React.useRef(pipelineOverallStatus);
+  useEffect(() => {
+    const prev = prevPipelineStatusRef.current;
+    prevPipelineStatusRef.current = pipelineOverallStatus;
+
+    if (!pipelineOverallStatus || pipelineOverallStatus === prev) return;
+
+    // Re-fetch dossier data whenever an agent phase completes or gate pauses
+    const triggering = new Set([
+      'ready_for_review',
+      'awaiting_review_gate1',
+      'awaiting_review_gate2',
+      'awaiting_review_gate3',
+      'awaiting_review_gate4',
+      'failed',
+      'escalated',
+    ]);
+    if (triggering.has(pipelineOverallStatus)) {
+      fetchAllData();
+    }
+  }, [pipelineOverallStatus, fetchAllData]);
 
   const evidenceGapItems = useMemo(() => extractEvidenceGapItems(evidenceGaps), [evidenceGaps]);
   const disputedFacts = useMemo(() => extractDisputedFacts(timeline), [timeline]);
@@ -307,7 +360,7 @@ export default function CaseDossier() {
   );
 
   // Resolved raw case status: global context (updated by CaseDetail on uploads/restart)
-  // takes precedence over the local caseDetail fetched on mount.
+  // takes precedence over the cache entry.
   const caseRawStatus = contextCaseDetail?.raw_status || caseDetail?.status || null;
 
   // Resolved documents: global context is always up-to-date after uploads.
@@ -427,10 +480,10 @@ export default function CaseDossier() {
       setRestarting(true);
       await api.restartPipeline(caseId);
       showNotification('Pipeline restarted — processing will begin shortly.', 'success');
-      // Refresh both local and global context so status badges update everywhere
+      // Refresh global context (header status badge) and dossier cache
       const updated = await api.getCaseDetail(caseId);
-      setCaseDetail(updated);
       updateCaseDetail(normalizeCaseDetail(updated, caseId));
+      updateDossierCache({ caseDetail: updated });
     } catch (err) {
       showError(getErrorMessage(err, 'Failed to restart pipeline'));
     } finally {
@@ -438,7 +491,9 @@ export default function CaseDossier() {
     }
   };
 
-  if (loading) {
+  // Only block the whole view on the very first load (cache cold).
+  // Subsequent refreshes show an inline spinner in the header instead.
+  if (loading && dossierCache.cachedForCaseId !== caseId) {
     return (
       <div className="card-lg flex items-center justify-center h-96">
         <div className="text-center">
@@ -475,6 +530,22 @@ export default function CaseDossier() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Inline refresh spinner / manual refresh button */}
+            {loading ? (
+              <span className="flex items-center gap-1.5 text-xs text-gray-400 px-3 py-1.5">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                Refreshing…
+              </span>
+            ) : (
+              <button
+                onClick={fetchAllData}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                title="Refresh all dossier data from the server"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Refresh
+              </button>
+            )}
             {RESTARTABLE_STATUSES.has(caseRawStatus) && (
               <button
                 onClick={handleRestartPipeline}

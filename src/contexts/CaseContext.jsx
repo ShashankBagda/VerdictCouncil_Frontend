@@ -4,6 +4,25 @@ import { isTerminalPipelineStatus } from '../lib/pipelineStatus';
 
 export const CaseContext = createContext();
 
+/** Initial shape for cached dossier analysis data. */
+const EMPTY_DOSSIER = {
+  caseDetail: null,
+  evidence: null,
+  evidenceGaps: null,
+  timeline: null,
+  witnesses: null,
+  statutes: null,
+  arguments_: null,
+  hearingAnalysis: null,
+  fairnessAudit: null,
+  knowledgeBaseStatus: null,
+  reopenRequests: [],
+  /** caseId the cache belongs to — used to invalidate on case switch */
+  cachedForCaseId: null,
+  /** true while the initial parallel fetch is in flight */
+  dossierLoading: false,
+};
+
 export function CaseProvider({ children }) {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
@@ -11,6 +30,17 @@ export function CaseProvider({ children }) {
   const [pipelineStatus, setPipelineStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('evidence'); // For dossier tabs
   const [whatIfMode, setWhatIfMode] = useState(false);
+
+  // ── Dossier analysis cache (survives tab navigation) ────────────────────
+  const [dossierCache, setDossierCache] = useState(EMPTY_DOSSIER);
+
+  const updateDossierCache = useCallback((patch) => {
+    setDossierCache((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const clearDossierCache = useCallback(() => {
+    setDossierCache(EMPTY_DOSSIER);
+  }, []);
 
   const updateCaseDetail = useCallback((detail) => {
     setCaseDetail(detail);
@@ -34,6 +64,7 @@ export function CaseProvider({ children }) {
     setPipelineStatus(null);
     setActiveTab('evidence');
     setWhatIfMode(false);
+    setDossierCache(EMPTY_DOSSIER);
   }, []);
 
   /** Derived: is the pipeline in a terminal state? */
@@ -57,6 +88,9 @@ export function CaseProvider({ children }) {
     setActiveTab,
     whatIfMode,
     setWhatIfMode,
+    dossierCache,
+    updateDossierCache,
+    clearDossierCache,
   };
 
   return (
