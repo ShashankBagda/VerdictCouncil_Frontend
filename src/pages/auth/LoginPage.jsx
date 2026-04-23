@@ -11,8 +11,8 @@ export default function LoginPage() {
   const location = useLocation();
   const { login, loading, error: authError, isAuthenticated, isAuthResolved } = useAuth();
   const { showError } = useAPI();
-  const [email, setEmail] = useState('judge@verdictcouncil.sg');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const redirectTarget = location.state?.from?.pathname || '/';
@@ -145,12 +145,6 @@ export default function LoginPage() {
           </div>
         </form>
 
-        {/* Footer note */}
-        <div className="px-8 py-4 bg-gray-50 border-t border-gray-200">
-          <p className="text-xs text-gray-600 text-center">
-            Demo credentials: judge@verdictcouncil.sg / password
-          </p>
-        </div>
       </div>
     </div>
   );
