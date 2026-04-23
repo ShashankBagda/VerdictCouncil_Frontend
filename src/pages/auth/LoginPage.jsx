@@ -131,7 +131,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="px-8 py-8 space-y-5">
           {(localError || authError) && (
             <div className="flex items-start gap-3 p-4 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)' }}>
-              <Shield size={15} className="text-rose-400 flex-shrink-0 mt-0.5" />
+              <Shield size={15} className="text-rose-400 shrink-0 mt-0.5" />
               <span className="text-rose-300">{localError || authError}</span>
             </div>
           )}
@@ -151,7 +151,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 placeholder="judge@verdictcouncil.sg"
                 required
-                className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
+                className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium text-white placeholder-white/20 focus:outline-hidden focus:ring-2 focus:ring-teal-500 transition-all duration-200"
                 style={{ background: 'rgba(255,255,255,0.07)', border: '1.5px solid rgba(255,255,255,0.1)' }}
               />
             </div>
@@ -177,7 +177,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 required
-                className="w-full pl-11 pr-12 py-3.5 rounded-xl text-sm font-medium text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
+                className="w-full pl-11 pr-12 py-3.5 rounded-xl text-sm font-medium text-white placeholder-white/20 focus:outline-hidden focus:ring-2 focus:ring-teal-500 transition-all duration-200"
                 style={{ background: 'rgba(255,255,255,0.07)', border: '1.5px solid rgba(255,255,255,0.1)' }}
               />
               <button

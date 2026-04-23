@@ -319,15 +319,42 @@ export const api = {
   getCaseDetail: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}`),
 
-  uploadDocuments: async (caseId, files, onProgress) => {
+  uploadDocuments: async (caseId, files, onProgress, kinds) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
+    if (Array.isArray(kinds) && kinds.length === files.length) {
+      kinds.forEach((kind) => formData.append('kinds', kind));
+    }
     return uploadWithProgress(
       `${API_BASE_URL}/api/v1/cases/${caseId}/documents`,
       formData,
       onProgress,
     );
   },
+
+  // Chat-first intake — docs-as-source-of-truth flow.
+  // Creates a draft in `draft` state; only domain is required upfront.
+  createCaseDraft: (body) =>
+    request('POST', '/api/v1/cases/draft', { body }),
+  // Transition draft/awaiting_intake_confirmation → pending with the
+  // judge's confirmed fields.
+  confirmCaseIntake: (caseId, body) =>
+    request('POST', `/api/v1/cases/${caseId}/confirm`, { body }),
+  // (Re-)enqueue intake extraction; idempotent.
+  triggerIntakeExtraction: (caseId) =>
+    request('POST', `/api/v1/cases/${caseId}/intake/extract`),
+  // Judge's plain-text correction on the intake chat. Server re-runs
+  // extraction with the correction treated as authoritative-over-docs.
+  sendIntakeMessage: (caseId, content) =>
+    request('POST', `/api/v1/cases/${caseId}/intake/message`, {
+      body: { content },
+    }),
+  // SSE stream of intake events (status / done / user_message /
+  // error / confirmed). Close on terminal event types.
+  streamIntakeEvents: (caseId) =>
+    new EventSource(`${API_BASE_URL}/api/v1/cases/${caseId}/intake/stream`, {
+      withCredentials: true,
+    }),
 
   runCase: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/process`),

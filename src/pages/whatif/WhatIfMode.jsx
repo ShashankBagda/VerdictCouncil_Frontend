@@ -338,7 +338,7 @@ export default function WhatIfMode() {
                             e.stopPropagation();
                             duplicateScenario(scenario);
                           }}
-                          className="p-1 hover:bg-gray-200 rounded"
+                          className="p-1 hover:bg-gray-200 rounded-sm"
                           title="Duplicate"
                         >
                           <Copy className="w-4 h-4 text-gray-600" />
@@ -348,7 +348,7 @@ export default function WhatIfMode() {
                             e.stopPropagation();
                             deleteScenario(scenario.id);
                           }}
-                          className="p-1 hover:bg-rose-200 rounded"
+                          className="p-1 hover:bg-rose-200 rounded-sm"
                           title="Delete"
                         >
                           <X className="w-4 h-4 text-rose-600" />

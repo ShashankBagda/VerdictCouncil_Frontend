@@ -77,7 +77,7 @@ export default function DecisionEntryForm({ caseId, hearingAnalysis, onDecisionR
                       : hearingAnalysis?.risks?.[idx - 1] || 'AI flag'}
                   </p>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => updateEngagement(idx, 'agreed', true)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${eng.agreed === true ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-emerald-50'}`}

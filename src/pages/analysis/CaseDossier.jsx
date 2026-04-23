@@ -474,7 +474,7 @@ export default function CaseDossier() {
                         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description || ''}</p>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-sm">
                           {item.type || 'Document'}
                         </span>
                         {expandedItems[`ev-${idx}`] ? (
@@ -897,7 +897,7 @@ export default function CaseDossier() {
                             ...prev,
                             [q._key]: prev[q._key] !== undefined ? undefined : q.question,
                           }))}
-                          className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                          className="p-1 hover:bg-gray-100 rounded-sm text-gray-400 hover:text-gray-600"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -986,7 +986,7 @@ export default function CaseDossier() {
                   <div className="space-y-2">
                     {hearingAnalysis.risks.map((risk, idx) => (
                       <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                         <span className="text-amber-900">{risk}</span>
                       </div>
                     ))}
@@ -1030,7 +1030,7 @@ export default function CaseDossier() {
                   <div className="mt-4 space-y-2">
                     <p className="text-sm font-medium text-gray-700">Submitted requests:</p>
                     {reopenRequests.map((req, idx) => (
-                      <div key={idx} className="text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">
+                      <div key={idx} className="text-sm text-gray-600 bg-gray-50 rounded-sm px-3 py-2">
                         {req.reason} — <span className="capitalize">{req.status || 'pending'}</span>
                       </div>
                     ))}
@@ -1061,7 +1061,7 @@ export default function CaseDossier() {
 
       {!knowledgeBaseStatus?.initialized && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 flex items-start gap-3">
-          <Database className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+          <Database className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-amber-900">Knowledge base is not ready</p>
             <p className="text-sm text-amber-800 mt-1">

@@ -12,6 +12,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 // Pages - Dashboard & Cases
 import Dashboard from './pages/Dashboard';
 import CaseIntake from './pages/cases/CaseIntake';
+import CaseIntakeChat from './pages/cases/CaseIntakeChat';
 import CaseList from './pages/cases/CaseList';
 import CaseDetail from './pages/cases/CaseDetail';
 
@@ -68,6 +69,10 @@ export default function App() {
                   <Route
                     path="/cases/intake"
                     element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseIntake />} />}
+                  />
+                  <Route
+                    path="/cases/intake/:caseId/confirm"
+                    element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseIntakeChat />} />}
                   />
                   <Route
                     path="/cases"

@@ -34,7 +34,7 @@ export default function DocumentUploadList({
                 <div key={`${file.name}-${index}`} className="rounded-lg bg-white border border-teal-100 p-3 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="p-1.5 rounded bg-teal-50">
+                      <div className="p-1.5 rounded-sm bg-teal-50">
                         <FileText className="w-4 h-4 text-teal-600" />
                       </div>
                       <div className="min-w-0">
@@ -45,7 +45,7 @@ export default function DocumentUploadList({
                     {!uploading && (
                       <button
                         onClick={() => onRemoveFile(index)}
-                        className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                        className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-sm transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -68,8 +68,8 @@ export default function DocumentUploadList({
                   )}
 
                   {error && (
-                    <div className="mt-2 flex items-center gap-1.5 p-2 rounded bg-rose-50 border border-rose-100">
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                    <div className="mt-2 flex items-center gap-1.5 p-2 rounded-sm bg-rose-50 border border-rose-100">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       <p className="text-[10px] text-rose-700 font-medium leading-tight">{error}</p>
                     </div>
                   )}
@@ -106,7 +106,7 @@ export default function DocumentUploadList({
             <History className="w-4 h-4 text-navy-400" />
             Analysis Version History
           </h2>
-          <div className="px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-bold text-gray-500">
+          <div className="px-1.5 py-0.5 rounded-sm bg-gray-100 text-[10px] font-bold text-gray-500">
             {documents.length} REVISIONS
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function DocumentUploadList({
             {documents.map((doc, idx) => (
               <div key={doc.id || idx} className="group relative">
                 {idx < documents.length - 1 && (
-                  <div className="absolute left-[17px] top-8 bottom-[-16px] w-[1px] bg-gray-100" />
+                  <div className="absolute left-[17px] top-8 bottom-[-16px] w-px bg-gray-100" />
                 )}
                 <div className="flex items-start gap-4">
                   <div className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center border-2 bg-white transition-colors ${
@@ -157,7 +157,7 @@ export default function DocumentUploadList({
                     {doc.affected_stages?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {doc.affected_stages.map((stage) => (
-                          <span key={stage} className="text-[9px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100 font-medium">
+                          <span key={stage} className="text-[9px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded-sm border border-gray-100 font-medium">
                             {stage}
                           </span>
                         ))}

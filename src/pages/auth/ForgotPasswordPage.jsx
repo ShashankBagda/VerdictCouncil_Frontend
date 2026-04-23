@@ -24,9 +24,9 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-navy-900 via-navy-800 to-teal-700 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-navy-900 via-navy-800 to-teal-700 p-4">
       <div className="bg-white rounded-xl shadow-2xl overflow-hidden max-w-md w-full">
-        <div className="bg-gradient-to-r from-navy-900 to-teal-600 px-6 py-8 text-white">
+        <div className="bg-linear-to-r from-navy-900 to-teal-600 px-6 py-8 text-white">
           <h1 className="text-3xl font-bold mb-2">Reset Password</h1>
           <p className="text-teal-100">Request a reset token for your account</p>
         </div>

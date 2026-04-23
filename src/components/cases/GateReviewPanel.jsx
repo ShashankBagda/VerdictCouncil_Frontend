@@ -54,7 +54,7 @@ export default function GateReviewPanel({ caseId, gateName, onAdvanced }) {
           <h2 className="text-xl font-bold text-navy-900">{GATE_LABELS[gateName]}</h2>
           <p className="text-sm text-gray-600 mt-1">{GATE_DESCRIPTIONS[gateName]}</p>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="flex gap-2 shrink-0">
           <button onClick={() => setShowRerun(true)} className="btn-secondary flex items-center gap-2">
             <RefreshCw className="w-4 h-4" /> Re-run Agent
           </button>

@@ -65,7 +65,7 @@ function CaseCard({ caseItem, selected, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-2xl bg-white border transition-all duration-200 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 flex flex-col ${cfg.cardBorder} ${selected ? 'ring-2 ring-teal-500 shadow-glow-teal' : 'shadow-card'}`}
+      className={`w-full text-left rounded-2xl bg-white border transition-all duration-200 hover:-translate-y-1 hover:shadow-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 flex flex-col ${cfg.cardBorder} ${selected ? 'ring-2 ring-teal-500 shadow-glow-teal' : 'shadow-card'}`}
       style={{ boxShadow: selected ? undefined : '0 4px 20px rgba(0,0,0,0.06)' }}
     >
       {/* Card header */}
@@ -73,11 +73,11 @@ function CaseCard({ caseItem, selected, onClick }) {
         <div className="flex items-start justify-between gap-3 mb-3">
           {/* Status dot + date */}
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
+            <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
             <span className="text-xs text-gray-400 font-medium">{formattedDate}</span>
           </div>
           {/* Status badge */}
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.badge} flex-shrink-0`}>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.badge} shrink-0`}>
             <Icon size={10} />
             {cfg.label}
           </span>
@@ -116,7 +116,7 @@ function CaseCard({ caseItem, selected, onClick }) {
         </div>
         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full bg-gradient-to-r ${cfg.progress} transition-all duration-700`}
+            className={`h-full rounded-full bg-linear-to-r ${cfg.progress} transition-all duration-700`}
             style={{ width: `${caseItem.pipeline_progress}%` }}
           />
         </div>
@@ -205,7 +205,7 @@ export default function CaseList() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg">
+              <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg">
                 <FolderOpen size={20} className="text-white" />
               </div>
               <h1 className="text-3xl font-black text-navy-900 tracking-tight">Case Docket</h1>
@@ -216,7 +216,7 @@ export default function CaseList() {
           </div>
           <button
             onClick={() => navigate('/cases/intake')}
-            className="btn-primary flex-shrink-0 hidden sm:flex"
+            className="btn-primary shrink-0 hidden sm:flex"
           >
             <Plus size={17} />
             New Case
@@ -238,14 +238,14 @@ export default function CaseList() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by title, parties, or facts…"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent placeholder-gray-400 bg-gray-50"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:border-transparent placeholder-gray-400 bg-gray-50"
               />
             </div>
             {/* Domain */}
             <select
               value={domainFilter}
               onChange={(e) => setDomainFilter(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50"
+              className="w-full px-3.5 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-500 bg-gray-50"
             >
               <option value="">All Domains</option>
               <option value="small_claims">Small Claims Tribunal</option>
@@ -255,7 +255,7 @@ export default function CaseList() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50"
+              className="w-full px-3.5 py-2.5 rounded-xl text-sm font-medium text-gray-700 border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-500 bg-gray-50"
             >
               <option value="">All Statuses</option>
               <option value="processing">Processing</option>

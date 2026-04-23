@@ -165,7 +165,7 @@ export default function GraphMesh() {
       )}
       {isStale && !isGivenUp && (
         <div className="absolute top-0 left-0 right-0 z-10 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
-          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
           <p className="text-sm text-amber-700">
             Pipeline data may be stale — waiting for the next update.
           </p>
@@ -295,7 +295,7 @@ export default function GraphMesh() {
               {selectedAgent.error_message && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Error</p>
-                  <p className="text-xs bg-rose-50 text-rose-900 p-2 rounded border border-rose-200 font-mono">
+                  <p className="text-xs bg-rose-50 text-rose-900 p-2 rounded-sm border border-rose-200 font-mono">
                     {selectedAgent.error_message}
                   </p>
                 </div>
@@ -304,7 +304,7 @@ export default function GraphMesh() {
               {selectedAgent.output_summary && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Output</p>
-                  <p className="text-xs bg-blue-50 text-blue-900 p-2 rounded border border-blue-200 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
+                  <p className="text-xs bg-blue-50 text-blue-900 p-2 rounded-sm border border-blue-200 whitespace-pre-wrap wrap-break-word max-h-24 overflow-y-auto">
                     {typeof selectedAgent.output_summary === 'string'
                       ? selectedAgent.output_summary
                       : JSON.stringify(selectedAgent.output_summary, null, 2)}
@@ -318,7 +318,7 @@ export default function GraphMesh() {
         {/* ── Bottom-left: help text ───────────────────────────────────── */}
         <Panel
           position="bottom-left"
-          className="text-xs text-gray-600 bg-white rounded px-2 py-1 border border-gray-200"
+          className="text-xs text-gray-600 bg-white rounded-sm px-2 py-1 border border-gray-200"
         >
           <p className="flex items-center gap-1">
             <Info className="w-3 h-3" />
