@@ -27,7 +27,7 @@ const AGENT_GATE = {
 const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
 
 // Statuses from which a failed/escalated pipeline can be restarted
-const RESTARTABLE_STATUSES = new Set(['failed', 'escalated']);
+const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
 
 // Map overall_status → gate name
 function currentGateFromStatus(overallStatus) {

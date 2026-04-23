@@ -198,7 +198,16 @@ export function isTerminalPipelineStatus(status) {
  * at the top level before all agents report individually).
  */
 export function isTerminalOverallStatus(overallStatus) {
-  return overallStatus === 'completed' || overallStatus === 'failed';
+  return (
+    overallStatus === 'completed' ||
+    overallStatus === 'failed' ||
+    overallStatus === 'failed_retryable' ||
+    overallStatus === 'escalated' ||
+    overallStatus === 'awaiting_review_gate1' ||
+    overallStatus === 'awaiting_review_gate2' ||
+    overallStatus === 'awaiting_review_gate3' ||
+    overallStatus === 'awaiting_review_gate4'
+  );
 }
 
 const GOVERNANCE_TERMINAL_PHASES = new Set(['completed', 'failed']);
