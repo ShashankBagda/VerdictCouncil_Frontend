@@ -26,7 +26,7 @@ export default function AgentRerunDialog({ caseId, gateName, agents, onClose, on
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-navy-900">Re-run Agent</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-sm"><X className="w-5 h-5" /></button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
           Select an agent to re-run from the current gate. The gate will re-execute from that agent through completion, then pause again for review.

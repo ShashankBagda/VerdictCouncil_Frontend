@@ -68,7 +68,7 @@ export default function KnowledgeBase() {
 
         <div className="mt-8 pt-6 border-t border-gray-100">
           <div className="flex items-center gap-3 p-3 bg-navy-50 rounded-xl border border-navy-100/50">
-            <Clock className="w-4 h-4 text-navy-400 flex-shrink-0" />
+            <Clock className="w-4 h-4 text-navy-400 shrink-0" />
             <p className="text-[11px] text-navy-700 leading-tight font-medium">
               Judges can use this page to verify store readiness, freshness, and document volume
               before relying on AI-supported legal retrieval in the dossier.

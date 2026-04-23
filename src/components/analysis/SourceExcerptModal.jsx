@@ -36,15 +36,15 @@ export default function SourceExcerptModal({ documentId, page, onClose }) {
               </p>
             )}
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-sm">
             <X className="w-5 h-5" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {loading && <div className="flex items-center justify-center h-32"><div className="spinner w-6 h-6" /></div>}
-          {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-700">{error}</div>}
+          {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded-sm text-sm text-rose-700">{error}</div>}
           {data?.text && (
-            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-4 rounded border">{data.text}</pre>
+            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-4 rounded-sm border">{data.text}</pre>
           )}
         </div>
       </div>

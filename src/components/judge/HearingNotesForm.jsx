@@ -96,16 +96,16 @@ export default function HearingNotesForm({
               <div key={note.id} className="rounded-lg border border-gray-200 p-3">
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <div className="flex gap-2">
-                    <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700">
+                    <span className="px-2 py-1 rounded-sm text-xs font-semibold bg-blue-100 text-blue-700">
                       {note.note_type || 'observation'}
                     </span>
                     {note.section_reference && (
-                      <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">
+                      <span className="px-2 py-1 rounded-sm text-xs font-semibold bg-gray-100 text-gray-700">
                         {note.section_reference}
                       </span>
                     )}
                     {note.is_locked && (
-                      <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-900 text-white">
+                      <span className="px-2 py-1 rounded-sm text-xs font-semibold bg-gray-900 text-white">
                         locked
                       </span>
                     )}

@@ -151,7 +151,7 @@ export default function BuildingSimulation() {
       {/* Stale data warning — softer than give-up */}
       {isStale && !isGivenUp && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-2">
-          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
           <p className="text-sm text-amber-700">
             Pipeline data may be stale — waiting for the next update from the server.
           </p>
@@ -196,7 +196,7 @@ export default function BuildingSimulation() {
             activeRooms={activeRooms}
             completedRooms={completedRooms}
           />
-          <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded-sm">
             Click an agent name below to view its stream
           </div>
         </div>

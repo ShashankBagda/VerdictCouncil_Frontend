@@ -67,7 +67,7 @@ export function RootLayout() {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* ── Sidebar ──────────────────────────────────────── */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-[72px]'} flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out relative`}
+        className={`${sidebarOpen ? 'w-64' : 'w-[72px]'} shrink-0 flex flex-col transition-all duration-300 ease-in-out relative`}
         style={{
           background: 'linear-gradient(180deg, #0d1520 0%, #1a2332 50%, #0e2a3a 100%)',
           boxShadow: '4px 0 24px rgba(0,0,0,0.3)',
@@ -76,11 +76,11 @@ export function RootLayout() {
         aria-label="Main Navigation"
       >
         {/* Decorative glow line */}
-        <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-transparent via-teal-500/30 to-transparent" />
+        <div className="absolute top-0 right-0 w-px h-full bg-linear-to-b from-transparent via-teal-500/30 to-transparent" />
 
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 pt-6 pb-5 min-h-[80px]">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-white shadow-glow-teal">
+          <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-white shadow-glow-teal">
             <img src="/logo.png" alt="VerdictCouncil" className="w-full h-full object-contain" />
           </div>
           {sidebarOpen && (
@@ -116,16 +116,16 @@ export function RootLayout() {
                 title={!sidebarOpen ? label : undefined}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative ${
                   active
-                    ? 'bg-gradient-to-r from-teal-600/30 to-teal-500/10 text-white border border-teal-500/30'
+                    ? 'bg-linear-to-r from-teal-600/30 to-teal-500/10 text-white border border-teal-500/30'
                     : 'text-white/50 hover:bg-white/8 hover:text-white/90'
                 }`}
               >
                 {active && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-teal-400 to-cyan-300 rounded-r-full" />
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-linear-to-b from-teal-400 to-cyan-300 rounded-r-full" />
                 )}
                 <Icon
                   size={18}
-                  className={`flex-shrink-0 transition-colors ${active ? 'text-teal-400' : 'text-white/40 group-hover:text-white/80'}`}
+                  className={`shrink-0 transition-colors ${active ? 'text-teal-400' : 'text-white/40 group-hover:text-white/80'}`}
                 />
                 {sidebarOpen && (
                   <span className="text-sm font-medium truncate animate-fade-in">{label}</span>
@@ -140,7 +140,7 @@ export function RootLayout() {
           {/* User avatar row */}
           {sidebarOpen ? (
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 mb-1 animate-fade-in">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow">
+              <div className="shrink-0 w-8 h-8 rounded-lg bg-linear-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow">
                 {userInitials}
               </div>
               <div className="flex-1 overflow-hidden">
@@ -152,7 +152,7 @@ export function RootLayout() {
             </div>
           ) : (
             <div title={user?.email} className="flex items-center justify-center mb-1">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow">
+              <div className="w-9 h-9 rounded-xl bg-linear-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow">
                 {userInitials}
               </div>
             </div>
@@ -163,7 +163,7 @@ export function RootLayout() {
             title="Logout"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-rose-400 hover:bg-rose-500/10 transition-all duration-200 group"
           >
-            <LogOut size={17} className="flex-shrink-0 group-hover:scale-110 transition-transform" />
+            <LogOut size={17} className="shrink-0 group-hover:scale-110 transition-transform" />
             {sidebarOpen && <span className="text-sm font-medium animate-fade-in">Sign Out</span>}
           </button>
         </div>
@@ -173,7 +173,7 @@ export function RootLayout() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
         <header
-          className="flex-shrink-0 flex items-center justify-between px-6 py-3 bg-white/80 backdrop-blur-md border-b border-gray-100 z-10"
+          className="shrink-0 flex items-center justify-between px-6 py-3 bg-white/80 backdrop-blur-md border-b border-gray-100 z-10"
           style={{ boxShadow: '0 1px 12px rgba(0,0,0,0.06)' }}
           role="banner"
         >
@@ -218,7 +218,7 @@ export function RootLayout() {
             </button>
 
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+            <div className="w-8 h-8 rounded-xl bg-linear-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
               {userInitials}
             </div>
           </div>

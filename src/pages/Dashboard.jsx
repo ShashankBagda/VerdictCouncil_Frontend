@@ -52,7 +52,7 @@ function QuickActionCard({ icon: Icon, title, desc, onClick, color, gradient }) 
   return (
     <button
       onClick={onClick}
-      className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all duration-300 hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+      className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all duration-300 hover:-translate-y-1 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
       style={{
         background: 'white',
         boxShadow: '0 4px 20px rgba(0,0,0,0.07)',
@@ -83,7 +83,7 @@ function RecentCaseRow({ item, onClick }) {
       onClick={onClick}
       className="w-full flex items-center gap-4 p-3.5 rounded-xl hover:bg-gray-50 transition-all duration-150 group text-left"
     >
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${status.bg} ${status.border} border`}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${status.bg} ${status.border} border`}>
         <Icon size={15} className={status.text} />
       </div>
       <div className="flex-1 min-w-0">
@@ -102,7 +102,7 @@ function RecentCaseRow({ item, onClick }) {
       <span className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${status.bg} ${status.text} border ${status.border}`}>
         {item.status}
       </span>
-      <ArrowRight size={14} className="text-gray-300 group-hover:text-gray-500 flex-shrink-0 transition-colors" />
+      <ArrowRight size={14} className="text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
     </button>
   );
 }
@@ -139,7 +139,7 @@ export default function Dashboard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-400 flex items-center justify-center shadow-glow-teal">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-teal-500 to-cyan-400 flex items-center justify-center shadow-glow-teal">
               <Scale size={20} className="text-white" />
             </div>
             <h1 className="text-3xl font-black text-navy-900 tracking-tight">Dashboard</h1>
@@ -150,7 +150,7 @@ export default function Dashboard() {
         </div>
         <button
           onClick={() => navigate('/cases/intake')}
-          className="btn-primary flex-shrink-0 hidden sm:flex"
+          className="btn-primary shrink-0 hidden sm:flex"
         >
           <Plus size={17} />
           New Case

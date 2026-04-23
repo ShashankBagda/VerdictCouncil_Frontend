@@ -38,7 +38,7 @@ export default function PrecedentSearchPanel({
             Live Precedent Search
           </h2>
           {searchedAt && (
-            <p className="text-xs text-gray-500 mt-1 flex-shrink-0">
+            <p className="text-xs text-gray-500 mt-1 shrink-0">
               Last live search: {new Date(searchedAt).toLocaleTimeString()}
             </p>
           )}
@@ -92,7 +92,7 @@ export default function PrecedentSearchPanel({
                       {[item.citation, item.court, item.jurisdiction].filter(Boolean).join(' • ')}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {(item.score !== undefined || item.relevance !== undefined) && (
                       <MetaBadge tone="cyan">
                         Match {Math.round((item.score ?? item.relevance) * ((item.score ?? item.relevance) <= 1 ? 100 : 1))}%
@@ -105,7 +105,7 @@ export default function PrecedentSearchPanel({
                 </div>
 
                 {(item.summary || item.holding || item.snippet || item.text) && (
-                  <div className="mt-3 p-3 bg-white/50 rounded border border-cyan-100/50">
+                  <div className="mt-3 p-3 bg-white/50 rounded-sm border border-cyan-100/50">
                     <p className="text-sm text-gray-800 leading-relaxed">
                       {item.summary || item.holding || item.snippet || item.text}
                     </p>

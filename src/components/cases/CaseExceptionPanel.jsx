@@ -17,7 +17,7 @@ function ReopenStatusBadge({ status }) {
         : 'bg-amber-100 text-amber-700';
 
   return (
-    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${tone}`}>
+    <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-wider ${tone}`}>
       {status}
     </span>
   );

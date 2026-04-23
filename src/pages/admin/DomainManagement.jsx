@@ -39,7 +39,7 @@ const STEP_DESCRIPTIONS = {
 function DocStatusBadge({ status }) {
   const meta = STATUS_META[status] || STATUS_META.pending;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${meta.color}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium ${meta.color}`}>
       {meta.spin && (
         <span className="inline-block w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
       )}
@@ -204,7 +204,7 @@ export default function DomainManagement() {
     return (
       <div className="p-6">
         <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg p-4">
-          <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+          <AlertTriangle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
       </div>
@@ -231,7 +231,7 @@ export default function DomainManagement() {
 
       {!capabilities.uploads_enabled && (
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <div>
             <strong>File uploads are disabled</strong> by the platform administrator. Contact the
             platform team to re-enable.
@@ -346,7 +346,7 @@ export default function DomainManagement() {
                       key={doc.id}
                       className="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-white"
                     >
-                      <FileText className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <FileText className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-800 truncate">
@@ -376,7 +376,7 @@ export default function DomainManagement() {
                       </div>
                       <button
                         onClick={() => handleDeleteDoc(doc.id)}
-                        className="p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -417,7 +417,7 @@ export default function DomainManagement() {
                   onChange={(e) => setCreateForm((p) => ({ ...p, code: e.target.value.toLowerCase() }))}
                   placeholder="e.g. small_claims"
                   pattern="[a-z0-9_]+"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <p className="text-xs text-gray-400 mt-1">Lowercase letters, digits, underscores only.</p>
               </div>
@@ -431,7 +431,7 @@ export default function DomainManagement() {
                   value={createForm.name}
                   onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
                   placeholder="e.g. Small Claims Tribunal"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -441,12 +441,12 @@ export default function DomainManagement() {
                   onChange={(e) => setCreateForm((p) => ({ ...p, description: e.target.value }))}
                   placeholder="Optional description of this domain's scope."
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
               {createError && (
                 <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg p-3 text-sm">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
                   {createError}
                 </div>
               )}

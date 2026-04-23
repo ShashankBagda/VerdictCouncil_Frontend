@@ -782,7 +782,7 @@ export default function CaseIntake() {
                       {!isUploading && !isUploaded && (
                         <button
                           onClick={() => removeFile(index)}
-                          className="ml-4 p-1 hover:bg-gray-200 rounded flex-shrink-0"
+                          className="ml-4 p-1 hover:bg-gray-200 rounded-sm shrink-0"
                           aria-label={`Remove ${file.name || file.originalName}`}
                           type="button"
                         >
@@ -798,13 +798,13 @@ export default function CaseIntake() {
 
           {/* Success banner */}
           {caseCreated && (
-            <div className="mt-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded flex items-start gap-3">
-              <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" />
+            <div className="mt-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-sm flex items-start gap-3">
+              <CheckCircle className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-emerald-900">Case Created Successfully!</p>
                 <p className="text-sm text-emerald-700">
                   Case ID:{' '}
-                  <code className="bg-white px-2 py-1 rounded font-mono">{caseCreated}</code>
+                  <code className="bg-white px-2 py-1 rounded-sm font-mono">{caseCreated}</code>
                 </p>
                 {failedUploads > 0 && (
                   <p className="text-sm text-amber-700 mt-1">
