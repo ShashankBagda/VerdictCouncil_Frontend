@@ -1,27 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer } from 'react';
 import { X } from 'lucide-react';
 import api, { getErrorMessage } from '../../lib/api';
 
+const initial = { loading: true, data: null, error: null };
+function reducer(state, action) {
+  switch (action.type) {
+    case 'reset': return initial;
+    case 'success': return { loading: false, data: action.data, error: null };
+    case 'error': return { loading: false, data: null, error: action.error };
+    default: return state;
+  }
+}
+
 export default function SourceExcerptModal({ documentId, page, onClose }) {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
+  const [{ loading, data, error }, dispatch] = useReducer(reducer, initial);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setData(null);
-    setError(null);
+    dispatch({ type: 'reset' });
     api.getDocumentExcerpt(documentId, page)
-      .then(result => {
-        if (!cancelled) setData(result);
-      })
-      .catch(err => {
-        if (!cancelled) setError(getErrorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .then(result => { if (!cancelled) dispatch({ type: 'success', data: result }); })
+      .catch(err => { if (!cancelled) dispatch({ type: 'error', error: getErrorMessage(err) }); });
     return () => { cancelled = true; };
   }, [documentId, page]);
 
