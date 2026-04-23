@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
-import { Menu, LogOut, Home, FileText, Settings, Database } from 'lucide-react';
+import { Menu, LogOut, Home, FileText, Settings, Database, Shield } from 'lucide-react';
 
 export function RootLayout() {
   const navigate = useNavigate();
@@ -13,7 +13,10 @@ export function RootLayout() {
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
-  const roleLabel = 'Judge';
+  const roleLabel = user?.role
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : null;
+  const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
     await logout();
@@ -74,18 +77,28 @@ export function RootLayout() {
             onClick={() => navigate('/cases')}
             show={sidebarOpen}
           />
-          <NavItem
-            icon={<Database size={20} />}
-            label="Knowledge Base"
-            onClick={() => navigate('/knowledge-base')}
-            show={sidebarOpen}
-          />
+          {!isAdmin && (
+            <NavItem
+              icon={<Database size={20} />}
+              label="Knowledge Base"
+              onClick={() => navigate('/knowledge-base')}
+              show={sidebarOpen}
+            />
+          )}
           <NavItem
             icon={<Settings size={20} />}
             label="Settings"
             onClick={() => {}}
             show={sidebarOpen}
           />
+          {isAdmin && (
+            <NavItem
+              icon={<Shield size={20} />}
+              label="Domain Management"
+              onClick={() => navigate('/admin/domains')}
+              show={sidebarOpen}
+            />
+          )}
         </nav>
 
         {/* User profile */}
@@ -107,7 +120,7 @@ export function RootLayout() {
         <header className="bg-white border-b border-gray-200 p-4 shadow-sm flex items-center justify-between" role="banner">
           <h1 className="text-2xl font-bold text-navy-900">VerdictCouncil</h1>
           <div className="text-sm text-gray-600 flex items-center gap-3" role="status">
-            {user?.role && (
+            {roleLabel && (
               <span className="px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold">
                 {roleLabel}
               </span>

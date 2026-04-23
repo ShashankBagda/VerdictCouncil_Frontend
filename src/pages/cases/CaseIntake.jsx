@@ -61,10 +61,15 @@ export default function CaseIntake() {
   const { showError, showNotification } = useAPI();
   const { selectCase, updatePipelineStatus } = useCase();
 
+  // Domain list
+  const [domains, setDomains] = useState([]);
+  const [domainsLoading, setDomainsLoading] = useState(true);
+
   // Form state
   const [step, setStep] = useState(1);
   const [caseTitle, setCaseTitle] = useState('');
   const [domain, setDomain] = useState('');
+  const [selectedDomainId, setSelectedDomainId] = useState(null);
   const [caseDescription, setCaseDescription] = useState('');
   const [filedDate, setFiledDate] = useState('');
   const [plaintiff, setPlaintiff] = useState('');
@@ -88,6 +93,13 @@ export default function CaseIntake() {
   // Drag state (useState so the drop zone re-renders)
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    api.listDomains()
+      .then(setDomains)
+      .catch(() => setDomains([]))
+      .finally(() => setDomainsLoading(false));
+  }, []);
 
   // Dirty-form guard: warn before navigating away with unsaved data
   const isDirty =
@@ -118,9 +130,9 @@ export default function CaseIntake() {
     caseTitle.trim().length > 0 &&
     filedDate !== '' &&
     caseDescription.trim().length >= descriptionMinLength &&
-    (domain === 'SCT'
+    (domain === 'small_claims'
       ? claimAmount !== '' && Number.parseFloat(claimAmount) > 0
-      : domain === 'Traffic'
+      : domain === 'traffic_violation'
         ? offenceCode.trim().length > 0
         : true);
   const isStep2Valid =
@@ -139,7 +151,8 @@ export default function CaseIntake() {
         showError('Demo mode is disabled for this environment.');
         return;
       }
-      setDomain(demo.formState.domain === 'small_claims' ? 'SCT' : 'Traffic');
+      setDomain(demo.formState.domain || '');
+      setSelectedDomainId(null);
       setCaseTitle(demo.formState.caseTitle || '');
       setCaseDescription(demo.description);
       setFiledDate(demo.formState.filedDate || '');
@@ -265,9 +278,8 @@ export default function CaseIntake() {
       }
 
       // ── Real path ──────────────────────────────────────────────────
-      const domainMap = { SCT: 'small_claims', Traffic: 'traffic_violation' };
       const parties =
-        domain === 'Traffic'
+        domain === 'traffic_violation'
           ? [
               { name: plaintiff.trim(), role: 'prosecution' },
               { name: defendant.trim(), role: 'accused' },
@@ -277,16 +289,17 @@ export default function CaseIntake() {
               { name: defendant.trim(), role: 'respondent' },
             ];
       const caseData = {
-        domain: domainMap[domain] || domain,
+        domain,
+        domain_id: selectedDomainId || undefined,
         title: caseTitle.trim(),
         description: caseDescription.trim(),
         filed_date: filedDate,
         parties,
-        claim_amount: domain === 'SCT' ? Number.parseFloat(claimAmount) : undefined,
+        claim_amount: domain === 'small_claims' ? Number.parseFloat(claimAmount) : undefined,
         consent_to_higher_claim_limit:
-          domain === 'SCT' ? consentToHigherClaimLimit : undefined,
+          domain === 'small_claims' ? consentToHigherClaimLimit : undefined,
         offence_code:
-          domain === 'Traffic' ? offenceCode.trim().toUpperCase() : undefined,
+          domain === 'traffic_violation' ? offenceCode.trim().toUpperCase() : undefined,
       };
 
       const createResponse = await api.createCase(caseData);
@@ -449,21 +462,33 @@ export default function CaseIntake() {
             <label className="block text-sm font-semibold text-navy-900 mb-3">
               Domain <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-4">
-              {['SCT', 'Traffic'].map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setDomain(option)}
-                  className={`p-4 border-2 rounded-lg font-semibold transition-all ${
-                    domain === option
-                      ? 'border-teal-500 bg-teal-50 text-teal-700'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                  }`}
-                >
-                  {option === 'SCT' ? 'Small Claims Tribunal (SCT)' : 'Traffic Court'}
-                </button>
-              ))}
-            </div>
+            {domainsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
+                Loading domains…
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {domains.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => { setDomain(d.code); setSelectedDomainId(d.id); }}
+                    className={`p-4 border-2 rounded-lg font-semibold transition-all ${
+                      domain === d.code
+                        ? 'border-teal-500 bg-teal-50 text-teal-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                ))}
+                {domains.length === 0 && (
+                  <p className="text-sm text-gray-400 col-span-2">
+                    No active domains configured. Contact an administrator.
+                  </p>
+                )}
+              </div>
+            )}
             {fieldErrors.domain && (
               <p className="text-xs text-rose-600 mt-1">{fieldErrors.domain}</p>
             )}
@@ -495,7 +520,7 @@ export default function CaseIntake() {
             )}
           </div>
 
-          {domain === 'SCT' && (
+          {domain === 'small_claims' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
                 Claim Amount (SGD) <span className="text-rose-500">*</span>
@@ -527,7 +552,7 @@ export default function CaseIntake() {
             </div>
           )}
 
-          {domain === 'Traffic' && (
+          {domain === 'traffic_violation' && (
             <div className="mb-8">
               <label className="block text-sm font-semibold text-navy-900 mb-2">
                 Offence Code <span className="text-rose-500">*</span>
@@ -572,7 +597,7 @@ export default function CaseIntake() {
           <div className="grid grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                {domain === 'Traffic' ? 'Prosecution' : 'Claimant'}{' '}
+                {domain === 'traffic_violation' ? 'Prosecution' : 'Claimant'}{' '}
                 <span className="text-rose-500">*</span>
               </label>
               <input
@@ -589,7 +614,7 @@ export default function CaseIntake() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-navy-900 mb-2">
-                {domain === 'Traffic' ? 'Accused' : 'Respondent'}{' '}
+                {domain === 'traffic_violation' ? 'Accused' : 'Respondent'}{' '}
                 <span className="text-rose-500">*</span>
               </label>
               <input

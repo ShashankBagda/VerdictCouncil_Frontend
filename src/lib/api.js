@@ -297,17 +297,12 @@ export const api = {
   createCase: (caseData) =>
     request('POST', '/api/v1/cases/', { body: caseData }),
   listCases: (params = {}) => {
-    const domainMap = {
-      SCT: 'small_claims',
-      Traffic: 'traffic_violation',
-    };
     const backendParams = {};
     if (params.status || params.status_filter) {
       backendParams.status = params.status || params.status_filter;
     }
     if (params.domain || params.domain_filter) {
-      const domainValue = params.domain || params.domain_filter;
-      backendParams.domain = domainMap[domainValue] || domainValue;
+      backendParams.domain = params.domain || params.domain_filter;
     }
     if (params.search) backendParams.search = params.search;
     if (params.complexity) backendParams.complexity = params.complexity;
@@ -411,14 +406,33 @@ export const api = {
   reviewReopenRequest: (caseId, requestId, body) =>
     request('PATCH', `/api/v1/cases/${caseId}/reopen-requests/${requestId}/review`, { body }),
 
-  refreshVectorStore: (store) =>
-    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
   getAdminHealth: () =>
     request('GET', '/api/v1/health/pair'),
-  manageUser: (userId, action, data) =>
-    request('POST', `/api/v1/admin/users/${userId}/${action}`, { body: data }),
-  setConfig: (config) =>
-    request('POST', '/api/v1/admin/cost-config', { body: config }),
+
+  // Domain management
+  listDomains: () =>
+    request('GET', '/api/v1/domains/'),
+  listDomainsAdmin: () =>
+    request('GET', '/api/v1/domains/admin'),
+  createDomain: (data) =>
+    request('POST', '/api/v1/domains/admin', { body: data }),
+  getDomainAdmin: (domainId) =>
+    request('GET', `/api/v1/domains/admin/${domainId}`),
+  updateDomain: (domainId, data) =>
+    request('PATCH', `/api/v1/domains/admin/${domainId}`, { body: data }),
+  retireDomain: (domainId, hard = false) =>
+    request('DELETE', `/api/v1/domains/admin/${domainId}?hard=${hard}`),
+  getDomainCapabilities: () =>
+    request('GET', '/api/v1/domains/capabilities'),
+  uploadDomainDocument: (domainId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request('POST', `/api/v1/domains/admin/${domainId}/documents`, { body: formData });
+  },
+  listDomainDocuments: (domainId) =>
+    request('GET', `/api/v1/domains/admin/${domainId}/documents`),
+  deleteDomainDocument: (domainId, docId) =>
+    request('DELETE', `/api/v1/domains/admin/${domainId}/documents/${docId}`),
 
   advanceGate: (caseId, gateName) =>
     request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`),
