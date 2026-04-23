@@ -81,6 +81,15 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
   const status = agentStatus?.status || 'pending';
   const isRunning = status === 'running';
 
+  // MLflow ids ride on the Redis-driven lifecycle SSE events (phase
+  // transitions emitted by the mesh runner), not the per-call Solace
+  // events. Find the most recent lifecycle event that carries them so
+  // the link works even if the polled /status endpoint has no idea.
+  const mlflowEvent = [...events].reverse().find((e) => e?.mlflow_run_id);
+  const mlflowRunId = mlflowEvent?.mlflow_run_id ?? agentStatus?.mlflow_run_id;
+  const mlflowExperimentId =
+    mlflowEvent?.mlflow_experiment_id ?? agentStatus?.mlflow_experiment_id;
+
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
     if (!isManualRef.current && scrollRef.current) {
@@ -146,19 +155,19 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
         </div>
       </div>
 
-      {/* MLflow run link (shown only when we have a run_id from the event) */}
-      {agentStatus?.run_id && (
+      {/* MLflow run link (shown only when the backend reported a real MLflow run_id) */}
+      {mlflowRunId && (
         <div className="flex items-center gap-1.5 px-3 py-1 bg-black/10 border-b border-white/5">
           <Activity className="w-3 h-3 text-amber-400 flex-shrink-0" />
           <span className="text-[10px] text-gray-400">MLflow run:</span>
           <a
-            href={`${import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5000'}/#/experiments/0/runs/${agentStatus.run_id}`}
+            href={`${import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001'}/#/experiments/${mlflowExperimentId ?? 0}/runs/${mlflowRunId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-amber-400 hover:text-amber-300 font-mono flex items-center gap-0.5"
             title="Open in MLflow UI"
           >
-            {agentStatus.run_id.slice(0, 12)}…
+            {mlflowRunId.slice(0, 12)}…
             <ExternalLink className="w-2.5 h-2.5" />
           </a>
         </div>
@@ -395,7 +404,7 @@ export default function BuildingSimulation() {
     };
   }, [caseId]);
 
-  const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5000';
+  const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001';
 
   const overallStatus = pipelineStatus?.overall_status || '';
   const currentGate = currentGateFromStatus(overallStatus);
