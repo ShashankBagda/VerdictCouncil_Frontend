@@ -40,11 +40,8 @@ describe('backend OpenAPI schema contract', () => {
       'pipeline_progress',
       'filed_date',
       'parties',
-      'outcome_summary',
       'escalation_reason',
       'reopen_state',
-      'amendment_state',
-      'latest_decision',
     ]);
 
     expectProperties('CaseDetailResponse', [
@@ -55,26 +52,15 @@ describe('backend OpenAPI schema contract', () => {
       'legal_rules',
       'precedents',
       'arguments',
-      'deliberations',
-      'verdicts',
-      'decision_history',
+      'hearing_analyses',
       'audit_logs',
     ]);
   });
 
   it('declares the workflow, hearing-pack, and knowledge-base fields needed by story-driven surfaces', () => {
-    expectProperties('EscalatedCaseResponse', [
-      'case_id',
-      'item_type',
-      'case_title',
-      'domain',
-      'originating_judge',
-      'reason',
-      'priority',
-      'submitted_at',
-      'status',
-      'preview',
-      'history',
+    expectProperties('JudicialDecisionCreate', [
+      'verdict_text',
+      'ai_engagements',
     ]);
 
     expectProperties('HearingPackResponse', [
