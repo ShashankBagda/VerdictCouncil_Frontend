@@ -49,6 +49,7 @@
  *   GET  /api/v1/cases/{id}/arguments           → case_data.router
  *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
  *   POST /api/v1/cases/{id}/process             → cases.router (pipeline trigger)
+ *   POST /api/v1/cases/{id}/restart             → cases.router (restart failed pipeline)
  *   POST /api/v1/admin/vector-stores/refresh → admin.router
  *   POST /api/v1/admin/users/{id}/{action}   → admin.router
  *   POST /api/v1/admin/cost-config           → admin.router
@@ -362,6 +363,8 @@ export const api = {
 
   runCase: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/process`),
+  restartPipeline: (caseId) =>
+    request('POST', `/api/v1/cases/${caseId}/restart`),
   getPipelineStatus: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/status`),
   streamPipelineStatus: (caseId) =>

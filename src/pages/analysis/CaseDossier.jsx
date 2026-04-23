@@ -12,7 +12,9 @@ import {
   FileSearch,
   FileText,
   MessageSquare,
+  Paperclip,
   Plus,
+  RefreshCw,
   Scale,
   ShieldCheck,
   TriangleAlert,
@@ -42,6 +44,7 @@ import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
 import DecisionEntryForm from '../../components/cases/DecisionEntryForm';
 
 const TABS = [
+  { id: 'documents', label: 'Documents', icon: Paperclip, activeClass: 'bg-teal-100 text-teal-700 border-2 border-teal-300' },
   { id: 'evidence', label: 'Evidence', icon: FileText, activeClass: 'bg-blue-100 text-blue-700 border-2 border-blue-300' },
   { id: 'evidence-gaps', label: 'Evidence Gaps', icon: TriangleAlert, activeClass: 'bg-amber-100 text-amber-700 border-2 border-amber-300' },
   { id: 'timeline', label: 'Timeline', icon: Clock, activeClass: 'bg-purple-100 text-purple-700 border-2 border-purple-300' },
@@ -53,6 +56,20 @@ const TABS = [
   { id: 'hearing_analysis', label: 'Hearing Analysis', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
 ];
+
+const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
+
+function fileTypeIcon(fileType) {
+  if (!fileType) return '📄';
+  const t = fileType.toLowerCase();
+  if (t.includes('pdf')) return '📕';
+  if (t.includes('image') || t.includes('jpg') || t.includes('jpeg') || t.includes('png')) return '🖼️';
+  if (t.includes('word') || t.includes('doc')) return '📝';
+  if (t.includes('excel') || t.includes('sheet') || t.includes('csv')) return '📊';
+  if (t.includes('video')) return '🎬';
+  if (t.includes('audio')) return '🎵';
+  return '📄';
+}
 const extractEvidenceGapItems = (payload) => {
   const root = payload?.data || payload || {};
   const weakEvidence = extractItems(root, ['weak_evidence']).map((item, index) => ({
@@ -173,6 +190,8 @@ export default function CaseDossier() {
   const { activeTab, setActiveTab } = useCase();
 
   const [loading, setLoading] = useState(true);
+  const [caseDetail, setCaseDetail] = useState(null);
+  const [restarting, setRestarting] = useState(false);
   const [expandedItems, setExpandedItems] = useState({});
   const [evidence, setEvidence] = useState(null);
   const [evidenceGaps, setEvidenceGaps] = useState(null);
@@ -204,6 +223,7 @@ export default function CaseDossier() {
         setLoading(true);
 
         const [
+          caseDetailRes,
           evidenceRes,
           evidenceGapsRes,
           timelineRes,
@@ -215,6 +235,7 @@ export default function CaseDossier() {
           kbRes,
           reopenRequestsRes,
         ] = await Promise.allSettled([
+          api.getCaseDetail(caseId),
           api.getEvidence(caseId),
           api.getEvidenceGaps(caseId),
           api.getTimeline(caseId),
@@ -227,6 +248,7 @@ export default function CaseDossier() {
           api.listReopenRequests(caseId),
         ]);
 
+        setCaseDetail(caseDetailRes.status === 'fulfilled' ? caseDetailRes.value : null);
         setEvidence(
           evidenceRes.status === 'fulfilled' ? normalizeEvidenceResource(evidenceRes.value) : null,
         );
@@ -264,6 +286,8 @@ export default function CaseDossier() {
             : [],
         );
       } catch (err) {
+        // intentional fall-through — individual fetch failures are already
+        // handled above; only truly unexpected errors reach here
         showError(getErrorMessage(err, 'Failed to fetch case analysis'));
       } finally {
         setLoading(false);
@@ -385,6 +409,21 @@ export default function CaseDossier() {
     }
   };
 
+  const handleRestartPipeline = async () => {
+    try {
+      setRestarting(true);
+      await api.restartPipeline(caseId);
+      showNotification('Pipeline restarted — processing will begin shortly.', 'success');
+      // Refresh case detail so the status badge updates
+      const updated = await api.getCaseDetail(caseId);
+      setCaseDetail(updated);
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to restart pipeline'));
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="card-lg flex items-center justify-center h-96">
@@ -421,13 +460,26 @@ export default function CaseDossier() {
             </div>
           </div>
 
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          <div className="flex items-center gap-2">
+            {RESTARTABLE_STATUSES.has(caseDetail?.status) && (
+              <button
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-60"
+                title="Restart the pipeline for this case"
+              >
+                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </button>
+            )}
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -452,6 +504,86 @@ export default function CaseDossier() {
           })}
         </div>
       </div>
+
+      {activeTab === 'documents' && (
+        <div className="card-lg">
+          <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
+            <Paperclip className="w-6 h-6" />
+            Case Documents
+          </h2>
+
+          {RESTARTABLE_STATUSES.has(caseDetail?.status) && (
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-300 bg-rose-50 px-5 py-4">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-rose-900">
+                  Pipeline {caseDetail.status === 'escalated' ? 'escalated' : 'failed'}
+                </p>
+                <p className="text-sm text-rose-800 mt-1">
+                  {caseDetail.status === 'failed_retryable'
+                    ? 'The pipeline was interrupted before completing. You can restart it using the button above.'
+                    : caseDetail.status === 'escalated'
+                    ? 'This case was escalated for human review. You may restart the pipeline if the issue has been resolved.'
+                    : 'The pipeline encountered an error and could not complete. Check the audit log for details, then restart the pipeline.'}
+                </p>
+              </div>
+              <button
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-60 shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </button>
+            </div>
+          )}
+
+          {(() => {
+            const docs = caseDetail?.documents || [];
+            if (docs.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <Paperclip className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No documents attached to this case</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Documents are uploaded during case intake and are listed here for reference.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="divide-y divide-gray-100">
+                {docs.map((doc, idx) => (
+                  <div key={doc.id || idx} className="flex items-center gap-4 py-3">
+                    <span className="text-2xl" aria-hidden="true">{fileTypeIcon(doc.file_type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-navy-900 truncate">{doc.filename || `Document ${idx + 1}`}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {doc.file_type && <span className="capitalize mr-2">{doc.file_type}</span>}
+                        {doc.uploaded_at && (
+                          <span>
+                            Uploaded{' '}
+                            {new Date(doc.uploaded_at).toLocaleDateString('en-SG', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    {doc.openai_file_id && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-mono truncate max-w-[120px]">
+                        {doc.openai_file_id}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {activeTab === 'evidence' && (
         <div className="space-y-4">
