@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, AlertCircle, ExternalLink, RefreshCw, WifiOff } from 'lucide-react';
+import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, Square, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import api from '../../lib/api';
 import {
@@ -9,6 +9,28 @@ import {
   isTerminalPipelineSseEvent,
   normalizePipelineStatus,
 } from '../../lib/pipelineStatus';
+
+// ── Gate → agent mapping (mirrors backend GATE_AGENTS) ────────────────────
+const AGENT_GATE = {
+  'case-processing':    'gate1',
+  'complexity-routing': 'gate1',
+  'evidence-analysis':  'gate2',
+  'fact-reconstruction':'gate2',
+  'witness-analysis':   'gate2',
+  'legal-knowledge':    'gate2',
+  'argument-construction': 'gate3',
+  'hearing-analysis':   'gate3',
+  'hearing-governance': 'gate4',
+};
+
+// Statuses from which the full pipeline can be (re-)started
+const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
+
+// Map overall_status → gate name
+function currentGateFromStatus(overallStatus) {
+  const m = String(overallStatus || '').match(/^awaiting_review_(gate\d)$/);
+  return m ? m[1] : null;
+}
 
 // ── Agent metadata (layer grouping for the header label) ────────────────────
 const AGENT_LAYER = {
@@ -50,13 +72,14 @@ function statusDot(status) {
 }
 
 // ── Single agent card ───────────────────────────────────────────────────────
-function AgentCard({ agentId, agentStatus, events }) {
+function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRun }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
   const layer = AGENT_LAYER[agentId] || 'Intake';
   const colors = LAYER_COLORS[layer];
   const status = agentStatus?.status || 'pending';
+  const isRunning = status === 'running';
 
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
@@ -86,6 +109,40 @@ function AgentCard({ agentId, agentStatus, events }) {
           {agentStatus?.elapsed_seconds != null && (
             <span className="text-[10px] text-gray-500">{agentStatus.elapsed_seconds}s</span>
           )}
+
+          {/* ── Agent action buttons ── */}
+          <div className="flex items-center gap-1 ml-1">
+            {/* Run / Re-run button */}
+            <button
+              onClick={onRun}
+              disabled={!canRun || isActionPending}
+              title={
+                canRun
+                  ? `Re-run ${label} from this agent`
+                  : isRunning
+                    ? 'Agent is currently running'
+                    : 'Available when pipeline is paused at this gate for review'
+              }
+              className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
+                canRun && !isActionPending
+                  ? 'bg-emerald-600/30 hover:bg-emerald-500/50 text-emerald-300 border border-emerald-600/40'
+                  : 'bg-gray-700/30 text-gray-600 border border-gray-700/30 cursor-not-allowed'
+              }`}
+            >
+              {isActionPending
+                ? <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+                : <Play className="w-2.5 h-2.5" fill="currentColor" />}
+            </button>
+
+            {/* Stop button — no backend cancel endpoint; always disabled */}
+            <button
+              disabled
+              title="Stop is not supported — agents cannot be cancelled mid-run"
+              className="flex items-center justify-center w-5 h-5 rounded bg-gray-700/30 text-gray-600 border border-gray-700/30 cursor-not-allowed"
+            >
+              <Square className="w-2.5 h-2.5" fill="currentColor" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -244,12 +301,18 @@ function OverallProgressBar({ pipelineStatus, isStale, isGivenUp, error, retry }
 // ── Main component ───────────────────────────────────────────────────────────
 export default function BuildingSimulation() {
   const { caseId } = useParams();
-  const { showError } = useAPI();
+  const { showError, showNotification } = useAPI();
   const { updatePipelineStatus } = useCase();
 
   // SSE events keyed by agent_id
   const [events, setEvents] = useState({});
   const [sseConnected, setSseConnected] = useState(false);
+
+  // Per-agent action pending state (run button spinner)
+  const [pendingAgents, setPendingAgents] = useState({});
+
+  // Full pipeline start pending
+  const [pipelinePending, setPipelinePending] = useState(false);
 
   const {
     loading,
@@ -334,6 +397,39 @@ export default function BuildingSimulation() {
 
   const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5000';
 
+  const overallStatus = pipelineStatus?.overall_status || '';
+  const currentGate = currentGateFromStatus(overallStatus);
+  const isStartable = STARTABLE_STATUSES.has(overallStatus);
+
+  // Run the full pipeline (when pending/failed)
+  const handleRunPipeline = useCallback(async () => {
+    if (pipelinePending) return;
+    try {
+      setPipelinePending(true);
+      await api.runCase(caseId);
+      showNotification('Pipeline started', 'success');
+    } catch (err) {
+      showError(err?.detail || err?.message || 'Failed to start pipeline');
+    } finally {
+      setPipelinePending(false);
+    }
+  }, [caseId, pipelinePending, showError, showNotification]);
+
+  // Re-run a specific agent (only when case is paused at that agent's gate)
+  const handleRunAgent = useCallback(async (agentId) => {
+    if (pendingAgents[agentId]) return;
+    const gate = AGENT_GATE[agentId];
+    try {
+      setPendingAgents((prev) => ({ ...prev, [agentId]: true }));
+      await api.rerunGate(caseId, gate, { agentName: agentId });
+      showNotification(`Re-running ${PIPELINE_AGENT_LABELS[agentId] || agentId}…`, 'success');
+    } catch (err) {
+      showError(err?.detail || err?.message || `Failed to re-run agent`);
+    } finally {
+      setPendingAgents((prev) => ({ ...prev, [agentId]: false }));
+    }
+  }, [caseId, pendingAgents, showError, showNotification]);
+
   if (loading && !pipelineStatus) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -375,6 +471,21 @@ export default function BuildingSimulation() {
           />
         </div>
 
+        {/* ── Run Pipeline button (only when startable) ── */}
+        {isStartable && (
+          <button
+            onClick={handleRunPipeline}
+            disabled={pipelinePending}
+            className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 border border-emerald-700/50 hover:border-emerald-500/60 bg-emerald-900/20 hover:bg-emerald-800/30 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Start the 9-agent pipeline for this case"
+          >
+            {pipelinePending
+              ? <span className="w-3 h-3 rounded-full border border-emerald-400 border-t-transparent animate-spin" />
+              : <Play className="w-3.5 h-3.5" fill="currentColor" />}
+            Run Pipeline
+          </button>
+        )}
+
         <a
           href={mlflowUrl}
           target="_blank"
@@ -408,17 +519,35 @@ export default function BuildingSimulation() {
         </div>
       )}
 
+      {/* ── Gate review banner ── */}
+      {currentGate && (
+        <div className="flex items-center gap-3 bg-amber-950/50 border border-amber-600/40 rounded-xl px-4 py-2.5">
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+          <span className="text-sm text-amber-300 font-semibold">
+            Pipeline paused at {currentGate.replace('gate', 'Gate ')} — awaiting judge review
+          </span>
+          <span className="text-xs text-amber-500 ml-1">
+            Use the ▷ buttons on the highlighted agents to re-run from that point, or advance the gate from the case workspace.
+          </span>
+        </div>
+      )}
+
       {/* ── Agent grid ── */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
         {PIPELINE_AGENT_ORDER.map((agentId) => {
           const agentStatus = pipelineStatus?.agents?.find((a) => a.agent_id === agentId);
           const agentEvents = events[agentId] || [];
+          // Agent can be re-run when case is paused at this agent's gate
+          const agentCanRun = currentGate != null && AGENT_GATE[agentId] === currentGate;
           return (
             <AgentCard
               key={agentId}
               agentId={agentId}
               agentStatus={agentStatus}
               events={agentEvents}
+              canRun={agentCanRun}
+              isActionPending={!!pendingAgents[agentId]}
+              onRun={() => handleRunAgent(agentId)}
             />
           );
         })}
