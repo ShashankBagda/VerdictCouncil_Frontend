@@ -139,8 +139,8 @@ export default function CaseList() {
                 className="input-field bg-white"
               >
                 <option value="">All Domains</option>
-                <option value="SCT">Small Claims Tribunal</option>
-                <option value="Traffic">Traffic Court</option>
+                <option value="small_claims">Small Claims Tribunal</option>
+                <option value="traffic_violation">Traffic Court</option>
               </select>
             </div>
 

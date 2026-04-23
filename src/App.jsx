@@ -27,6 +27,9 @@ import WhatIfMode from './pages/whatif/WhatIfMode';
 import HearingPack from './pages/judge/HearingPack';
 import KnowledgeBase from './pages/judge/KnowledgeBase';
 
+// Pages - Admin
+import DomainManagement from './pages/admin/DomainManagement';
+
 import NotFound from './pages/NotFound';
 
 // Layout
@@ -60,21 +63,21 @@ export default function App() {
                 <Route element={<RootLayout />}>
                   <Route
                     path="/"
-                    element={<ProtectedRoute element={<Dashboard />} />}
+                    element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<Dashboard />} />}
                   />
                   <Route
                     path="/cases/intake"
-                    element={<ProtectedRoute element={<CaseIntake />} />}
+                    element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseIntake />} />}
                   />
                   <Route
                     path="/cases"
-                    element={<ProtectedRoute element={<CaseList />} />}
+                    element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseList />} />}
                   />
 
                   {/* Case Detail with nested routes */}
                   <Route
                     path="/case/:caseId"
-                    element={<ProtectedRoute element={<CaseDetail />} />}
+                    element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseDetail />} />}
                   >
                     <Route path="building" element={<BuildingSimulation />} />
                     <Route path="graph" element={<GraphMesh />} />
@@ -86,7 +89,11 @@ export default function App() {
 
                   <Route
                     path="/knowledge-base"
-                    element={<ProtectedRoute element={<KnowledgeBase />} />}
+                    element={<ProtectedRoute allowedRoles={['judge']} element={<KnowledgeBase />} />}
+                  />
+                  <Route
+                    path="/admin/domains"
+                    element={<ProtectedRoute allowedRoles={['admin']} element={<DomainManagement />} />}
                   />
                 </Route>
 
