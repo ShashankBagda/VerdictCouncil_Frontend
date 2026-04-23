@@ -2,7 +2,9 @@ import { useRef, useState } from 'react';
 import {
   FileText,
   Gavel,
-  Film,
+  ShieldAlert,
+  Users,
+  Radar,
   Stethoscope,
   FilePlus,
   FileCheck,
@@ -18,70 +20,97 @@ import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui
 import { Progress } from '@/components/ui/progress';
 
 // Per-domain typed slot schema. Mirrors the backend DocumentKind enum.
-// The `intake_trigger` flag marks slots whose upload should kick off the
-// extraction; the backend enforces the same list server-side.
+// `intake_trigger` marks slots whose upload kicks off the extractor (the
+// backend enforces the same list server-side).
+// `requiredGroup` expresses an "at least one of" constraint: slots that
+// share a group value are jointly required — any one filled satisfies
+// the group. Slots with `required: true` are strictly required on their
+// own and cannot be combined with a group.
 const SLOT_SCHEMA = {
   traffic_violation: [
     {
       kind: 'notice_of_traffic_offence',
-      label: 'Notice of Traffic Offence / Summons',
+      label: 'Traffic Notice (Summons or Advisory)',
       icon: Gavel,
-      required: true,
+      requiredGroup: 'intake_authority',
       multi: false,
       intake_trigger: true,
-      accept: 'application/pdf,image/png,image/jpeg',
-      hint: 'Police-issued notice. Required to start intake.',
+      accept: 'application/pdf',
+      hint: 'Police-issued notice — covers both active summons and advisory-only notices.',
     },
     {
       kind: 'charge_sheet',
       label: 'Charge Sheet',
       icon: FileText,
-      required: false,
+      requiredGroup: 'intake_authority',
       multi: false,
       intake_trigger: true,
-      accept: 'application/pdf,image/png,image/jpeg',
-      hint: 'Optional if the matter has progressed beyond notice.',
+      accept: 'application/pdf',
+      hint: 'Use when the matter has progressed to arraignment.',
     },
     {
-      kind: 'evidence_bundle',
-      label: 'Evidence bundle',
-      icon: FilePlus,
+      kind: 'police_report',
+      label: 'Police Report',
+      icon: ShieldAlert,
       required: false,
       multi: true,
-      accept: 'application/pdf,image/png,image/jpeg',
-      hint: 'Affidavits, photos, diagrams. Multiple files allowed.',
+      accept: 'application/pdf',
+      hint: 'Formal police investigation or incident report.',
     },
     {
-      kind: 'in_car_camera',
-      label: 'In-car camera footage',
-      icon: Film,
+      kind: 'witness_statement',
+      label: 'Witness Statement / Affidavit',
+      icon: Users,
       required: false,
       multi: true,
-      accept: 'video/*,image/*',
-      hint: 'Video clips from the accused’s or witness’s vehicle.',
+      accept: 'application/pdf',
+      hint: 'Written statements or sworn affidavits from witnesses.',
+    },
+    {
+      kind: 'speed_camera_record',
+      label: 'Speed Camera Record',
+      icon: Radar,
+      required: false,
+      multi: false,
+      accept: 'application/pdf',
+      hint: 'Speed camera ticket plus calibration certificate (RTA s.137C auth).',
     },
     {
       kind: 'medical_report',
-      label: 'Medical report',
+      label: 'Medical Report',
       icon: Stethoscope,
       required: false,
       multi: false,
-      accept: 'application/pdf,image/png,image/jpeg',
-      hint: 'Attached when injury or medical defence is relevant.',
+      accept: 'application/pdf',
+      hint: 'Attach when injury or medical defence is relevant.',
     },
     {
       kind: 'letter_of_mitigation',
-      label: 'Letter of mitigation',
+      label: 'Letter of Mitigation',
       icon: FileCheck,
       required: false,
       multi: false,
-      accept: 'application/pdf,image/png,image/jpeg,text/plain',
-      hint: 'Attached when the accused has pleaded guilty with mitigation.',
+      accept: 'application/pdf,text/plain',
+      hint: 'Attach when the accused has pleaded guilty with mitigation.',
+    },
+    {
+      kind: 'evidence_bundle',
+      label: 'Other Supporting Documents',
+      icon: FilePlus,
+      required: false,
+      multi: true,
+      accept: 'application/pdf',
+      hint: 'Anything else that does not fit the typed slots above.',
     },
   ],
   // Small-claims intake is still served by the legacy form until we ingest
   // SCT rules into their own vector store and build typed slots for it.
   small_claims: [],
+};
+
+// Human-readable text for a required-group gate.
+const REQUIRED_GROUP_HINTS = {
+  intake_authority: 'Upload at least one: a Traffic Notice or a Charge Sheet.',
 };
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MiB per file
@@ -186,6 +215,8 @@ function DocumentSlot({ slot, attached, progress, error, onFiles, onRemove, disa
         </div>
         {slot.required ? (
           <Badge variant="secondary">Required</Badge>
+        ) : slot.requiredGroup ? (
+          <Badge variant="secondary">Required (one of)</Badge>
         ) : (
           <Badge variant="outline">Optional</Badge>
         )}
@@ -268,4 +299,4 @@ function DocumentSlot({ slot, attached, progress, error, onFiles, onRemove, disa
   );
 }
 
-export { SLOT_SCHEMA };
+export { SLOT_SCHEMA, REQUIRED_GROUP_HINTS };
