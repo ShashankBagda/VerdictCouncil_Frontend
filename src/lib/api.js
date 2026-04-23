@@ -355,8 +355,8 @@ export const api = {
     request('GET', `/api/v1/cases/${caseId}/precedents`),
   getArguments: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/arguments`),
-  getDeliberation: (caseId) =>
-    request('GET', `/api/v1/cases/${caseId}/deliberation`),
+  getHearingAnalysis: (caseId) =>
+    request('GET', `/api/v1/cases/${caseId}/hearing-analysis`),
   getEvidenceGaps: (caseId) =>
     request('GET', `/api/v1/cases/${caseId}/evidence-gaps`),
   getFairnessAudit: (caseId) =>

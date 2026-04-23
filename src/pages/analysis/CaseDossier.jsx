@@ -221,7 +221,7 @@ export default function CaseDossier() {
           api.getWitnesses(caseId),
           api.getStatutes(caseId),
           api.getArguments(caseId),
-          api.getDeliberation(caseId),
+          api.getHearingAnalysis(caseId),
           api.getFairnessAudit(caseId),
           api.getKnowledgeBaseStatus(),
           api.listReopenRequests(caseId),
