@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useAPI } from '../../hooks';
-import { Lock, Mail, Gavel, Scale, Shield, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Scale, Shield, Eye, EyeOff } from 'lucide-react';
 import { getErrorMessage } from '../../lib/api';
 import { isBypassAuthEnabled } from '../../lib/authSession';
 
@@ -105,10 +105,9 @@ export default function LoginPage() {
         {/* Top branding section */}
         <div className="px-8 pt-10 pb-8 text-center border-b border-white/10">
           {/* Logo mark */}
-          <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5 mx-auto"
-            style={{ background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', boxShadow: '0 0 32px rgba(6,182,212,0.4), 0 8px 24px rgba(0,0,0,0.3)' }}>
-            <div className="absolute inset-0 rounded-2xl animate-pulse-glow" />
-            <Gavel size={28} className="text-white" />
+          <div className="relative inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-5 mx-auto overflow-hidden bg-white"
+            style={{ boxShadow: '0 0 32px rgba(6,182,212,0.4), 0 8px 24px rgba(0,0,0,0.3)' }}>
+            <img src="/logo.png" alt="VerdictCouncil" className="w-full h-full object-contain" />
           </div>
 
           <h1 className="text-2xl font-black text-white tracking-tight">VerdictCouncil</h1>

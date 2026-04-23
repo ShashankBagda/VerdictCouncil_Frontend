@@ -11,7 +11,6 @@ import {
   Shield,
   Scale,
   Bell,
-  Gavel,
   BookOpen,
 } from 'lucide-react';
 
@@ -81,8 +80,8 @@ export function RootLayout() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 pt-6 pb-5 min-h-[80px]">
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-400 flex items-center justify-center shadow-glow-teal">
-            <Gavel size={18} className="text-white" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl overflow-hidden bg-white shadow-glow-teal">
+            <img src="/logo.png" alt="VerdictCouncil" className="w-full h-full object-contain" />
           </div>
           {sidebarOpen && (
             <div className="animate-fade-in overflow-hidden">
