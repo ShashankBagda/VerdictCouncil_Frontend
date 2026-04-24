@@ -83,6 +83,7 @@ export function useAgentStream(caseId, options = {}) {
 
     es.addEventListener('progress', handleSseEvent);
     es.addEventListener('agent', handleSseEvent);
+    es.addEventListener('narration', handleSseEvent);
     es.addEventListener('heartbeat', () => {});
     es.addEventListener('auth_expiring', () => {
       window.location.href = '/login';

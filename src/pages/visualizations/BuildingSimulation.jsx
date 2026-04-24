@@ -13,6 +13,7 @@ import {
   formatToolCallArgs,
   formatToolResult,
   formatLlmResponse,
+  formatNarration,
 } from '../../lib/eventFormatters';
 
 // ── Gate → agent mapping (mirrors backend GATE_AGENTS) ────────────────────
@@ -377,6 +378,14 @@ function EventLine({ ev }) {
         </span>
       );
     }
+    case 'narration':
+      return (
+        <span className="text-amber-200 italic">
+          {tsSpan}
+          <span className="text-amber-400 not-italic">💬 </span>
+          {formatNarration(ev.content || '')}
+        </span>
+      );
     case 'llm_response':
     case 'response':
       return (
