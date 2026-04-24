@@ -1,7 +1,7 @@
 /**
  * HTTP API client with cookie-based auth, normalized errors, and optional 401 redirect behavior.
  *
- * Endpoint status vs VerdictCouncil_Backend (as of 2026-04-19):
+ * Endpoint status vs VerdictCouncil_Backend (v0.3.0 — LangGraph 4-gate HITL, 2026-04-24):
  *
  * ✅ Fully linked:
  *   POST /api/v1/auth/login          → auth.router
@@ -11,48 +11,77 @@
  *   GET  /api/v1/auth/session        → auth.router
  *   POST /api/v1/auth/request-reset  → auth.router
  *   POST /api/v1/auth/verify-reset   → auth.router
+ *   POST /api/v1/auth/register       → auth.router
  *   POST /api/v1/cases/              → cases.router (create case)
+ *   POST /api/v1/cases/draft         → cases.router (draft intake)
+ *   POST /api/v1/cases/{id}/confirm  → cases.router (confirm intake)
+ *   POST /api/v1/cases/{id}/intake/extract → cases.router
+ *   POST /api/v1/cases/{id}/intake/message → cases.router
+ *   GET  /api/v1/cases/{id}/intake/stream  → cases.router (SSE ai-sdk format)
  *   GET  /api/v1/cases/              → cases.router (list cases)
  *   GET  /api/v1/cases/{id}          → cases.router (full case detail with nested entities)
+ *   POST /api/v1/cases/{id}/process  → cases.router (start 9-agent LangGraph pipeline)
+ *   POST /api/v1/cases/{id}/restart  → cases.router (restart failed pipeline)
+ *   POST /api/v1/cases/{id}/gates/{gate}/advance → cases.router (4-gate HITL advance)
+ *   POST /api/v1/cases/{id}/gates/{gate}/rerun   → cases.router (4-gate HITL rerun)
+ *   POST /api/v1/cases/{id}/decision             → cases.router (record judicial decision)
+ *   PATCH /api/v1/cases/{id}/suggested-questions → cases.router
  *   PATCH /api/v1/cases/{id}/facts/{fid}/dispute → judge.router
- *   GET  /api/v1/cases/{id}/evidence-gaps       → judge.router
- *   GET  /api/v1/cases/{id}/fairness-audit      → judge.router
- *   POST /api/v1/cases/{id}/what-if             → what_if.router
- *   GET  /api/v1/cases/{id}/what-if/{sid}       → what_if.router
- *   POST /api/v1/cases/{id}/stability           → what_if.router
- *   GET  /api/v1/cases/{id}/stability           → what_if.router
- *   POST /api/v1/precedents/search              → precedent_search.router
- *   GET  /api/v1/knowledge-base/status          → knowledge_base.router
- *   GET  /api/v1/dashboard/stats                → dashboard.router
- *   GET  /api/v1/audit/{id}/audit               → audit.router
- *   GET  /api/v1/escalated-cases                → escalation.router
- *   POST /api/v1/escalated-cases/{id}/action    → escalation.router
- *   GET  /api/v1/senior-inbox                   → senior_inbox.router
- *   POST /api/v1/cases/{id}/hearing-pack        → hearing_pack.router
- *   POST /api/v1/cases/{id}/hearing-notes       → hearing_notes.router
- *   GET  /api/v1/cases/{id}/hearing-notes       → hearing_notes.router
+ *   GET  /api/v1/cases/{id}/evidence-gaps        → judge.router
+ *   GET  /api/v1/cases/{id}/fairness-audit       → judge.router
+ *   POST /api/v1/cases/{id}/what-if              → what_if.router
+ *   GET  /api/v1/cases/{id}/what-if/{sid}        → what_if.router
+ *   POST /api/v1/cases/{id}/stability            → what_if.router (async, returns stability_id)
+ *   GET  /api/v1/cases/{id}/stability            → what_if.router (latest result)
+ *   POST /api/v1/cases/{id}/reopen-request       → reopen_requests.router
+ *   GET  /api/v1/cases/{id}/reopen-requests      → reopen_requests.router
+ *   PATCH /api/v1/cases/{id}/reopen-requests/{rid}/review → reopen_requests.router
+ *   POST /api/v1/cases/{id}/hearing-pack         → hearing_pack.router
+ *   GET  /api/v1/cases/{id}/hearing-pack         → cases.router (zip download)
+ *   POST /api/v1/cases/{id}/hearing-notes        → hearing_notes.router
+ *   GET  /api/v1/cases/{id}/hearing-notes        → hearing_notes.router
  *   PATCH /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
  *   POST /api/v1/cases/{id}/hearing-notes/{nid}/lock → hearing_notes.router
- *   DELETE /api/v1/cases/{id}/hearing-notes/{nid} → hearing_notes.router
- *   POST /api/v1/cases/{id}/reopen-request      → reopen_requests.router
- *   GET  /api/v1/cases/{id}/reopen-requests     → reopen_requests.router
- *   PATCH /api/v1/cases/{id}/reopen-requests/{rid}/review → reopen_requests.router
- *   GET  /api/v1/health/pair                    → health.router
- *   POST /api/v1/cases/{id}/documents           → case_data.router (file upload)
- *   GET  /api/v1/cases/{id}/status              → case_data.router (pipeline status)
- *   GET  /api/v1/cases/{id}/status/stream       → case_data.router (SSE stream)
- *   GET  /api/v1/cases/{id}/evidence            → case_data.router
- *   GET  /api/v1/cases/{id}/timeline            → case_data.router
- *   GET  /api/v1/cases/{id}/witnesses           → case_data.router
- *   GET  /api/v1/cases/{id}/statutes            → case_data.router
- *   GET  /api/v1/cases/{id}/precedents          → case_data.router
- *   GET  /api/v1/cases/{id}/arguments           → case_data.router
- *   GET  /api/v1/cases/{id}/deliberation        → case_data.router
- *   POST /api/v1/cases/{id}/process             → cases.router (pipeline trigger)
- *   POST /api/v1/cases/{id}/restart             → cases.router (restart failed pipeline)
- *   POST /api/v1/admin/vector-stores/refresh → admin.router
- *   POST /api/v1/admin/users/{id}/{action}   → admin.router
- *   POST /api/v1/admin/cost-config           → admin.router
+ *   DELETE /api/v1/cases/{id}/hearing-notes/{nid}    → hearing_notes.router
+ *   GET  /api/v1/health/pair                     → health.router
+ *   POST /api/v1/health/pair/probe               → health.router
+ *   POST /api/v1/cases/{id}/documents            → case_data.router (file upload)
+ *   GET  /api/v1/cases/{id}/status               → case_data.router (pipeline status poll)
+ *   GET  /api/v1/cases/{id}/status/stream        → case_data.router (SSE PipelineProgressEvent)
+ *   GET  /api/v1/cases/{id}/evidence             → case_data.router
+ *   GET  /api/v1/cases/{id}/timeline             → case_data.router (facts ordered by event_date)
+ *   GET  /api/v1/cases/{id}/witnesses            → case_data.router
+ *   GET  /api/v1/cases/{id}/statutes             → case_data.router (legal-rules)
+ *   GET  /api/v1/cases/{id}/precedents           → case_data.router
+ *   GET  /api/v1/cases/{id}/arguments            → case_data.router
+ *   GET  /api/v1/cases/{id}/hearing-analysis     → case_data.router (replaces /deliberation)
+ *   GET  /api/v1/documents/{id}/excerpt          → documents.router
+ *   POST /api/v1/precedents/search               → precedent_search.router
+ *   GET  /api/v1/knowledge-base/status           → knowledge_base.router
+ *   GET  /api/v1/dashboard/stats                 → dashboard.router
+ *   GET  /api/v1/audit/{id}/audit                → audit.router
+ *   POST /api/v1/admin/vector-stores/refresh     → admin.router (body: {store})
+ *   POST /api/v1/admin/users/{id}/{action}       → admin.router (actions: set-role, revoke-sessions)
+ *   POST /api/v1/admin/cost-config               → admin.router
+ *   GET  /api/v1/domains/                        → domains.router
+ *   GET  /api/v1/domains/capabilities            → domains.router
+ *   GET  /api/v1/domains/admin                   → domains.router (admin only)
+ *   POST /api/v1/domains/admin                   → domains.router
+ *   PATCH /api/v1/domains/admin/{id}             → domains.router
+ *   POST /api/v1/domains/admin/{id}/documents    → domains.router
+ *   DELETE /api/v1/domains/admin/{id}/documents/{doc_id} → domains.router
+ *
+ * 🔄 LangGraph pipeline events (SSE format: PipelineProgressEvent):
+ *   {case_id, agent, phase, step, total, ts, error, detail, mlflow_run_id, mlflow_experiment_id}
+ *   Agents: case-processing → complexity-routing → [evidence-analysis, fact-reconstruction,
+ *           witness-analysis, legal-knowledge] → argument-construction → hearing-analysis
+ *           → hearing-governance
+ *   Phases: started | completed | failed | terminal | awaiting_review
+ *   Terminal events: agent="pipeline" phase="terminal"|"awaiting_review"
+ *                   OR agent="hearing-governance" phase="completed"|"failed"
+ *
+ * 📋 Senior-judge escalation (served via cases list with status=escalated):
+ *   GET /api/v1/cases/?status=escalated — escalated cases visible to senior judges
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
@@ -469,7 +498,7 @@ export const api = {
     request('DELETE', `/api/v1/domains/admin/${domainId}/documents/${docId}`),
 
   refreshVectorStore: (storeName) =>
-    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store_name: storeName } }),
+    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store: storeName } }),
   manageUser: (userId, action, body = {}) =>
     request('POST', `/api/v1/admin/users/${userId}/${action}`, { body }),
   setConfig: (body) =>
@@ -487,6 +516,21 @@ export const api = {
     request('GET', `/api/v1/documents/${documentId}/excerpt?page=${page}`),
   updateSuggestedQuestions: (caseId, body) =>
     request('PATCH', `/api/v1/cases/${caseId}/suggested-questions`, { body }),
+
+  // Senior judge — escalated case list (served by the standard cases endpoint
+  // with status=escalated; no dedicated escalation router exists yet).
+  listEscalatedCases: (params = {}) => {
+    const q = new URLSearchParams({ ...params, status: 'escalated' }).toString();
+    return request('GET', `/api/v1/cases/?${q}`);
+  },
+
+  // Authenticated user profile (short-circuit of GET /auth/session).
+  getMe: () =>
+    request('GET', '/api/v1/auth/me', { suppress401Redirect: true }),
+
+  // PAIR API active health probe.
+  probePairApi: () =>
+    request('POST', '/api/v1/health/pair/probe'),
 };
 
 export default api;
