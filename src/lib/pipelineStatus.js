@@ -194,19 +194,19 @@ export function isTerminalPipelineStatus(status) {
 
 /**
  * Returns `true` when the overall pipeline status string itself
- * indicates a terminal state (e.g. backend sends "completed" or "failed"
- * at the top level before all agents report individually).
+ * indicates a true terminal state — the pipeline will not advance further
+ * without a judge triggering a restart or recording a decision.
+ *
+ * Gate-pause statuses (awaiting_review_gate*) are intentionally excluded:
+ * they are temporary pauses handled by `isGatePauseStatus`, and polling
+ * must continue so the UI reflects the transition after the judge approves.
  */
 export function isTerminalOverallStatus(overallStatus) {
   return (
     overallStatus === 'completed' ||
     overallStatus === 'failed' ||
     overallStatus === 'failed_retryable' ||
-    overallStatus === 'escalated' ||
-    overallStatus === 'awaiting_review_gate1' ||
-    overallStatus === 'awaiting_review_gate2' ||
-    overallStatus === 'awaiting_review_gate3' ||
-    overallStatus === 'awaiting_review_gate4'
+    overallStatus === 'escalated'
   );
 }
 
