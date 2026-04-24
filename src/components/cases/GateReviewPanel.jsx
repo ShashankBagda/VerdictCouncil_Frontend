@@ -380,7 +380,7 @@ function Gate4Data({ fairnessAudit, hearingAnalysis }) {
                 <p className="text-xs text-gray-400 mb-1">Fairness checks</p>
                 <div className="space-y-1 max-h-36 overflow-y-auto">
                   {checks.map((chk, i) => {
-                    const passed = chk.passed ?? chk.result === 'pass' ?? null;
+                    const passed = chk.passed ?? (chk.result === 'pass');
                     return (
                       <div key={i} className="flex items-start gap-2">
                         <span

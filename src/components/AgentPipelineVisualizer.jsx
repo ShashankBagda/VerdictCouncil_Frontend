@@ -48,7 +48,7 @@ function getAgentStatus(agentId, pipelineAgents) {
  *   compact       – render smaller version for dashboard widget
  */
 export default function AgentPipelineVisualizer({ pipelineAgents = null, compact = false }) {
-  const [tick, setTick] = useState(0);
+  const [_tick, setTick] = useState(0);
 
   // Re-render every 2s to keep "active" glow pulsing
   useEffect(() => {

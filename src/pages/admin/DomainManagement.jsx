@@ -99,7 +99,7 @@ export default function DomainManagement() {
     try {
       const docs = await api.listDomainDocuments(domainId);
       setDocuments(docs);
-    } catch (err) {
+    } catch {
       setDocuments([]);
     } finally {
       setDocsLoading(false);
