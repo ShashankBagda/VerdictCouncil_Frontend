@@ -509,6 +509,7 @@ export default function BuildingSimulation() {
       await api.runCase(caseId);
       showNotification('Pipeline started', 'success');
     } catch (err) {
+      console.error('Run Pipeline failed', { status: err?.status, detail: err?.detail, payload: err?.payload });
       showError(err?.detail || err?.message || 'Failed to start pipeline');
     } finally {
       setPipelinePending(false);
