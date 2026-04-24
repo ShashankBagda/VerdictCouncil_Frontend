@@ -1,16 +1,67 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Zap } from 'lucide-react';
-import api from '../lib/api';
+import { useAgentStream } from '../hooks/useAgentStream';
+import { PIPELINE_AGENT_LABELS } from '../lib/pipelineStatus';
 import {
-  PIPELINE_AGENT_LABELS,
-  isTerminalPipelineSseEvent,
-  normalizePipelineStatus,
-} from '../lib/pipelineStatus';
+  formatToolCallArgs,
+  formatToolResult,
+  formatLlmResponse,
+} from '../lib/eventFormatters';
+
+function clip(s, max = 160) {
+  const str = String(s ?? '');
+  return str.length > max ? `${str.slice(0, max)}…` : str;
+}
+
+function renderEvent(ev) {
+  if (ev.synthetic) {
+    return <span className="text-gray-500">~ status: {ev.event}</span>;
+  }
+
+  // PipelineProgressEvent (kind: "progress") — lifecycle phases
+  if (ev.kind === 'progress' || ev.phase) {
+    const phase = ev.phase;
+    if (phase === 'started') return <span className="text-blue-400">▶ {ev.agent} started</span>;
+    if (phase === 'completed') return <span className="text-emerald-400">✓ {ev.agent} completed</span>;
+    if (phase === 'failed') return <span className="text-rose-400">✗ {ev.agent} failed{ev.error ? `: ${clip(ev.error, 80)}` : ''}</span>;
+    return <span className="text-gray-400">{phase}: {ev.agent}</span>;
+  }
+
+  // AgentEvent (kind: "agent") — fine-grained telemetry
+  const evType = ev.event;
+  if (evType === 'thinking') {
+    return <span className="text-purple-400">💭 {clip(ev.content, 140)}</span>;
+  }
+  if (evType === 'tool_call') {
+    return (
+      <span className="text-yellow-400">
+        ⚙ {ev.tool_name}
+        {ev.args != null && `: ${formatToolCallArgs(ev.tool_name, ev.args)}`}
+      </span>
+    );
+  }
+  if (evType === 'tool_result') {
+    return (
+      <span className="text-cyan-400">
+        ↩ {ev.tool_name}: {formatToolResult(ev.tool_name, ev.result)}
+      </span>
+    );
+  }
+  if (evType === 'llm_response') {
+    const summary = formatLlmResponse(ev.content);
+    return <span className="text-emerald-400">◎ {summary || '(response)'}</span>;
+  }
+  if (evType === 'agent_completed') {
+    return <span className="text-emerald-400">✓ {ev.agent} completed</span>;
+  }
+
+  // Fallback for unknown event shapes
+  return <span className="text-gray-500">{JSON.stringify(ev)}</span>;
+}
 
 /**
  * AgentStreamPanel — right panel showing live pipeline events via SSE.
- * Falls back to polling GET /status every 5s if SSE fails or disconnects
- * *before* the pipeline has sent a terminal close event.
+ * All connection logic is delegated to useAgentStream.
  */
 export default function AgentStreamPanel({
   caseId,
@@ -18,128 +69,10 @@ export default function AgentStreamPanel({
   agentStatuses,
   onTerminal,
 }) {
-  const [events, setEvents] = useState({}); // keyed by agent_id
-  const [sseConnected, setSseConnected] = useState(false);
-  const [sseError, setSseError] = useState(false);
-  const eventSourceRef = useRef(null);
+  const { events, status } = useAgentStream(caseId, { onTerminal });
+
   const scrollRef = useRef(null);
   const isManualScrollRef = useRef(false);
-  const onTerminalRef = useRef(onTerminal);
-  useEffect(() => {
-    onTerminalRef.current = onTerminal;
-  }, [onTerminal]);
-
-  // Connect SSE on mount, reconnect on caseId change
-  useEffect(() => {
-    let pollInterval = null;
-    let es = null;
-    // The backend closes the stream after emitting a terminal event; any
-    // subsequent `onerror` the browser fires is the spec-mandated retry
-    // signal, not a real failure. Suppress the polling fallback in that
-    // case so we don't keep querying /status for a finished case.
-    let terminalReached = false;
-
-    const connectSSE = () => {
-      if (es) es.close();
-      es = api.streamPipelineStatus(caseId);
-      eventSourceRef.current = es;
-
-      es.onopen = () => {
-        setSseConnected(true);
-        setSseError(false);
-        if (pollInterval) {
-          clearInterval(pollInterval);
-          pollInterval = null;
-        }
-      };
-
-      const handleSseEvent = (event) => {
-        let data;
-        try {
-          data = JSON.parse(event.data);
-        } catch {
-          return;
-        }
-
-        if (isTerminalPipelineSseEvent(data)) {
-          terminalReached = true;
-          setSseConnected(false);
-          setSseError(false);
-          if (es) {
-            es.close();
-            es = null;
-          }
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
-          onTerminalRef.current?.(data);
-          // Per-agent terminal phases (governance-verdict completed/failed)
-          // are still useful UI state, so let them fall through to the
-          // append below. The synthetic `pipeline` event has no per-agent
-          // bucket and would just clutter an empty pane, so drop it.
-          if (data.agent === 'pipeline') return;
-        }
-
-        if (data.agent) {
-          setEvents((prev) => ({
-            ...prev,
-            [data.agent]: [...(prev[data.agent] || []), data],
-          }));
-        }
-      };
-      // Backend emits named SSE event types (`event: progress` / `event: agent`)
-      // so EventSource.addEventListener fires correctly; onmessage only fires
-      // for un-typed frames, which is now just the intake stream.
-      es.addEventListener('progress', handleSseEvent);
-      es.addEventListener('agent', handleSseEvent);
-      // Heartbeat keeps the connection alive — no action needed beyond
-      // confirming the EventSource is still healthy.
-      es.addEventListener('heartbeat', () => {});
-      // Session cookie is about to expire — redirect to login so the next
-      // request doesn't hit a 401 mid-pipeline.
-      es.addEventListener('auth_expiring', () => {
-        window.location.href = '/login';
-      });
-
-      es.onerror = () => {
-        setSseConnected(false);
-        if (es) es.close();
-        if (terminalReached) {
-          // Clean post-terminal close — not an error worth surfacing or
-          // backfilling with polling.
-          return;
-        }
-        setSseError(true);
-        // Fall back to polling
-        if (!pollInterval) {
-          pollInterval = setInterval(async () => {
-            try {
-              const status = await api.getPipelineStatus(caseId);
-              const normalizedStatus = normalizePipelineStatus(status);
-              // Synthesize events from status changes (for display continuity)
-              if (normalizedStatus?.agents) {
-                const synth = {};
-                normalizedStatus.agents.forEach((a) => {
-                  synth[a.agent_id] = [{ event: a.status, agent: a.agent_id, synthetic: true }];
-                });
-                setEvents((prev) => ({ ...synth, ...prev }));
-              }
-            } catch {
-              // ignore
-            }
-          }, 5000);
-        }
-      };
-    };
-
-    connectSSE();
-
-    return () => {
-      if (es) es.close();
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [caseId]);
 
   // Auto-scroll to bottom when new events arrive, unless user scrolled up
   useEffect(() => {
@@ -162,12 +95,12 @@ export default function AgentStreamPanel({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {sseConnected ? (
+          {status === 'connected' ? (
             <span className="flex items-center gap-1 text-xs text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Live
             </span>
-          ) : sseError ? (
+          ) : status === 'polling' ? (
             <span className="flex items-center gap-1 text-xs text-amber-400">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
               Polling
@@ -175,7 +108,7 @@ export default function AgentStreamPanel({
           ) : (
             <span className="flex items-center gap-1 text-xs text-gray-500">
               <span className="w-2 h-2 rounded-full bg-gray-500" />
-              Connecting
+              {status === 'idle' ? 'Done' : 'Connecting'}
             </span>
           )}
         </div>
@@ -222,21 +155,8 @@ export default function AgentStreamPanel({
           <p className="text-gray-500 italic">No events yet for this agent</p>
         )}
         {agentEvents.map((ev, i) => (
-          <div
-            key={i}
-            className={`py-0.5 ${ev.synthetic ? 'text-gray-500' : 'text-gray-200'}`}
-          >
-            {ev.synthetic ? (
-              <span className="text-gray-500">~ status: {ev.event}</span>
-            ) : ev.event === 'agent_started' ? (
-              <span className="text-blue-400">▶ {ev.agent} started</span>
-            ) : ev.event === 'agent_completed' ? (
-              <span className="text-emerald-400">✓ {ev.agent} completed</span>
-            ) : ev.event === 'agent_failed' ? (
-              <span className="text-rose-400">✗ {ev.agent} failed: {ev.error}</span>
-            ) : (
-              <span>{JSON.stringify(ev)}</span>
-            )}
+          <div key={i} className={`py-0.5 ${ev.synthetic ? 'text-gray-500' : 'text-gray-200'}`}>
+            {renderEvent(ev)}
           </div>
         ))}
       </div>

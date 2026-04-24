@@ -2,13 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
+import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
 import {
   PIPELINE_AGENT_LABELS,
   PIPELINE_AGENT_ORDER,
-  isTerminalPipelineSseEvent,
-  normalizePipelineStatus,
 } from '../../lib/pipelineStatus';
 import {
   formatToolCallArgs,
@@ -421,9 +420,7 @@ export default function BuildingSimulation() {
   const { showError, showNotification } = useAPI();
   const { updatePipelineStatus } = useCase();
 
-  // SSE events keyed by agent_id
-  const [events, setEvents] = useState({});
-  const [sseConnected, setSseConnected] = useState(false);
+  const { events, status: sseStatus } = useAgentStream(caseId);
 
   // Which agent card is currently expanded in the detail drawer. Clicking
   // the same card again closes the drawer.
@@ -449,88 +446,6 @@ export default function BuildingSimulation() {
     onStatus: updatePipelineStatus,
     onError: showError,
   });
-
-  // SSE connection for live agent streams
-  useEffect(() => {
-    let es = null;
-    let pollInterval = null;
-    let terminalReached = false;
-
-    const connect = () => {
-      if (es) es.close();
-      es = api.streamPipelineStatus(caseId);
-
-      es.onopen = () => {
-        setSseConnected(true);
-        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-      };
-
-      const handleSseEvent = (raw) => {
-        let data;
-        try { data = JSON.parse(raw.data); } catch { return; }
-
-        if (isTerminalPipelineSseEvent(data)) {
-          terminalReached = true;
-          setSseConnected(false);
-          es?.close(); es = null;
-          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-          if (data.agent === 'pipeline') return;
-        }
-
-        if (data.agent) {
-          setEvents((prev) => ({
-            ...prev,
-            [data.agent]: [...(prev[data.agent] || []), data],
-          }));
-        }
-      };
-      // Named SSE event types emitted by the backend (event: progress / event: agent).
-      es.addEventListener('progress', handleSseEvent);
-      es.addEventListener('agent', handleSseEvent);
-      es.addEventListener('heartbeat', () => {});
-      es.addEventListener('auth_expiring', () => { window.location.href = '/login'; });
-
-      es.onerror = () => {
-        setSseConnected(false);
-        if (es) { es.close(); es = null; }
-        if (terminalReached) return;
-        // Fallback: synthesise events from polling status
-        if (!pollInterval) {
-          pollInterval = setInterval(async () => {
-            try {
-              const status = await api.getPipelineStatus(caseId);
-              const norm = normalizePipelineStatus(status);
-              if (norm?.agents) {
-                setEvents((prev) => {
-                  const synth = {};
-                  norm.agents.forEach((a) => {
-                    if (!prev[a.agent_id]?.length) {
-                      synth[a.agent_id] = [{ event: a.status, agent: a.agent_id, synthetic: true }];
-                    }
-                  });
-                  return { ...prev, ...synth };
-                });
-              }
-            } catch { /* ignore */ }
-          }, 5000);
-        }
-      };
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !terminalReached) {
-        connect();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    connect();
-    return () => {
-      es?.close();
-      if (pollInterval) clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [caseId]);
 
   // Force an immediate status poll when the tab regains focus so that
   // gate-pause transitions aren't missed while the tab was hidden.
@@ -612,9 +527,9 @@ export default function BuildingSimulation() {
             <Activity className="w-4 h-4 text-teal-400 flex-shrink-0" />
             <h2 className="text-base font-bold text-white truncate">Agent Workspace</h2>
             <div className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
-              <span className={`text-xs ${sseConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
-                {sseConnected ? 'Live' : 'Polling'}
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sseStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+              <span className={`text-xs ${sseStatus === 'connected' ? 'text-emerald-400' : 'text-gray-500'}`}>
+                {sseStatus === 'connected' ? 'Live' : sseStatus === 'polling' ? 'Polling' : 'Connecting'}
               </span>
             </div>
           </div>
