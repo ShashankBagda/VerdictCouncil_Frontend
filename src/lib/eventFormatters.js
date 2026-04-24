@@ -197,6 +197,13 @@ export function formatToolResult(toolName, rawResult) {
   return clip(typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult ?? ''), 140);
 }
 
+// ── Narration formatter ────────────────────────────────────────────────────
+// Narration events carry plain natural-language prose. Pass through directly.
+export function formatNarration(content) {
+  if (!content) return '';
+  return String(content);
+}
+
 // ── LLM final response formatter ───────────────────────────────────────────
 // Each agent emits a final JSON deliverable keyed by its output field.
 // We surface the top-level keys and any obvious counts so users see
