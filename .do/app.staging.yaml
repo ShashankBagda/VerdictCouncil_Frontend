@@ -2,7 +2,7 @@
 # Apply with:   doctl apps create --spec .do/app.staging.yaml
 # Update with:  doctl apps update <app-id> --spec .do/app.staging.yaml
 name: verdictcouncil-frontend-staging
-region: nyc
+region: sgp
 static_sites:
   - name: web
     github:
@@ -14,3 +14,10 @@ static_sites:
     output_dir: dist
     catchall_document: index.html
     environment_slug: node-js
+    envs:
+      - key: VITE_API_URL
+        value: https://staging-api.verdictcouncil.sg
+        scope: BUILD_TIME
+      - key: VITE_MLFLOW_URL
+        value: ""
+        scope: BUILD_TIME
