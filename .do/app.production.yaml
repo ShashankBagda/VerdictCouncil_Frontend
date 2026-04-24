@@ -1,5 +1,5 @@
 name: verdictcouncil-frontend-production
-region: nyc
+region: sgp
 static_sites:
   - name: web
     github:
@@ -11,3 +11,10 @@ static_sites:
     output_dir: dist
     catchall_document: index.html
     environment_slug: node-js
+    envs:
+      - key: VITE_API_URL
+        value: https://api.verdictcouncil.sg
+        scope: BUILD_TIME
+      - key: VITE_MLFLOW_URL
+        value: ""
+        scope: BUILD_TIME
