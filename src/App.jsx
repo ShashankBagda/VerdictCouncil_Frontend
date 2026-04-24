@@ -18,6 +18,7 @@ import CaseDetail from './pages/cases/CaseDetail';
 
 // Pages - Visualizations
 import BuildingSimulation from './pages/visualizations/BuildingSimulation';
+import OfficeSimulation from './pages/visualizations/OfficeSimulation';
 import GraphMesh from './pages/visualizations/GraphMesh';
 import OrchestratorView from './pages/visualizations/OrchestratorView';
 
@@ -88,7 +89,8 @@ export default function App() {
                     path="/case/:caseId"
                     element={<ProtectedRoute allowedRoles={['judge', 'admin']} element={<CaseDetail />} />}
                   >
-                    <Route path="building" element={<BuildingSimulation />} />
+                    <Route path="building" element={<OfficeSimulation />} />
+                    <Route path="building/grid" element={<BuildingSimulation />} />
                     <Route path="graph" element={<GraphMesh />} />
                     <Route path="dossier" element={<CaseDossier />} />
                     <Route path="what-if" element={<WhatIfMode />} />
