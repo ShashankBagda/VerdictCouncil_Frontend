@@ -29,6 +29,9 @@ import WhatIfMode from './pages/whatif/WhatIfMode';
 import HearingPack from './pages/judge/HearingPack';
 import KnowledgeBase from './pages/judge/KnowledgeBase';
 
+// Pages - Senior Judge
+import SeniorJudgeInbox from './pages/senior/SeniorJudgeInbox';
+
 // Pages - Admin
 import DomainManagement from './pages/admin/DomainManagement';
 
@@ -97,6 +100,10 @@ export default function App() {
                   <Route
                     path="/knowledge-base"
                     element={<ProtectedRoute allowedRoles={['judge']} element={<KnowledgeBase />} />}
+                  />
+                  <Route
+                    path="/senior-inbox"
+                    element={<ProtectedRoute allowedRoles={['senior_judge', 'admin']} element={<SeniorJudgeInbox />} />}
                   />
                   <Route
                     path="/admin/domains"
