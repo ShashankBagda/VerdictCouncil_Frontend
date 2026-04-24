@@ -65,19 +65,6 @@ const CHAR_COLOR = {
   Decision: 0xf59e0b,
 };
 
-// Agent → department
-const AGENT_LAYER = {
-  'case-processing':       'Intake',
-  'complexity-routing':    'Intake',
-  'evidence-analysis':     'Evidence',
-  'fact-reconstruction':   'Evidence',
-  'witness-analysis':      'Evidence',
-  'legal-knowledge':       'Legal',
-  'argument-construction': 'Legal',
-  'hearing-analysis':      'Decision',
-  'hearing-governance':    'Decision',
-};
-
 // Short display names for the character labels
 const AGENT_LABEL = {
   'case-processing':       'Case\nProcess.',
@@ -249,7 +236,7 @@ export class OfficeScene extends Phaser.Scene {
 
   _startIdleAnimations() {
     // Gentle bobbing tween for each character at a slightly different phase
-    Object.entries(this._agents).forEach(([agentId, a], i) => {
+    Object.entries(this._agents).forEach(([, a], i) => {
       this.tweens.add({
         targets: a.charG,
         y: '+=2',
