@@ -82,7 +82,16 @@ function StrengthBadge({ value }) {
 function Gate1Data({ caseDetail }) {
   if (!caseDetail) return <EmptyState text="No case detail available yet." />;
   const domain = caseDetail.domain || caseDetail.case_metadata?.domain || null;
-  const jurisdiction = caseDetail.jurisdiction || caseDetail.case_metadata?.jurisdiction || null;
+  const rawJurisdiction =
+    caseDetail.jurisdiction || caseDetail.case_metadata?.jurisdiction || null;
+  const jurisdictionIsObject =
+    rawJurisdiction && typeof rawJurisdiction === 'object' && !Array.isArray(rawJurisdiction);
+  const jurisdictionLabel = jurisdictionIsObject
+    ? rawJurisdiction.status || (rawJurisdiction.valid === true ? 'pass' : rawJurisdiction.valid === false ? 'fail' : 'pending')
+    : rawJurisdiction;
+  const jurisdictionReasons = jurisdictionIsObject && Array.isArray(rawJurisdiction.reasons)
+    ? rawJurisdiction.reasons.filter((r) => typeof r === 'string' && r.trim())
+    : [];
   const complexity = caseDetail.complexity || caseDetail.case_metadata?.complexity || null;
   const parties = caseDetail.parties || caseDetail.party_names || [];
 
@@ -95,10 +104,10 @@ function Gate1Data({ caseDetail }) {
             <p className="font-semibold text-gray-800 capitalize">{domain}</p>
           </div>
         )}
-        {jurisdiction && (
+        {jurisdictionLabel && (
           <div className="bg-white rounded-lg p-3 border border-teal-100">
             <p className="text-xs text-gray-400 mb-0.5">Jurisdiction</p>
-            <p className="font-semibold text-gray-800 capitalize">{jurisdiction}</p>
+            <p className="font-semibold text-gray-800 capitalize">{jurisdictionLabel}</p>
           </div>
         )}
         {complexity && (
@@ -108,6 +117,16 @@ function Gate1Data({ caseDetail }) {
           </div>
         )}
       </div>
+      {jurisdictionReasons.length > 0 && (
+        <div className="bg-white rounded-lg p-3 border border-teal-100">
+          <p className="text-xs text-gray-400 mb-1">Jurisdiction reasons</p>
+          <ul className="list-disc pl-5 space-y-0.5 text-gray-700">
+            {jurisdictionReasons.map((reason, i) => (
+              <li key={i}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {parties.length > 0 && (
         <div>
           <p className="text-xs text-gray-400 mb-1">Parties</p>
