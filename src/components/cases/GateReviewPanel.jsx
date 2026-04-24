@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { createElement, useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle,
   RefreshCw,
@@ -48,7 +48,7 @@ const GATE_DESCRIPTIONS = {
 function SectionHeader({ icon: Icon, label, count }) {
   return (
     <div className="flex items-center gap-2 mb-2">
-      <Icon className="w-4 h-4 text-teal-600" />
+      {createElement(Icon, { className: 'w-4 h-4 text-teal-600' })}
       <span className="font-semibold text-sm text-gray-800">{label}</span>
       {count != null && (
         <span className="ml-auto text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">

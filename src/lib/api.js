@@ -442,6 +442,21 @@ export const api = {
   getKnowledgeBaseStatus: () =>
     request('GET', '/api/v1/knowledge-base/status'),
 
+  initializeKnowledgeBase: () =>
+    request('POST', '/api/v1/knowledge-base/initialize'),
+
+  uploadKnowledgeBaseDocument: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return uploadWithProgress(`${API_BASE_URL}/api/v1/knowledge-base/documents`, formData, null);
+  },
+
+  listKnowledgeBaseDocuments: () =>
+    request('GET', '/api/v1/knowledge-base/documents'),
+
+  deleteKnowledgeBaseDocument: (fileId) =>
+    request('DELETE', `/api/v1/knowledge-base/documents/${fileId}`),
+
   getDashboardStats: (timeWindow = '30d') =>
     request('GET', `/api/v1/dashboard/stats?window=${timeWindow}`),
 
@@ -471,6 +486,12 @@ export const api = {
 
   getAdminHealth: () =>
     request('GET', '/api/v1/health/pair'),
+  refreshVectorStore: (store = 'primary') =>
+    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
+  manageUser: (userId, action, body = {}) =>
+    request('POST', `/api/v1/admin/users/${userId}/${action}`, { body }),
+  setConfig: (body) =>
+    request('POST', '/api/v1/admin/cost-config', { body }),
 
   // Domain management
   listDomains: () =>
@@ -496,13 +517,6 @@ export const api = {
     request('GET', `/api/v1/domains/admin/${domainId}/documents`),
   deleteDomainDocument: (domainId, docId) =>
     request('DELETE', `/api/v1/domains/admin/${domainId}/documents/${docId}`),
-
-  refreshVectorStore: (storeName) =>
-    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store: storeName } }),
-  manageUser: (userId, action, body = {}) =>
-    request('POST', `/api/v1/admin/users/${userId}/${action}`, { body }),
-  setConfig: (body) =>
-    request('POST', '/api/v1/admin/cost-config', { body }),
 
   advanceGate: (caseId, gateName) =>
     request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`, { body: {} }),

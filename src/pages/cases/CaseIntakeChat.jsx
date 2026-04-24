@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useChat } from '@ai-sdk/react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -29,7 +30,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
 } from '@/components/ai-elements/conversation';
-import { Message, MessageContent } from '@/components/ai-elements/message';
+import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import {
   PromptInput,
   PromptInputTextarea,
@@ -38,14 +39,8 @@ import {
 } from '@/components/ai-elements/prompt-input';
 
 import { useAPI } from '@/hooks';
+import { createIntakeTransport, transportErrorMessage } from '@/lib/ai/intakeTransport';
 import api, { getErrorMessage } from '@/lib/api';
-
-const PHASE_LABEL = {
-  loading_documents: 'Loading your documents',
-  parsing_documents: 'Reading the documents',
-  extracting_fields: 'Extracting structured fields',
-  reconnect_snapshot: 'Reconnected — here is what I had',
-};
 
 function confidenceTone(level) {
   switch (level) {
@@ -64,110 +59,76 @@ export default function CaseIntakeChat() {
   const navigate = useNavigate();
   const { showError } = useAPI();
 
-  const [messages, setMessages] = useState([]); // [{id, role, phase?, text?, kind}]
   const [extraction, setExtraction] = useState(null);
   const [streamError, setStreamError] = useState(null);
-  const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
-  const esRef = useRef(null);
-  const completedRef = useRef(false);
-
-  // Subscribe to the backend intake SSE for this case.
-  useEffect(() => {
-    if (!caseId) return undefined;
-    const es = api.streamIntakeEvents(caseId);
-    esRef.current = es;
-    es.onmessage = (ev) => {
-      let data;
-      try {
-        data = JSON.parse(ev.data);
-      } catch {
-        return;
-      }
-      handleEvent(data);
-    };
-    es.onerror = () => {
-      if (!completedRef.current) {
-        setStreamError('Lost connection to the intake stream.');
-      }
-    };
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId]);
+  const subscribedCaseRef = useRef(null);
 
   const handleEvent = useCallback((event) => {
-    if (event.type === 'status') {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `status-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          role: 'assistant',
-          kind: 'status',
-          text: PHASE_LABEL[event.phase] || event.phase,
-        },
-      ]);
-    } else if (event.type === 'user_message') {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `u-${Date.now()}`,
-          role: 'user',
-          kind: 'text',
-          text: event.content,
-        },
-      ]);
-    } else if (event.type === 'done') {
-      if (completedRef.current) return;
-      completedRef.current = true;
+    if (event.type === 'done') {
       setExtraction(event.extraction || null);
-      setPending(false);
-      setMessages((prev) => [
-        ...prev.map((m) => (m.kind === 'status' ? { ...m, kind: 'status-done' } : m)),
-        {
-          id: `done-${Date.now()}`,
-          role: 'assistant',
-          kind: 'proposal',
-          text: event.extraction?.notes || 'Here is what I pulled from the documents.',
-        },
-      ]);
+      setStreamError(null);
     } else if (event.type === 'error') {
       setStreamError(event.message || 'The extractor failed.');
-      setPending(false);
-    } else if (event.type === 'confirmed') {
-      // Terminal on our side — the confirm handler already navigated.
     }
   }, []);
 
+  const transport = useMemo(
+    () =>
+      createIntakeTransport({
+        caseId,
+        onEvent: handleEvent,
+        onError: (error) => setStreamError(transportErrorMessage(error)),
+      }),
+    [caseId, handleEvent],
+  );
+
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    stop,
+  } = useChat({
+    id: caseId ? `intake-${caseId}` : 'intake-draft',
+    transport,
+    onError: (err) => setStreamError(transportErrorMessage(err)),
+  });
+
+  useEffect(() => {
+    if (!caseId || subscribedCaseRef.current === caseId) {
+      return;
+    }
+    subscribedCaseRef.current = caseId;
+    sendMessage();
+  }, [caseId, sendMessage]);
+
   const retryExtraction = async () => {
-    completedRef.current = false;
     setMessages([]);
-    setPending(true);
+    setExtraction(null);
     setStreamError(null);
     try {
       await api.triggerIntakeExtraction(caseId);
+      await sendMessage();
     } catch (err) {
       setStreamError(getErrorMessage(err) || 'Could not restart extraction.');
-      setPending(false);
     }
   };
 
   const onSubmitCorrection = async (payload) => {
     const content = (payload?.text || composerValue || '').trim();
     if (!content) return;
-    setPending(true);
     setComposerValue('');
     try {
-      await api.sendIntakeMessage(caseId, content);
+      await sendMessage({ text: content });
     } catch (err) {
       setStreamError(getErrorMessage(err) || 'Could not send your correction.');
-      setPending(false);
     }
   };
+
+  const isGenerating = status === 'submitted' || status === 'streaming';
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
@@ -205,19 +166,21 @@ export default function CaseIntakeChat() {
             messages.map((m) => (
               <Message key={m.id} from={m.role}>
                 <MessageContent>
-                  {m.kind === 'status' ? (
-                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 data-icon="inline-start" className="animate-spin" />
-                      {m.text}
-                    </span>
-                  ) : m.kind === 'status-done' ? (
-                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle2 data-icon="inline-start" className="text-green-600" />
-                      {m.text}
-                    </span>
-                  ) : (
-                    <span>{m.text}</span>
-                  )}
+                  {m.parts?.map((part, index) => {
+                    if (part.type !== 'text') return null;
+                    const key = `${m.id}-${index}`;
+                    if (m.role === 'assistant') {
+                      return (
+                        <MessageResponse
+                          key={key}
+                          isAnimating={status === 'streaming' && part.state === 'streaming'}
+                        >
+                          {part.text}
+                        </MessageResponse>
+                      );
+                    }
+                    return <span key={key}>{part.text}</span>;
+                  })}
                 </MessageContent>
               </Message>
             ))
@@ -246,7 +209,7 @@ export default function CaseIntakeChat() {
               ? 'Correct something in plain language — e.g. "accused is K. Lam not Lim".'
               : 'Waiting for extraction to finish…'
           }
-          disabled={pending}
+          disabled={isGenerating}
         />
         <PromptInputFooter>
           <Button
@@ -258,7 +221,7 @@ export default function CaseIntakeChat() {
             <PencilLine data-icon="inline-start" />
             {fallbackOpen ? 'Hide manual form' : "I'll type it"}
           </Button>
-          <PromptInputSubmit status={pending ? 'submitted' : undefined} />
+          <PromptInputSubmit status={status} onStop={stop} />
         </PromptInputFooter>
       </PromptInput>
 

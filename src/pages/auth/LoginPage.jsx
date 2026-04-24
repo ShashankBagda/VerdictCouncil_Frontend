@@ -194,6 +194,7 @@ export default function LoginPage() {
           {/* Submit */}
           <button
             type="submit"
+            aria-label="Sign In"
             disabled={loading || submitting}
             className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-all duration-200 relative overflow-hidden disabled:opacity-60 disabled:cursor-not-allowed hover:-translate-y-0.5"
             style={{

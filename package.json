@@ -10,8 +10,8 @@
     "lint:fix": "eslint . --fix",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vite.config.js",
+    "test:watch": "vitest --config vite.config.js",
     "check:contract": "node scripts/check-api-contract.mjs"
   },
   "dependencies": {
