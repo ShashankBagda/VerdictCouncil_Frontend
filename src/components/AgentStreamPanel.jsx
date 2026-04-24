@@ -93,6 +93,14 @@ export default function AgentStreamPanel({
       // for un-typed frames, which is now just the intake stream.
       es.addEventListener('progress', handleSseEvent);
       es.addEventListener('agent', handleSseEvent);
+      // Heartbeat keeps the connection alive — no action needed beyond
+      // confirming the EventSource is still healthy.
+      es.addEventListener('heartbeat', () => {});
+      // Session cookie is about to expire — redirect to login so the next
+      // request doesn't hit a 401 mid-pipeline.
+      es.addEventListener('auth_expiring', () => {
+        window.location.href = '/login';
+      });
 
       es.onerror = () => {
         setSseConnected(false);
