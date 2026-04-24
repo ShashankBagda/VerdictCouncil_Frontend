@@ -42,4 +42,10 @@ export default defineConfig([
       globals: { ...globals.node },
     },
   },
+  {
+    files: ['src/components/ui/**/*.{js,jsx}', 'src/components/ai-elements/**/*.{js,jsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

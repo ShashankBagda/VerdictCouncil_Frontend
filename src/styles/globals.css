@@ -14,6 +14,12 @@ layer(base);
 
 @plugin '@tailwindcss/typography';
 
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+
 @theme {
   --color-navy-500: #6b7280;
   --color-navy-600: #535970;

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, Outlet, NavLink } from 'react-router-dom';
 import { FilePlus2, RefreshCw, UploadCloud } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
+import { cn } from '@/lib/utils';
 import { normalizeCaseDetail } from '../../lib/caseWorkspace';
 import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus';
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
@@ -21,23 +26,32 @@ const VALID_APPEND_TYPES = [
 ];
 
 function StatusBadge({ status }) {
-  const tone =
+  const variant =
     status === 'closed'
-      ? 'bg-gray-100 text-gray-700'
+      ? 'secondary'
       : status === 'failed'
-        ? 'bg-rose-100 text-rose-700'
+        ? 'destructive'
         : status === 'completed' || status === 'ready_for_review'
-          ? 'bg-emerald-100 text-emerald-700'
+          ? 'secondary'
           : isGatePauseStatus(status)
-            ? 'bg-teal-100 text-teal-700'
-            : 'bg-blue-100 text-blue-700';
+            ? 'outline'
+            : 'outline';
 
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${tone}`}>
+    <Badge variant={variant} className="capitalize">
       {String(status || 'processing').replace(/_/g, ' ')}
-    </span>
+    </Badge>
   );
 }
+
+const WORKSPACE_TABS = [
+  ['building', 'Building'],
+  ['graph', 'Graph Mesh'],
+  ['dossier', 'Dossier'],
+  ['what-if', 'What-If'],
+  ['hearing-pack', 'Hearing Pack'],
+  ['orchestrator', 'Orchestrator'],
+];
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -170,51 +184,54 @@ export default function CaseDetail() {
 
   if (loading && !workspaceCase) {
     return (
-      <div className="card-lg flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="spinner w-8 h-8 mx-auto mb-4" />
-          <p className="text-gray-600">Loading case workspace...</p>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex h-96 flex-col justify-center gap-4">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-full max-w-2xl" />
+          <Skeleton className="h-72 w-full" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="card-lg">
-        <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-5">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-4xl font-bold text-navy-900">
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle className="text-2xl">
                 {workspaceCase?.title || `Case ${caseId}`}
-              </h1>
+              </CardTitle>
               <StatusBadge status={workspaceCase?.raw_status || workspaceCase?.status} />
             </div>
-            <p className="text-gray-600 max-w-3xl">
+            <CardDescription className="mt-2 max-w-3xl">
               {workspaceCase?.case_description || 'Case workspace for evidence, analysis, and judge actions.'}
-            </p>
+            </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {RESTARTABLE_STATUSES.has(workspaceCase?.raw_status) && (
-              <button
+              <Button
+                type="button"
+                variant="destructive"
                 onClick={handleRestartPipeline}
                 disabled={restarting}
-                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
               >
-                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                <RefreshCw data-icon="inline-start" className={cn(restarting && 'animate-spin')} />
                 {restarting ? 'Restarting…' : 'Restart Pipeline'}
-              </button>
+              </Button>
             )}
-            <button
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
-              className="btn-primary flex items-center gap-2"
             >
-              <FilePlus2 className="w-4 h-4" />
+              <FilePlus2 data-icon="inline-start" />
               Add Documents
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
+        </CardHeader>
+      </Card>
 
       {isGatePauseStatus(workspaceCase?.raw_status) && (
         <GateReviewPanel
@@ -227,92 +244,38 @@ export default function CaseDetail() {
         />
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
-          <div className="flex gap-4 mb-6 border-b border-gray-200 pb-0 overflow-x-auto">
-            <NavLink
-              to={`/case/${caseId}/building`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Building
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/graph`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Graph Mesh
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/dossier`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Dossier
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/what-if`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              What-If
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/hearing-pack`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Hearing Pack
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/orchestrator`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-violet-600 text-violet-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Orchestrator
-            </NavLink>
+          <div className="mb-4 flex gap-1 overflow-x-auto rounded-lg border bg-background p-1">
+            {WORKSPACE_TABS.map(([slug, label]) => (
+              <NavLink
+                key={slug}
+                to={`/case/${caseId}/${slug}`}
+                className={({ isActive }) =>
+                  cn(
+                    'whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    isActive && 'bg-muted text-foreground',
+                  )
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
           </div>
 
           <Outlet />
         </div>
 
-        <aside className="space-y-4">
-          <div className="card-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-navy-900">Add Documents</h2>
-              <UploadCloud className="w-5 h-5 text-teal-600" />
-            </div>
+        <aside className="flex flex-col gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+              <div>
+                <CardTitle className="text-base">Add Documents</CardTitle>
+                <CardDescription>Append evidence to this case.</CardDescription>
+              </div>
+              <UploadCloud className="text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
             <input
               ref={fileInputRef}
               type="file"
@@ -321,12 +284,14 @@ export default function CaseDetail() {
               accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
               className="hidden"
             />
-            <button
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
-              className="w-full px-4 py-3 border border-dashed border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              className="h-auto border-dashed py-4"
             >
               Select files to append to this case
-            </button>
+            </Button>
 
             <DocumentUploadList 
               selectedFiles={selectedFiles}
@@ -337,7 +302,8 @@ export default function CaseDetail() {
               uploading={uploading}
               documents={workspaceCase?.documents || []}
             />
-          </div>
+            </CardContent>
+          </Card>
 
           <CaseExceptionPanel caseId={caseId} caseDetail={workspaceCase} />
         </aside>

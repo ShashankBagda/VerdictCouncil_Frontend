@@ -457,6 +457,12 @@ export const api = {
 
   getAdminHealth: () =>
     request('GET', '/api/v1/health/pair'),
+  refreshVectorStore: (store = 'primary') =>
+    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store } }),
+  manageUser: (userId, action, body = {}) =>
+    request('POST', `/api/v1/admin/users/${userId}/${action}`, { body }),
+  setConfig: (body) =>
+    request('POST', '/api/v1/admin/cost-config', { body }),
 
   // Domain management
   listDomains: () =>
@@ -482,13 +488,6 @@ export const api = {
     request('GET', `/api/v1/domains/admin/${domainId}/documents`),
   deleteDomainDocument: (domainId, docId) =>
     request('DELETE', `/api/v1/domains/admin/${domainId}/documents/${docId}`),
-
-  refreshVectorStore: (storeName) =>
-    request('POST', '/api/v1/admin/vector-stores/refresh', { body: { store_name: storeName } }),
-  manageUser: (userId, action, body = {}) =>
-    request('POST', `/api/v1/admin/users/${userId}/${action}`, { body }),
-  setConfig: (body) =>
-    request('POST', '/api/v1/admin/cost-config', { body }),
 
   advanceGate: (caseId, gateName) =>
     request('POST', `/api/v1/cases/${caseId}/gates/${gateName}/advance`, { body: {} }),
