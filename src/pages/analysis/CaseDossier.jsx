@@ -1276,7 +1276,7 @@ export default function CaseDossier() {
         />
       )}
 
-      {!knowledgeBaseStatus?.initialized && (
+      {!knowledgeBaseStatus?.initialized && !caseDetail?.domain_has_vector_store && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 flex items-start gap-3">
           <Database className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div>

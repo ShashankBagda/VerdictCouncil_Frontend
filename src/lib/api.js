@@ -413,6 +413,21 @@ export const api = {
   getKnowledgeBaseStatus: () =>
     request('GET', '/api/v1/knowledge-base/status'),
 
+  initializeKnowledgeBase: () =>
+    request('POST', '/api/v1/knowledge-base/initialize'),
+
+  uploadKnowledgeBaseDocument: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return uploadWithProgress(`${API_BASE_URL}/api/v1/knowledge-base/documents`, formData, null);
+  },
+
+  listKnowledgeBaseDocuments: () =>
+    request('GET', '/api/v1/knowledge-base/documents'),
+
+  deleteKnowledgeBaseDocument: (fileId) =>
+    request('DELETE', `/api/v1/knowledge-base/documents/${fileId}`),
+
   getDashboardStats: (timeWindow = '30d') =>
     request('GET', `/api/v1/dashboard/stats?window=${timeWindow}`),
 
