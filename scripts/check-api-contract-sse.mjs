@@ -91,12 +91,19 @@ function collectJsFiles(dir, files = []) {
 // Matches: .addEventListener('progress', ...) or .addEventListener("agent", ...)
 const LISTENER_RE = /\.addEventListener\s*\(\s*['"]([^'"]+)['"]\s*,/g;
 
+// Only scan files that are SSE consumers — those that call into the SSE
+// factory functions (streamPipelineStatus / streamIntakeEvents).  This
+// prevents XHR upload addEventListener('progress', ...) calls in api.js
+// from falsely matching the 'progress' SSE kind.
+const SSE_CONSUMER_RE = /streamPipelineStatus|streamIntakeEvents/;
+
 function extractClientKinds(srcDir, schemaKinds) {
   const files = collectJsFiles(srcDir);
   const found = new Set();
 
   for (const file of files) {
     const src = readFileSync(file, 'utf-8');
+    if (!SSE_CONSUMER_RE.test(src)) continue;
     for (const match of src.matchAll(LISTENER_RE)) {
       const name = match[1];
       // Only keep names that appear in the schema — ignore browser DOM events
