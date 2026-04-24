@@ -261,7 +261,7 @@ function EventLine({ ev }) {
 }
 
 // ── Overall progress bar ─────────────────────────────────────────────────────
-function OverallProgressBar({ pipelineStatus, isStale, isGivenUp, error, retry }) {
+function OverallProgressBar({ pipelineStatus, isStale, isGivenUp, error: _error, retry }) {
   if (!pipelineStatus) return null;
   const pct = pipelineStatus.overall_progress_percent || 0;
   const overallStatus = pipelineStatus.overall_status || 'pending';

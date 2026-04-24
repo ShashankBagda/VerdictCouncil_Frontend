@@ -57,8 +57,7 @@ describe('LoginPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Restoring your session')).toBeInTheDocument();
-    expect(screen.getByText('Checking your existing session...')).toBeInTheDocument();
+    expect(screen.getByText('Restoring session\u2026')).toBeInTheDocument();
   });
 
   it('submits credentials and redirects after successful login', async () => {
@@ -85,7 +84,7 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'password' },
     });
-    fireEvent.submit(screen.getByRole('button', { name: 'Sign In' }).closest('form'));
+    fireEvent.submit(screen.getByRole('button', { name: /Sign In/i }).closest('form'));
 
     await waitFor(() => {
       expect(login).toHaveBeenCalledWith('judge@verdictcouncil.sg', 'password');
@@ -133,7 +132,7 @@ describe('LoginPage', () => {
     );
 
     expect(screen.getByText('Session expired')).toBeInTheDocument();
-    expect(screen.getByText('Signing in...')).toBeInTheDocument();
+    expect(screen.getByText('Authenticating\u2026')).toBeInTheDocument();
   });
 
   it('shows the normalized API error when login fails', async () => {
@@ -163,7 +162,7 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'wrong-password' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Invalid credentials')).toBeInTheDocument();

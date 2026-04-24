@@ -1,8 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+const stripShebang = {
+  name: 'strip-shebang',
+  transform(code, id) {
+    if (id.endsWith('.mjs') && code.startsWith('#!')) {
+      return { code: code.slice(code.indexOf('\n') + 1) };
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), stripShebang],
   test: {
     environment: 'jsdom',
     globals: true,

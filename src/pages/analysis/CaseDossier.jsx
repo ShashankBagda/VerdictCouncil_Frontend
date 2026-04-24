@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   AlertCircle,
   BookOpen,
@@ -329,7 +329,7 @@ export default function CaseDossier() {
 
   // ── Auto-refresh when pipeline transitions to a terminal / gate-pause state
   const pipelineOverallStatus = pipelineStatus?.overall_status;
-  const prevPipelineStatusRef = React.useRef(pipelineOverallStatus);
+  const prevPipelineStatusRef = useRef(pipelineOverallStatus);
   useEffect(() => {
     const prev = prevPipelineStatusRef.current;
     prevPipelineStatusRef.current = pipelineOverallStatus;
