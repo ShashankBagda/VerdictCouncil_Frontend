@@ -2,14 +2,18 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
+import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
 import {
   PIPELINE_AGENT_LABELS,
   PIPELINE_AGENT_ORDER,
-  isTerminalPipelineSseEvent,
-  normalizePipelineStatus,
 } from '../../lib/pipelineStatus';
+import {
+  formatToolCallArgs,
+  formatToolResult,
+  formatLlmResponse,
+} from '../../lib/eventFormatters';
 
 // ── Gate → agent mapping (mirrors backend GATE_AGENTS) ────────────────────
 const AGENT_GATE = {
@@ -76,7 +80,7 @@ function statusDot(status) {
 }
 
 // ── Single agent card ───────────────────────────────────────────────────────
-function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRun }) {
+function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRun, isFocused, onFocus }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
@@ -102,11 +106,25 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
 
   return (
     <div
-      className={`flex flex-col rounded-xl border ${colors.border} ${colors.bg} overflow-hidden`}
+      className={`flex flex-col rounded-xl border ${colors.border} ${colors.bg} overflow-hidden transition-all ${
+        isFocused ? 'ring-2 ring-teal-400/70 shadow-lg shadow-teal-500/10' : ''
+      }`}
       style={{ minHeight: '220px' }}
     >
-      {/* Card header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/35">
+      {/* Card header — clicking anywhere except the inner Run button focuses the card */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onFocus?.(agentId)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onFocus?.(agentId);
+          }
+        }}
+        className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/35 hover:bg-black/45 transition-colors cursor-pointer"
+        title={isFocused ? 'Click to close detail view' : 'Click to open detail view'}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusDot(status)}`} />
           <span className="text-sm font-semibold text-white truncate">{label}</span>
@@ -132,7 +150,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
             </span>
           ) : (
             <button
-              onClick={onRun}
+              onClick={(e) => { e.stopPropagation(); onRun?.(); }}
               disabled={!canRun || isActionPending}
               title={
                 canRun
@@ -187,6 +205,96 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
           </span>
         ) : (
           events.map((ev, i) => <EventLine key={i} ev={ev} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Focus drawer ────────────────────────────────────────────────────────────
+// Expanded detail view for a single agent. Renders beneath the grid when a
+// card is clicked. Gives each event far more room than the 200px card pane —
+// larger font, no height cap on the pane (scroll inside the drawer instead).
+function FocusDrawer({ agentId, agentStatus, events, onClose }) {
+  const scrollRef = useRef(null);
+  const isManualRef = useRef(false);
+  const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
+  const layer = AGENT_LAYER[agentId] || 'Intake';
+  const colors = LAYER_COLORS[layer];
+  const status = agentStatus?.status || 'pending';
+
+  // Auto-scroll the drawer stream to the newest event unless the user
+  // scrolled up — same behaviour as the small card pane.
+  useEffect(() => {
+    if (!isManualRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events]);
+
+  // Count events by type for the header summary — useful at-a-glance context.
+  const counts = events.reduce((acc, ev) => {
+    const k = ev.event || 'other';
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div
+      className={`rounded-xl border ${colors.border} ${colors.bg} overflow-hidden flex flex-col`}
+      style={{ minHeight: '420px' }}
+    >
+      {/* Drawer header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${statusDot(status)}`} />
+          <div className="flex flex-col min-w-0">
+            <span className="text-base font-semibold text-white truncate">{label}</span>
+            <div className="flex items-center gap-2 text-[11px] text-gray-400">
+              <span className={`px-1.5 py-0.5 rounded ${colors.badge}`}>{layer}</span>
+              <span className={`px-2 py-0.5 rounded-full capitalize ${statusStyle(status)}`}>
+                {status === 'pending' ? 'waiting' : status}
+              </span>
+              {agentStatus?.elapsed_seconds != null && (
+                <span>{agentStatus.elapsed_seconds}s elapsed</span>
+              )}
+              <span className="text-gray-500">·</span>
+              <span>
+                {events.length} event{events.length === 1 ? '' : 's'}
+                {counts.tool_call ? ` · ${counts.tool_call} tool call${counts.tool_call === 1 ? '' : 's'}` : ''}
+                {counts.llm_response ? ` · ${counts.llm_response} LLM response${counts.llm_response === 1 ? '' : 's'}` : ''}
+              </span>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="flex-shrink-0 text-xs text-gray-400 hover:text-white border border-white/20 hover:border-white/40 rounded-md px-2.5 py-1 transition-colors"
+          title="Close detail view"
+        >
+          Close ✕
+        </button>
+      </div>
+
+      {/* Event stream — larger font, taller pane than the card */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 font-mono text-[13px] leading-relaxed bg-black/20"
+        style={{ maxHeight: '520px' }}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          isManualRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 24;
+        }}
+      >
+        {events.length === 0 ? (
+          <span className="text-gray-400 italic">
+            {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
+          </span>
+        ) : (
+          events.map((ev, i) => (
+            <div key={i} className="py-0.5">
+              <EventLine ev={ev} />
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -249,6 +357,32 @@ function EventLine({ ev }) {
         <span className="text-gray-400 italic">
           {tsSpan}■ Pipeline halted
           {ev.detail?.reason ? <span className="ml-1">({ev.detail.reason})</span> : null}
+        </span>
+      );
+    case 'tool_call': {
+      const summary = formatToolCallArgs(ev.tool_name, ev.args);
+      return (
+        <span className="text-cyan-300">
+          ⚙ <span className="font-semibold">{ev.tool_name || 'tool'}</span>
+          {summary ? <span className="text-gray-300 ml-1.5">{summary}</span> : null}
+        </span>
+      );
+    }
+    case 'tool_result': {
+      const summary = formatToolResult(ev.tool_name, ev.result);
+      return (
+        <span className="text-cyan-200">
+          ↩ <span className="font-semibold">{ev.tool_name || 'result'}</span>
+          {summary ? <span className="text-gray-300 ml-1.5">{summary}</span> : null}
+        </span>
+      );
+    }
+    case 'llm_response':
+    case 'response':
+      return (
+        <span className="text-white">
+          <span className="text-teal-400">◆ </span>
+          {formatLlmResponse(ev.content || ev.message || '')}
         </span>
       );
     default:
@@ -314,9 +448,14 @@ export default function BuildingSimulation() {
   const { showError, showNotification } = useAPI();
   const { updatePipelineStatus } = useCase();
 
-  // SSE events keyed by agent_id
-  const [events, setEvents] = useState({});
-  const [sseConnected, setSseConnected] = useState(false);
+  const { events, status: sseStatus } = useAgentStream(caseId);
+
+  // Which agent card is currently expanded in the detail drawer. Clicking
+  // the same card again closes the drawer.
+  const [focusedAgentId, setFocusedAgentId] = useState(null);
+  const toggleFocus = useCallback((agentId) => {
+    setFocusedAgentId((prev) => (prev === agentId ? null : agentId));
+  }, []);
 
   // Per-agent action pending state (run button spinner)
   const [pendingAgents, setPendingAgents] = useState({});
@@ -335,83 +474,6 @@ export default function BuildingSimulation() {
     onStatus: updatePipelineStatus,
     onError: showError,
   });
-
-  // SSE connection for live agent streams
-  useEffect(() => {
-    let es = null;
-    let pollInterval = null;
-    let terminalReached = false;
-
-    const connect = () => {
-      if (es) es.close();
-      es = api.streamPipelineStatus(caseId);
-
-      es.onopen = () => {
-        setSseConnected(true);
-        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-      };
-
-      es.onmessage = (raw) => {
-        let data;
-        try { data = JSON.parse(raw.data); } catch { return; }
-
-        if (isTerminalPipelineSseEvent(data)) {
-          terminalReached = true;
-          setSseConnected(false);
-          es?.close(); es = null;
-          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-          if (data.agent === 'pipeline') return;
-        }
-
-        if (data.agent) {
-          setEvents((prev) => ({
-            ...prev,
-            [data.agent]: [...(prev[data.agent] || []), data],
-          }));
-        }
-      };
-
-      es.onerror = () => {
-        setSseConnected(false);
-        if (es) { es.close(); es = null; }
-        if (terminalReached) return;
-        // Fallback: synthesise events from polling status
-        if (!pollInterval) {
-          pollInterval = setInterval(async () => {
-            try {
-              const status = await api.getPipelineStatus(caseId);
-              const norm = normalizePipelineStatus(status);
-              if (norm?.agents) {
-                setEvents((prev) => {
-                  const synth = {};
-                  norm.agents.forEach((a) => {
-                    if (!prev[a.agent_id]?.length) {
-                      synth[a.agent_id] = [{ event: a.status, agent: a.agent_id, synthetic: true }];
-                    }
-                  });
-                  return { ...prev, ...synth };
-                });
-              }
-            } catch { /* ignore */ }
-          }, 5000);
-        }
-      };
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !terminalReached) {
-        connect();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    connect();
-    return () => {
-      es?.close();
-      if (pollInterval) clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [caseId]);
 
   // Force an immediate status poll when the tab regains focus so that
   // gate-pause transitions aren't missed while the tab was hidden.
@@ -493,9 +555,9 @@ export default function BuildingSimulation() {
             <Activity className="w-4 h-4 text-teal-400 flex-shrink-0" />
             <h2 className="text-base font-bold text-white truncate">Agent Workspace</h2>
             <div className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
-              <span className={`text-xs ${sseConnected ? 'text-emerald-400' : 'text-gray-500'}`}>
-                {sseConnected ? 'Live' : 'Polling'}
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sseStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+              <span className={`text-xs ${sseStatus === 'connected' ? 'text-emerald-400' : 'text-gray-500'}`}>
+                {sseStatus === 'connected' ? 'Live' : sseStatus === 'polling' ? 'Polling' : 'Connecting'}
               </span>
             </div>
           </div>
@@ -602,10 +664,22 @@ export default function BuildingSimulation() {
               canRun={agentCanRun}
               isActionPending={!!pendingAgents[agentId]}
               onRun={() => handleRunAgent(agentId)}
+              isFocused={focusedAgentId === agentId}
+              onFocus={toggleFocus}
             />
           );
         })}
       </div>
+
+      {/* ── Detail drawer (opens when an agent card is clicked) ── */}
+      {focusedAgentId && (
+        <FocusDrawer
+          agentId={focusedAgentId}
+          agentStatus={pipelineStatus?.agents?.find((a) => a.agent_id === focusedAgentId)}
+          events={events[focusedAgentId] || []}
+          onClose={() => setFocusedAgentId(null)}
+        />
+      )}
 
       {/* ── Layer legend ── */}
       <div className="flex items-center gap-4 px-1">

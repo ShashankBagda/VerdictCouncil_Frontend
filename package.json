@@ -12,7 +12,8 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run --config vite.config.js",
     "test:watch": "vitest --config vite.config.js",
-    "check:contract": "node scripts/check-api-contract.mjs"
+    "check:contract": "node scripts/check-api-contract.mjs",
+    "check:contract:sse": "node scripts/check-api-contract-sse.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.170",
