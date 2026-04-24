@@ -87,6 +87,41 @@ PR: https://github.com/ShashankBagda/VerdictCouncil_Frontend/pull/141 (`feat/do-
 
 ---
 
+# LangGraph & Streaming Remediation — Remaining Frontend Items
+
+Spec: `/Users/douglasswm/.claude/plans/users-douglasswm-claude-plans-do-deep-r-serene-platypus.md`
+Branch: `feat/sse-event-types` — PR #152 merged → `development` (`98aebf9`)
+
+## Merge gate ✅
+
+- [x] **PR #152 review passes** — no blocking comments
+- [x] `npm run test -- --run` green in CI (137 tests)
+- [x] `npm run lint` clean
+- [x] `npm run check:contract` clean (57 frontend paths in OpenAPI spec)
+- [x] `npm run check:contract:sse` clean (4 schema kinds / 4 client kinds match)
+- [x] `feat/sse-event-types` merged into `development`
+- [x] Root submodule bump: `7b5e1cf` on root `main`
+
+## P3.18 — Enable checkJs for sseEvents.ts only ✅
+
+- [x] **Goal**: catch TypeScript type errors in `src/lib/sseEvents.ts` without enabling strict mode globally across the JSX codebase
+- [x] **Create** `src/lib/tsconfig.json` overlay — extends root, includes only `sseEvents.ts`, sets `checkJs: true, noResolve: false, strict: false`
+- [x] **Verify**: `npx tsc -p src/lib/tsconfig.json --noEmit` → PASS
+- [x] **Acceptance**: accessing `.nonexistent_field` on `SseEvent` union → TS2339; JSX files unaffected
+- [x] **Files**: `src/lib/tsconfig.json` (new)
+- [x] **Branch**: `feat/sse-checkjs` → `development`
+
+## End-to-end smoke (run after both PRs merge)
+
+See backend `tasks/todo.md` Scenarios A–D — frontend is the observation surface.
+
+- [ ] **Scenario A** — backend killed mid-run → AgentStreamPanel switches to "Polling" badge, then surfaces error toast (not silent hang)
+- [ ] **Scenario B** — cancel via second tab → BuildingSimulation and AgentStreamPanel both show terminal state
+- [ ] **Scenario C** — two tabs open → both receive live events; close one → other continues
+- [ ] **Scenario D** — `vc_token` expires → `auth_expiring` SSE event → `window.location.href = '/login'` fires
+
+---
+
 # Story-aligned integration remediation
 
 Goal: rework the frontend to follow `01-user-stories.md` and `/Users/douglasswm/Project/AAS/VER/AGENT_ARCHITECTURE.md` as the product contract, rather than preserving accidental assumptions from earlier local adapters.
