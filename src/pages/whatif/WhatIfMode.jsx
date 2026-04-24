@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  ToggleLeft,
-  ToggleRight,
-  Zap,
-  TrendingUp,
+  AlertCircle,
+  Copy,
   Download,
   RefreshCw,
-  Copy,
+  Shield,
+  ToggleLeft,
+  ToggleRight,
+  TrendingUp,
   X,
+  Zap,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useAPI } from '../../hooks';
@@ -77,6 +79,23 @@ export default function WhatIfMode() {
   const [selectedScenario, setSelectedScenario] = useState(null);
   const [scenarioName, setScenarioName] = useState('');
 
+  // Stability state
+  const [stabilityResult, setStabilityResult] = useState(null);
+  const [stabilityLoading, setStabilityLoading] = useState(false);
+  const [stabilityError, setStabilityError] = useState(null);
+
+  // Polling cleanup refs
+  const scenarioPollRef = useRef(null);
+  const stabilityPollRef = useRef(null);
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (scenarioPollRef.current) clearInterval(scenarioPollRef.current);
+      if (stabilityPollRef.current) clearInterval(stabilityPollRef.current);
+    };
+  }, []);
+
   // Scenario modifications
   const [modifications, setModifications] = useState(() => {
     const initial = {};
@@ -116,23 +135,31 @@ export default function WhatIfMode() {
 
       // Poll for result if the scenario is async
       if (scenarioId && res?.status === 'pending') {
-        const pollResult = async () => {
+        if (scenarioPollRef.current) clearInterval(scenarioPollRef.current);
+        const capturedName = scenarioName;
+        scenarioPollRef.current = setInterval(async () => {
           try {
             const result = await api.getWhatIfScenario(caseId, scenarioId);
             if (result?.status === 'completed') {
+              clearInterval(scenarioPollRef.current);
+              scenarioPollRef.current = null;
               setScenarioResult(result);
-              showNotification(`Scenario "${scenarioName}" analyzed successfully!`, 'success');
+              setScenarios((prev) =>
+                prev.map((s) => (s.id === scenarioId ? { ...s, status: 'completed' } : s))
+              );
+              showNotification(`Scenario "${capturedName}" analyzed successfully!`, 'success');
             } else if (result?.status === 'failed') {
+              clearInterval(scenarioPollRef.current);
+              scenarioPollRef.current = null;
+              setScenarios((prev) =>
+                prev.map((s) => (s.id === scenarioId ? { ...s, status: 'failed' } : s))
+              );
               showError('Scenario analysis failed on the server.');
             }
           } catch {
-            // Scenario may still be processing
+            // Scenario may still be processing; keep polling
           }
-        };
-        // Simple poll: check after 3s, 6s, 12s
-        setTimeout(pollResult, 3000);
-        setTimeout(pollResult, 6000);
-        setTimeout(pollResult, 12000);
+        }, 3000);
       } else {
         // Synchronous result (unlikely but handle it)
         setScenarioResult(res);
@@ -170,6 +197,42 @@ export default function WhatIfMode() {
     if (selectedScenario === id) {
       setSelectedScenario(null);
       setScenarioResult(null);
+    }
+  };
+
+  // Compute stability score
+  const computeStabilityScore = async () => {
+    try {
+      setStabilityLoading(true);
+      setStabilityError(null);
+      setStabilityResult(null);
+
+      await api.computeStability(caseId);
+
+      // Poll until completed or failed
+      if (stabilityPollRef.current) clearInterval(stabilityPollRef.current);
+      stabilityPollRef.current = setInterval(async () => {
+        try {
+          const result = await api.getStability(caseId);
+          if (result?.status === 'completed') {
+            clearInterval(stabilityPollRef.current);
+            stabilityPollRef.current = null;
+            setStabilityResult(result);
+            setStabilityLoading(false);
+          } else if (result?.status === 'failed') {
+            clearInterval(stabilityPollRef.current);
+            stabilityPollRef.current = null;
+            setStabilityError(result?.error || 'Stability analysis failed.');
+            setStabilityLoading(false);
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 2000);
+    } catch (err) {
+      const msg = getErrorMessage(err, 'Failed to start stability analysis');
+      setStabilityError(msg);
+      setStabilityLoading(false);
     }
   };
 
@@ -361,6 +424,106 @@ export default function WhatIfMode() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Stability Score Panel */}
+      <div className="card-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-navy-900 flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            Outcome Stability Analysis
+          </h3>
+          <button
+            onClick={computeStabilityScore}
+            disabled={stabilityLoading}
+            className="px-4 py-2 bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+          >
+            {stabilityLoading ? (
+              <>
+                <div className="spinner w-4 h-4" />
+                Computing...
+              </>
+            ) : (
+              <>
+                <Shield className="w-4 h-4" />
+                Compute Stability
+              </>
+            )}
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Runs multiple perturbations of the current case facts to measure how stable the hearing outcome is.
+        </p>
+
+        {stabilityError && (
+          <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700 mb-4">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            {stabilityError}
+          </div>
+        )}
+
+        {stabilityResult && (
+          <div className="space-y-4">
+            {/* Score gauge */}
+            <div className="flex items-center gap-6">
+              <div className="flex-shrink-0 relative w-24 h-24">
+                <svg viewBox="0 0 36 36" className="w-24 h-24 -rotate-90">
+                  <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15.9155" fill="none"
+                    stroke={
+                      (stabilityResult.score ?? 0) >= 75 ? '#10b981'
+                      : (stabilityResult.score ?? 0) >= 50 ? '#f59e0b'
+                      : '#ef4444'
+                    }
+                    strokeWidth="3"
+                    strokeDasharray={`${stabilityResult.score ?? 0}, 100`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-xl font-bold text-navy-900">
+                  {stabilityResult.score ?? '--'}
+                </span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-gray-500 uppercase tracking-wide">Classification</p>
+                <p className={`text-lg font-bold capitalize ${
+                  stabilityResult.classification === 'stable' ? 'text-emerald-600'
+                  : stabilityResult.classification === 'borderline' ? 'text-amber-600'
+                  : 'text-rose-600'
+                }`}>
+                  {stabilityResult.classification || 'Unknown'}
+                </p>
+                {stabilityResult.perturbation_count != null && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {stabilityResult.perturbations_held ?? '?'} / {stabilityResult.perturbation_count} perturbations held
+                  </p>
+                )}
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Unstable</span>
+                <span>Stable</span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    (stabilityResult.score ?? 0) >= 75 ? 'bg-emerald-500'
+                    : (stabilityResult.score ?? 0) >= 50 ? 'bg-amber-400'
+                    : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${stabilityResult.score ?? 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!stabilityLoading && !stabilityResult && !stabilityError && (
+          <p className="text-sm text-gray-400 italic">No stability analysis run yet for this case.</p>
+        )}
       </div>
 
       {/* Scenario Result */}
