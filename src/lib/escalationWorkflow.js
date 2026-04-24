@@ -4,6 +4,7 @@ const WORKFLOW_STORAGE_KEY = 'workflow_items';
 
 const normalizeStatus = (status) => {
   const value = String(status || 'pending').toLowerCase();
+  if (value === 'escalated') return 'pending';
   if (value === 'approve') return 'approved';
   if (value === 'reject') return 'rejected';
   return value;
@@ -12,6 +13,7 @@ const normalizeStatus = (status) => {
 const normalizeItemType = (value) => {
   const itemType = String(value || 'escalation').toLowerCase();
   if (itemType === 'reopen_request') return 'reopen';
+  if (itemType === 'amendment') return 'escalation';
   return itemType;
 };
 
@@ -36,20 +38,29 @@ export const normalizeWorkflowItem = (item, index = 0) => {
   return {
     ...item,
     id,
+    backendId: id,
     case_id: caseId,
     item_type: itemType,
     status,
-    title: item?.title || `Case ${caseId}`,
-    description: item?.description || item?.summary || '',
-    context: item?.context || item?.details || '',
+    case_title: item?.case_title || item?.title || null,
+    title: item?.title || item?.case_title || `Case ${caseId}`,
+    description: item?.description || item?.reason || item?.preview || item?.summary || '',
+    preview: item?.preview || item?.summary || item?.description || '',
+    context: item?.context || item?.details || item?.preview || '',
     details: item?.details || item?.context || '',
-    submitter: item?.submitter || item?.requested_by || item?.created_by || 'Unknown',
+    originating_judge:
+      item?.originating_judge || item?.submitter || item?.requested_by || item?.created_by || null,
+    submitter:
+      item?.submitter ||
+      item?.originating_judge ||
+      item?.requested_by ||
+      item?.created_by ||
+      'Unknown',
+    domain: item?.domain || item?.case?.domain || null,
     submitted_at: item?.submitted_at || item?.created_at || new Date().toISOString(),
     assignee: item?.assignee || item?.assigned_to || null,
     priority: item?.priority || 'medium',
     source: item?.source || 'remote',
-    decision_snapshot: item?.decision_snapshot || null,
-    requested_change: item?.requested_change || null,
     history,
   };
 };
@@ -104,9 +115,13 @@ export const mergeWorkflowItems = (remoteItems = [], localItems = []) => {
 export const buildWorkflowCounts = (items = []) => ({
   all: items.length,
   escalation: items.filter((item) => item.item_type === 'escalation').length,
-  amendment: items.filter((item) => item.item_type === 'amendment').length,
   reopen: items.filter((item) => item.item_type === 'reopen').length,
   pending: items.filter((item) => item.status === 'pending').length,
+});
+
+export const splitWorkflowItemsBySource = (items = []) => ({
+  remote: items.filter((item) => item.source !== 'local'),
+  local: items.filter((item) => item.source === 'local'),
 });
 
 const createLocalWorkflowItem = (caseId, itemType, payload, actor) => {
@@ -126,8 +141,6 @@ const createLocalWorkflowItem = (caseId, itemType, payload, actor) => {
     submitted_at: submittedAt,
     source: 'local',
     priority: payload.priority || 'high',
-    requested_change: payload.requested_change || null,
-    decision_snapshot: payload.decision_snapshot || null,
     history: [
       {
         action: 'created',
@@ -137,12 +150,6 @@ const createLocalWorkflowItem = (caseId, itemType, payload, actor) => {
       },
     ],
   });
-};
-
-export const createAmendmentRequest = (caseId, payload, actor) => {
-  const item = createLocalWorkflowItem(caseId, 'amendment', payload, actor);
-  saveWorkflowItem(item);
-  return item;
 };
 
 export const createReopenRequest = (caseId, payload, actor) => {
@@ -173,33 +180,3 @@ export const applyLocalWorkflowAction = (itemId, action, reason, actor, assignee
     };
   });
 
-export const getCaseDecisionHistory = (caseDetail) => {
-  const root = caseDetail || {};
-  const history = root.decision_history || root.history || root.amendment_history || [];
-
-  if (Array.isArray(history) && history.length > 0) {
-    return history.map((entry, index) => ({
-      id: entry.id || `decision-${index}`,
-      decision_type: entry.decision_type || entry.decision || entry.action || 'decision',
-      reason: entry.reason || entry.note || '',
-      actor: entry.actor || entry.recorded_by || 'System',
-      created_at: entry.created_at || entry.recorded_at || root.updated_at || new Date().toISOString(),
-      source: entry.source || 'backend',
-    }));
-  }
-
-  if (root.judge_decision || root.judge_reason || root.decision_recorded_at) {
-    return [
-      {
-        id: 'decision-current',
-        decision_type: root.judge_decision || root.recommendation || 'decision',
-        reason: root.judge_reason || root.recommendation_reason || '',
-        actor: root.recorded_by || 'Judge',
-        created_at: root.decision_recorded_at || new Date().toISOString(),
-        source: 'backend',
-      },
-    ];
-  }
-
-  return [];
-};

@@ -9,7 +9,7 @@ import {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useParams } from 'react-router-dom';
-import { Clock, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Info, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { PIPELINE_AGENT_LABELS } from '../../lib/pipelineStatus';
 
@@ -22,27 +22,27 @@ const STATUS_CONFIG = {
 
 const AGENT_POSITIONS = {
   'case-processing': { x: 0, y: 0 },
-  'fact-reconstruction': { x: -180, y: 130 },
-  'evidence-analysis': { x: 0, y: 130 },
-  'witness-analysis': { x: 180, y: 130 },
-  'legal-knowledge': { x: -110, y: 280 },
-  'argument-construction': { x: 110, y: 280 },
-  'complexity-routing': { x: 0, y: 430 },
-  'deliberation': { x: -120, y: 580 },
-  'governance-verdict': { x: 120, y: 580 },
+  'complexity-routing': { x: 0, y: 150 },
+  'evidence-analysis': { x: -200, y: 300 },
+  'fact-reconstruction': { x: 0, y: 300 },
+  'witness-analysis': { x: 200, y: 300 },
+  'legal-knowledge': { x: -200, y: 450 },
+  'argument-construction': { x: 100, y: 450 },
+  'hearing-analysis': { x: -100, y: 600 },
+  'hearing-governance': { x: 100, y: 600 },
 };
 
 const AGENT_EDGES = [
-  { source: 'case-processing', target: 'fact-reconstruction' },
-  { source: 'case-processing', target: 'evidence-analysis' },
-  { source: 'case-processing', target: 'witness-analysis' },
-  { source: 'fact-reconstruction', target: 'argument-construction' },
+  { source: 'case-processing', target: 'complexity-routing' },
+  { source: 'complexity-routing', target: 'evidence-analysis' },
+  { source: 'complexity-routing', target: 'fact-reconstruction' },
+  { source: 'complexity-routing', target: 'witness-analysis' },
   { source: 'evidence-analysis', target: 'legal-knowledge' },
+  { source: 'fact-reconstruction', target: 'argument-construction' },
   { source: 'witness-analysis', target: 'argument-construction' },
-  { source: 'legal-knowledge', target: 'complexity-routing' },
-  { source: 'argument-construction', target: 'complexity-routing' },
-  { source: 'complexity-routing', target: 'deliberation' },
-  { source: 'complexity-routing', target: 'governance-verdict' },
+  { source: 'legal-knowledge', target: 'hearing-analysis' },
+  { source: 'argument-construction', target: 'hearing-analysis' },
+  { source: 'hearing-analysis', target: 'hearing-governance' },
 ];
 
 export default function GraphMesh() {
@@ -53,7 +53,14 @@ export default function GraphMesh() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const { loading, pipelineStatus } = usePipelineStatus(caseId, {
+  const {
+    loading,
+    pipelineStatus,
+    error,
+    isStale,
+    isGivenUp,
+    retry,
+  } = usePipelineStatus(caseId, {
     onStatus: updatePipelineStatus,
     onError: showError,
   });
@@ -77,8 +84,10 @@ export default function GraphMesh() {
         id: agent.agent_id,
         data: {
           label: (
-            <div className="text-center text-xs font-semibold">
-              <div className="text-sm">{PIPELINE_AGENT_LABELS[agent.agent_id] || agent.name}</div>
+            <div className="text-center font-semibold">
+              <div className="text-xs leading-tight">
+                {PIPELINE_AGENT_LABELS[agent.agent_id] || agent.name}
+              </div>
               <div className="text-xs mt-1 text-gray-600 capitalize">{agent.status}</div>
             </div>
           ),
@@ -88,13 +97,15 @@ export default function GraphMesh() {
           background: config.color,
           border: `2px solid ${config.textColor}`,
           borderRadius: '8px',
-          padding: '12px',
-          width: '150px',
+          padding: '10px',
+          width: '160px',
           color: config.textColor,
           fontWeight: 500,
           cursor: 'pointer',
           transition: 'all 0.3s ease',
           boxShadow: agent.status === 'running' ? `0 0 10px ${config.color}` : 'none',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
         },
       };
     });
@@ -119,9 +130,12 @@ export default function GraphMesh() {
     setEdges(nextEdges);
   }, [pipelineStatus, setEdges, setNodes]);
 
-  const selectedAgent = useMemo(() => (
-    pipelineStatus?.agents?.find((agent) => agent.agent_id === selectedNode) || null
-  ), [pipelineStatus, selectedNode]);
+  const selectedAgent = useMemo(
+    () =>
+      pipelineStatus?.agents?.find((agent) => agent.agent_id === selectedNode) ||
+      null,
+    [pipelineStatus, selectedNode],
+  );
 
   if (loading && !pipelineStatus) {
     return (
@@ -136,6 +150,29 @@ export default function GraphMesh() {
 
   return (
     <div className="relative w-full h-screen rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+      {/* ── Stale / give-up banners (above the graph) ──────────────────── */}
+      {isGivenUp && (
+        <div className="absolute top-0 left-0 right-0 z-10 bg-rose-50 border-b border-rose-200 px-4 py-2 flex items-center justify-between">
+          <p className="text-sm text-rose-700">
+            Pipeline polling stopped due to repeated errors.
+            {error && <span className="ml-1 text-rose-500">({error})</span>}
+          </p>
+          <button
+            onClick={retry}
+            className="text-sm text-teal-700 hover:text-teal-900 flex items-center gap-1 font-semibold"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      )}
+      {isStale && !isGivenUp && (
+        <div className="absolute top-0 left-0 right-0 z-10 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
+          <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
+          <p className="text-sm text-amber-700">
+            Pipeline data may be stale — waiting for the next update.
+          </p>
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -147,7 +184,11 @@ export default function GraphMesh() {
         <Background color="#aaa" gap={16} />
         <Controls />
 
-        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-sm">
+        {/* ── Top-left: progress panel ─────────────────────────────────── */}
+        <Panel
+          position="top-left"
+          className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-sm"
+        >
           <h3 className="font-bold text-navy-900 mb-3">Pipeline Status</h3>
           <div className="space-y-2 text-sm">
             <div>
@@ -155,7 +196,9 @@ export default function GraphMesh() {
               <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                 <div
                   className="bg-teal-500 h-2 rounded-full transition-all"
-                  style={{ width: `${pipelineStatus?.overall_progress_percent || 0}%` }}
+                  style={{
+                    width: `${pipelineStatus?.overall_progress_percent || 0}%`,
+                  }}
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
@@ -164,15 +207,45 @@ export default function GraphMesh() {
             </div>
             <div className="pt-2 border-t text-xs">
               <p className="text-gray-600">
-                {pipelineStatus?.agents?.filter((agent) => agent.status === 'completed').length || 0} /
+                {pipelineStatus?.agents?.filter((a) => a.status === 'completed').length || 0} /{' '}
                 {pipelineStatus?.agents?.length || 0} agents completed
               </p>
             </div>
+
+            {/* Stale / error indicators */}
+            {isStale && !isGivenUp && (
+              <div className="pt-2 border-t flex items-center gap-1 text-xs text-amber-600">
+                <WifiOff className="w-3 h-3" />
+                Data may be stale — waiting for next update
+              </div>
+            )}
+            {isGivenUp && (
+              <div className="pt-2 border-t">
+                <p className="text-xs text-rose-600 mb-1">
+                  Polling stopped due to repeated errors.
+                </p>
+                <button
+                  onClick={retry}
+                  className="text-xs text-teal-700 hover:text-teal-900 flex items-center gap-1 underline"
+                >
+                  <RefreshCw className="w-3 h-3" /> Retry
+                </button>
+              </div>
+            )}
+            {error && !isGivenUp && (
+              <p className="pt-1 text-xs text-rose-500 truncate" title={error}>
+                {error}
+              </p>
+            )}
           </div>
         </Panel>
 
+        {/* ── Right: selected agent detail ─────────────────────────────── */}
         {selectedAgent && (
-          <Panel position="right" className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-xs">
+          <Panel
+            position="right"
+            className="bg-white rounded-lg shadow-lg p-4 border border-gray-200 max-w-xs"
+          >
             <div className="space-y-4">
               <div>
                 <h4 className="font-bold text-navy-900 text-sm mb-1">
@@ -214,7 +287,9 @@ export default function GraphMesh() {
                 {selectedAgent.elapsed_seconds && (
                   <div>
                     <p className="text-gray-600">Duration</p>
-                    <p className="font-mono text-gray-900">{selectedAgent.elapsed_seconds}s</p>
+                    <p className="font-mono text-gray-900">
+                      {selectedAgent.elapsed_seconds}s
+                    </p>
                   </div>
                 )}
               </div>
@@ -222,7 +297,7 @@ export default function GraphMesh() {
               {selectedAgent.error_message && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Error</p>
-                  <p className="text-xs bg-rose-50 text-rose-900 p-2 rounded border border-rose-200 font-mono">
+                  <p className="text-xs bg-rose-50 text-rose-900 p-2 rounded-sm border border-rose-200 font-mono">
                     {selectedAgent.error_message}
                   </p>
                 </div>
@@ -231,7 +306,7 @@ export default function GraphMesh() {
               {selectedAgent.output_summary && (
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-600 mb-2">Output</p>
-                  <p className="text-xs bg-blue-50 text-blue-900 p-2 rounded border border-blue-200 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
+                  <p className="text-xs bg-blue-50 text-blue-900 p-2 rounded-sm border border-blue-200 whitespace-pre-wrap wrap-break-word max-h-24 overflow-y-auto">
                     {typeof selectedAgent.output_summary === 'string'
                       ? selectedAgent.output_summary
                       : JSON.stringify(selectedAgent.output_summary, null, 2)}
@@ -242,10 +317,14 @@ export default function GraphMesh() {
           </Panel>
         )}
 
-        <Panel position="bottom-left" className="text-xs text-gray-600 bg-white rounded px-2 py-1 border border-gray-200">
+        {/* ── Bottom-left: help text ───────────────────────────────────── */}
+        <Panel
+          position="bottom-left"
+          className="text-xs text-gray-600 bg-white rounded-sm px-2 py-1 border border-gray-200"
+        >
           <p className="flex items-center gap-1">
             <Info className="w-3 h-3" />
-            Click nodes to view details • Drag to pan • Scroll to zoom
+            Click nodes to view details · Drag to pan · Scroll to zoom
           </p>
         </Panel>
       </ReactFlow>

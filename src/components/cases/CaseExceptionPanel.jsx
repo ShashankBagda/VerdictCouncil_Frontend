@@ -1,29 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  AlertCircle,
-  ArrowRight,
   FilePenLine,
   History,
-  Lock,
-  Send,
+  ShieldCheck,
 } from 'lucide-react';
-import { useAuth, useAPI } from '../../hooks';
-import {
-  createAmendmentRequest,
-  createReopenRequest,
-  getCaseDecisionHistory,
-  getCaseWorkflowItems,
-} from '../../lib/escalationWorkflow';
+import { useAPI } from '../../hooks';
+import api, { getErrorMessage } from '../../lib/api';
+import ReopenRequestForm from '../judge/ReopenRequestForm';
 
-function HistoryBadge({ itemType, status }) {
-  const typeTone =
-    itemType === 'amendment'
-      ? 'bg-blue-100 text-blue-700'
-      : itemType === 'reopen'
-        ? 'bg-purple-100 text-purple-700'
-        : 'bg-gray-100 text-gray-700';
-
-  const statusTone =
+function ReopenStatusBadge({ status }) {
+  const tone =
     status === 'approved'
       ? 'bg-emerald-100 text-emerald-700'
       : status === 'rejected'
@@ -31,219 +17,159 @@ function HistoryBadge({ itemType, status }) {
         : 'bg-amber-100 text-amber-700';
 
   return (
-    <div className="flex items-center gap-2">
-      <span className={`px-2 py-1 rounded text-xs font-semibold ${typeTone}`}>
-        {itemType}
-      </span>
-      <span className={`px-2 py-1 rounded text-xs font-semibold ${statusTone}`}>
-        {status}
-      </span>
-    </div>
+    <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-wider ${tone}`}>
+      {status}
+    </span>
   );
 }
 
 export default function CaseExceptionPanel({ caseId, caseDetail }) {
-  const { user } = useAuth();
   const { showError, showNotification } = useAPI();
-  const [amendReason, setAmendReason] = useState('');
-  const [amendDecisionType, setAmendDecisionType] = useState('modify');
-  const [reopenReason, setReopenReason] = useState('');
-  const [, forceRefresh] = React.useReducer((value) => value + 1, 0);
+  const [reopenItems, setReopenItems] = useState([]);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const normalizedStatus = String(caseDetail?.status || '').toLowerCase();
+  const isClosed = ['closed', 'completed', 'decided', 'rejected'].includes(normalizedStatus);
 
-  const workflowItems = getCaseWorkflowItems(caseId);
-  const amendmentItems = workflowItems.filter((item) => item.item_type === 'amendment');
-  const reopenItems = workflowItems.filter((item) => item.item_type === 'reopen');
-  const decisionHistory = useMemo(() => getCaseDecisionHistory(caseDetail), [caseDetail]);
-  const isClosed = ['closed', 'completed'].includes(String(caseDetail?.status || '').toLowerCase());
+  useEffect(() => {
+    let cancelled = false;
 
-  const submitAmendment = () => {
-    if (!amendReason.trim()) {
-      showError('Enter a reason for the amendment request.');
-      return;
+    const loadReopenRequests = async () => {
+      try {
+        const response = await api.listReopenRequests(caseId);
+        if (!cancelled) {
+          setReopenItems(response?.items || response?.data?.items || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          showError(getErrorMessage(error, 'Failed to load reopen requests'));
+        }
+      }
+    };
+
+    loadReopenRequests();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId, showError]);
+
+  const submitReopen = async (payload) => {
+    try {
+      setReopenSubmitting(true);
+      const response = await api.requestCaseReopen(caseId, payload);
+      const item = response?.data || response;
+      setReopenItems((prev) => [item, ...prev]);
+      showNotification('Reopen request submitted for senior review.', 'success');
+    } catch (error) {
+      showError(getErrorMessage(error, 'Failed to submit reopen request'));
+    } finally {
+      setReopenSubmitting(false);
     }
-
-    createAmendmentRequest(
-      caseId,
-      {
-        title: `Amend decision for case ${caseId}`,
-        description: amendReason.trim(),
-        details: `Requested action: ${amendDecisionType}`,
-        requested_change: amendDecisionType,
-        decision_snapshot: decisionHistory[0] || null,
-      },
-      user?.email || 'judge@local',
-    );
-    setAmendReason('');
-    forceRefresh();
-    showNotification('Amendment request added to the review queue.', 'success');
-  };
-
-  const submitReopen = () => {
-    if (!reopenReason.trim()) {
-      showError('Enter a reason for reopening the case.');
-      return;
-    }
-
-    createReopenRequest(
-      caseId,
-      {
-        title: `Reopen request for case ${caseId}`,
-        description: reopenReason.trim(),
-        context: caseDetail?.case_description || '',
-      },
-      user?.email || 'judge@local',
-    );
-    setReopenReason('');
-    forceRefresh();
-    showNotification('Reopen request routed to the senior review queue.', 'success');
   };
 
   return (
-    <div className="space-y-4">
-      <div className="card-lg">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-navy-900">Exception Workflows</h2>
-            <p className="text-sm text-gray-600">
-              Submit amendments and reopen requests without leaving the case workspace.
-            </p>
-          </div>
-          <AlertCircle className="w-5 h-5 text-amber-600" />
+    <div className="space-y-6">
+      <div className="card-lg bg-white/50 backdrop-blur-md border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-100 bg-gray-50/30">
+          <h2 className="text-sm font-black text-navy-900 uppercase tracking-[0.2em] flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-teal-600" />
+            Exceptions & Appeals
+          </h2>
+          <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Reopen requests now use the backend senior-review workflow. Decision amendments remain
+            read-only here until the amendment endpoint is implemented.
+          </p>
         </div>
 
-        <div className="space-y-5">
-          <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <FilePenLine className="w-4 h-4 text-blue-700" />
-              <h3 className="font-semibold text-blue-900">Amend Decision</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {['modify', 'reject', 'accept'].map((value) => (
-                <button
-                  key={value}
-                  onClick={() => setAmendDecisionType(value)}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold border ${
-                    amendDecisionType === value
-                      ? 'border-blue-400 bg-white text-blue-700'
-                      : 'border-blue-200 text-blue-800'
-                  }`}
-                >
-                  {value.charAt(0).toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={amendReason}
-              onChange={(event) => setAmendReason(event.target.value)}
-              placeholder="Explain why the recorded decision should be amended"
-              className="input-field min-h-24"
-            />
-            <button
-              onClick={submitAmendment}
-              className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 flex items-center justify-center gap-2"
-            >
-              <Send className="w-4 h-4" />
-              Submit Amendment Request
-            </button>
-          </div>
-
-          <div className={`rounded-lg border p-4 space-y-3 ${isClosed ? 'border-purple-200 bg-purple-50/60' : 'border-gray-200 bg-gray-50'}`}>
-            <div className="flex items-center gap-2">
-              {isClosed ? (
-                <ArrowRight className="w-4 h-4 text-purple-700" />
-              ) : (
-                <Lock className="w-4 h-4 text-gray-500" />
-              )}
-              <h3 className="font-semibold text-navy-900">Reopen Case</h3>
-            </div>
-            <textarea
-              value={reopenReason}
-              onChange={(event) => setReopenReason(event.target.value)}
-              placeholder={
-                isClosed
-                  ? 'Explain what changed and why this case should be reopened'
-                  : 'Reopen requests are only enabled once the case is closed or completed'
-              }
-              disabled={!isClosed}
-              className="input-field min-h-24"
-            />
-            <button
-              onClick={submitReopen}
-              disabled={!isClosed}
-              className="w-full px-4 py-2.5 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <ArrowRight className="w-4 h-4" />
-              Submit Reopen Request
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card-lg">
-        <div className="flex items-center gap-2 mb-4">
-          <History className="w-5 h-5 text-navy-900" />
-          <h2 className="text-lg font-bold text-navy-900">Decision History</h2>
-        </div>
-
-        {decisionHistory.length > 0 ? (
-          <div className="space-y-3">
-            {decisionHistory.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-gray-200 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-navy-900 capitalize">
-                    {String(entry.decision_type || 'decision').replace(/_/g, ' ')}
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    {new Date(entry.created_at).toLocaleString()}
-                  </span>
-                </div>
-                {entry.reason && (
-                  <p className="text-sm text-gray-700 mt-2">{entry.reason}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-2">Recorded by {entry.actor}</p>
+        <div className="p-6 space-y-8">
+          <div className="group relative">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
+                <FilePenLine className="w-4 h-4" />
               </div>
-            ))}
+              <h3 className="text-xs font-black text-navy-900 uppercase tracking-widest">
+                Amend Active Determination
+              </h3>
+            </div>
+
+            <div className="space-y-3 ml-2 pl-6 border-l-2 border-blue-100">
+              <p className="text-xs text-gray-600">
+                User story `US-036` requires typed amendment records with a preserved amendment
+                trail. The current backend exposes amendment history in the dossier and report, but
+                it does not yet expose a submission endpoint for new amendments.
+              </p>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900">
+                New amendment submissions stay disabled here so the frontend does not invent
+                workflow records that the backend cannot persist or route to the senior inbox.
+              </div>
+            </div>
           </div>
-        ) : (
-          <p className="text-sm text-gray-600">No decision history is available for this case yet.</p>
-        )}
+
+          <div className="group relative">
+            {isClosed ? (
+              <ReopenRequestForm onSubmit={submitReopen} submitting={reopenSubmitting} />
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
+                Reopen requests are available only after a case has reached a decided, rejected, or
+                closed state.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="card-lg">
-        <h2 className="text-lg font-bold text-navy-900 mb-4">Request History</h2>
-        {workflowItems.length > 0 ? (
-          <div className="space-y-3">
-            {[...amendmentItems, ...reopenItems]
-              .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
+      <div className="card-lg bg-white border-gray-200">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <h2 className="text-[10px] font-black text-navy-900 uppercase tracking-widest flex items-center gap-2">
+            <History className="w-4 h-4 text-gray-400" />
+            Reopen Workflow
+          </h2>
+        </div>
+
+        <div className="divide-y divide-gray-50">
+          {reopenItems.length > 0 ? (
+            [...reopenItems]
+              .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
               .map((item) => (
-                <div key={item.id} className="rounded-lg border border-gray-200 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-navy-900">{item.title}</p>
-                      <p className="text-sm text-gray-700 mt-1">{item.description}</p>
+                <div key={item.id} className="p-5 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="space-y-1">
+                      <p className="text-xs font-black text-navy-900 tracking-tight">
+                        {String(item.reason || 'reopen_request').replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 line-clamp-2">
+                        {item.justification}
+                      </p>
                     </div>
-                    <HistoryBadge itemType={item.item_type} status={item.status} />
+                    <ReopenStatusBadge status={item.status} />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Submitted by {item.submitter} on {new Date(item.submitted_at).toLocaleString()}
-                  </p>
-                  {item.history?.length > 1 && (
-                    <div className="mt-3 space-y-2">
-                      {item.history.slice(1).map((entry) => (
-                        <div key={entry.id} className="rounded bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                          <span className="font-semibold capitalize">{entry.action}</span>
-                          {entry.reason ? ` • ${entry.reason}` : ''}
-                          {entry.assignee ? ` • Assigned to ${entry.assignee}` : ''}
-                        </div>
-                      ))}
+                  <div className="flex items-center justify-between text-[9px] font-black text-gray-400 uppercase tracking-tighter">
+                    <span>Requested by {item.requested_by}</span>
+                    <span>{new Date(item.created_at).toLocaleString()}</span>
+                  </div>
+                  {(item.review_notes || item.reviewed_at) && (
+                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-[10px] text-gray-600">
+                      <p className="font-black uppercase text-navy-400">Review</p>
+                      {item.review_notes && (
+                        <p className="mt-1 font-medium italic">"{item.review_notes}"</p>
+                      )}
+                      {item.reviewed_at && (
+                        <p className="mt-1 text-gray-400">
+                          Reviewed at {new Date(item.reviewed_at).toLocaleString()}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
-              ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-600">No amendment or reopen requests have been created for this case.</p>
-        )}
+              ))
+          ) : (
+            <div className="p-10 text-center">
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
+                No reopen requests recorded
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

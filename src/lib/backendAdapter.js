@@ -1,7 +1,13 @@
 import JSZip from 'jszip'
 import { intakeSectionLookup } from '../data/intakeSections'
 
-export const STORAGE_KEY = 'verdictcouncil-session-v3'
+// Legacy packaging/session snapshot helper for intake artifacts only.
+// This module is intentionally not an auth source and should not store identity state.
+
+export const PACKAGE_SNAPSHOT_STORAGE_KEY = 'verdictcouncil-session-v3'
+export const STORAGE_KEY = PACKAGE_SNAPSHOT_STORAGE_KEY
+
+const canUseBrowserStorage = () => typeof window !== 'undefined' && !!window.localStorage
 
 const cloneValue = (value) => JSON.parse(JSON.stringify(value))
 
@@ -39,21 +45,23 @@ export const createAuditEvent = ({
   createdAt: new Date().toISOString(),
 })
 
-export const loadSessionSnapshot = () => {
-  if (typeof window === 'undefined') {
+export const loadPackageSnapshot = () => {
+  if (!canUseBrowserStorage()) {
     return null
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(PACKAGE_SNAPSHOT_STORAGE_KEY)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
   }
 }
 
-export const saveSessionSnapshot = (snapshot) => {
-  if (typeof window === 'undefined') {
+export const loadSessionSnapshot = () => loadPackageSnapshot()
+
+export const savePackageSnapshot = (snapshot) => {
+  if (!canUseBrowserStorage()) {
     return
   }
 
@@ -65,7 +73,7 @@ export const saveSessionSnapshot = (snapshot) => {
 
   try {
     window.localStorage.setItem(
-      STORAGE_KEY,
+      PACKAGE_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         ...snapshot,
         uploadedFiles: safeFiles,
@@ -75,6 +83,8 @@ export const saveSessionSnapshot = (snapshot) => {
     // Ignore persistence failures so the UI can continue working in restricted browsers.
   }
 }
+
+export const saveSessionSnapshot = (snapshot) => savePackageSnapshot(snapshot)
 
 export const buildCaseFolderName = ({ appealId, formState }) => {
   const year = new Date().getFullYear()
@@ -118,7 +128,7 @@ export const buildCasePackage = ({ appealId, formState, uploadedFiles }) => {
   }
 }
 
-export const createCaseSession = ({ appealId, formState, uploadedFiles }) => {
+export const createCasePackageSnapshot = ({ appealId, formState, uploadedFiles }) => {
   const packageMeta = buildCasePackage({ appealId, formState, uploadedFiles })
 
   return {
@@ -133,6 +143,8 @@ export const createCaseSession = ({ appealId, formState, uploadedFiles }) => {
     packageMeta,
   }
 }
+
+export const createCaseSession = (payload) => createCasePackageSnapshot(payload)
 
 export const syncAgentArtifact = ({
   previousArtifacts,

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["sseEvents.ts"],
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": false,
+    "noResolve": false
+  }
+}

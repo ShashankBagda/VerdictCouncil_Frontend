@@ -1,55 +1,26 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import api, { APIError, getErrorMessage } from '../lib/api';
+import {
+  SESSION_WARNING_MS,
+  deriveSessionExpiry,
+  isBypassAuthEnabled,
+  normalizeRoles,
+  normalizeUser,
+} from '../lib/authSession';
 
 export const AuthContext = createContext();
 
-const SESSION_WARNING_MS = 5 * 60 * 1000;
-
-const isTruthyEnv = (value) => {
-  if (value === true) return true;
-  if (!value) return false;
-  return String(value).toLowerCase() === 'true' || String(value) === '1';
-};
-
-const normalizeRoles = (user) => {
-  if (!user) return [];
-
-  if (Array.isArray(user.roles)) {
-    return user.roles.filter(Boolean);
-  }
-
-  if (user.role) {
-    return [user.role];
-  }
-
-  return [];
-};
-
-const normalizeUser = (userLike) => {
-  if (!userLike) return null;
-
-  const roles = normalizeRoles(userLike);
-
-  return {
-    ...userLike,
-    roles,
-    role: userLike.role || roles[0] || null,
-    authenticated: true,
-  };
-};
-
-const deriveSessionExpiry = (sessionState) => {
-  if (!sessionState?.expiresAt) {
-    return null;
-  }
-
-  const parsed = new Date(sessionState.expiresAt);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+const hasUsableSessionPayload = (response) =>
+  !!(
+    response?.data?.user ||
+    response?.user ||
+    response?.data?.session ||
+    response?.session
+  );
 
 export function AuthProvider({ children }) {
-  const bypassAuth = import.meta.env.DEV && isTruthyEnv(import.meta.env.VITE_BYPASS_AUTH);
+  const bypassAuth = isBypassAuthEnabled();
 
   const [user, setUser] = useState(() => {
     if (!bypassAuth) return null;
@@ -82,11 +53,13 @@ export function AuthProvider({ children }) {
 
   const refreshSession = useCallback(async () => {
     if (bypassAuth) {
-      return normalizeUser({
+      const bypassUser = normalizeUser({
         email: import.meta.env.VITE_BYPASS_AUTH_EMAIL || 'judge@verdictcouncil.sg',
         role: import.meta.env.VITE_BYPASS_AUTH_ROLE || 'judge',
         devBypass: true,
       });
+      setUser(bypassUser);
+      return bypassUser;
     }
 
     const sessionState = await api.getSession();
@@ -110,7 +83,7 @@ export function AuthProvider({ children }) {
       } catch (err) {
         if (!isMounted) return;
 
-        if (err instanceof APIError && (err.status === 401 || err.status === 404)) {
+        if (err instanceof APIError && (err.status === 401 || err.status === 404 || err.status === 0)) {
           clearSession();
         } else {
           clearSession();
@@ -152,10 +125,9 @@ export function AuthProvider({ children }) {
 
     try {
       const response = await api.login(email, password);
-      const fallbackUser = { email };
-      const sessionState = response?.data?.user || response?.user || response?.data?.session
+      const sessionState = hasUsableSessionPayload(response)
         ? {
-            user: response?.data?.user || response?.user || fallbackUser,
+            user: response?.data?.user || response?.user || null,
             session: response?.data?.session || response?.session || null,
             expiresAt:
               response?.data?.expires_at ||
@@ -166,13 +138,9 @@ export function AuthProvider({ children }) {
         : null;
 
       if (sessionState) {
-        applySession(sessionState, fallbackUser);
+        applySession(sessionState);
       } else {
-        try {
-          await refreshSession();
-        } catch {
-          applySession(null, fallbackUser);
-        }
+        await refreshSession();
       }
 
       return response;
@@ -215,21 +183,22 @@ export function AuthProvider({ children }) {
     setError(null);
 
     try {
-      const response = await api.extendSession();
-      const sessionState = response?.data || response;
+      const sessionState = await api.extendSession();
+      const hasExpiry = sessionState?.expiresAt || sessionState?.session?.expires_at;
 
-      if (sessionState?.expires_at || sessionState?.session?.expires_at) {
+      if (hasExpiry) {
         applySession(
           {
-            user,
+            user: sessionState?.user || user,
             session: sessionState?.session || null,
-            expiresAt: sessionState?.expires_at || sessionState?.session?.expires_at,
+            expiresAt: sessionState?.expiresAt || sessionState?.session?.expires_at,
           },
           user,
         );
-      } else {
-        await refreshSession();
+        return;
       }
+
+      await refreshSession();
     } catch (err) {
       setError(getErrorMessage(err, 'Unable to extend session'));
       throw err;

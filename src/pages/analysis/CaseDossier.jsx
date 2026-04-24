@@ -1,29 +1,51 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   AlertCircle,
   BookOpen,
-  CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
   Database,
   Download,
-  ExternalLink,
+  Edit2,
+  FileQuestion,
   FileSearch,
   FileText,
   MessageSquare,
+  Paperclip,
+  Plus,
+  RefreshCw,
   Scale,
-  Search,
   ShieldCheck,
   TriangleAlert,
   Users,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { useAPI, useCase } from '../../hooks';
+import { useAuth, useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import { normalizeVerdict } from '../../lib/caseWorkspace';
+import {
+  extractItems,
+  normalizeArgumentsResource,
+  normalizeCaseDetail,
+  normalizeHearingAnalysis,
+  normalizeEvidenceResource,
+  normalizeKnowledgeBaseStatus,
+  normalizeStatutesResource,
+  normalizeTimelineResource,
+  normalizeWitnessResource,
+} from '../../lib/caseWorkspace';
+
+import EvidenceGapsPanel from '../../components/analysis/EvidenceGapsPanel';
+import PrecedentSearchPanel from '../../components/analysis/PrecedentSearchPanel';
+import SourceExcerptModal from '../../components/analysis/SourceExcerptModal';
+import FairnessAuditPanel from '../../components/analysis/FairnessAuditPanel';
+import KnowledgeBaseStatusChip from '../../components/analysis/KnowledgeBaseStatusChip';
+import DisputedFactsPanel from '../../components/analysis/DisputedFactsPanel';
+import ReopenRequestForm from '../../components/judge/ReopenRequestForm';
+import DecisionEntryForm from '../../components/cases/DecisionEntryForm';
 
 const TABS = [
+  { id: 'documents', label: 'Documents', icon: Paperclip, activeClass: 'bg-teal-100 text-teal-700 border-2 border-teal-300' },
   { id: 'evidence', label: 'Evidence', icon: FileText, activeClass: 'bg-blue-100 text-blue-700 border-2 border-blue-300' },
   { id: 'evidence-gaps', label: 'Evidence Gaps', icon: TriangleAlert, activeClass: 'bg-amber-100 text-amber-700 border-2 border-amber-300' },
   { id: 'timeline', label: 'Timeline', icon: Clock, activeClass: 'bg-purple-100 text-purple-700 border-2 border-purple-300' },
@@ -31,56 +53,108 @@ const TABS = [
   { id: 'law', label: 'Law & Statutes', icon: BookOpen, activeClass: 'bg-orange-100 text-orange-700 border-2 border-orange-300' },
   { id: 'precedents', label: 'Precedents', icon: FileSearch, activeClass: 'bg-cyan-100 text-cyan-700 border-2 border-cyan-300' },
   { id: 'arguments', label: 'Arguments', icon: MessageSquare, activeClass: 'bg-rose-100 text-rose-700 border-2 border-rose-300' },
-  { id: 'deliberation', label: 'Deliberation', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
+  { id: 'questions', label: 'Suggested Questions', icon: FileQuestion, activeClass: 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300' },
+  { id: 'hearing_analysis', label: 'Hearing Analysis', icon: Scale, activeClass: 'bg-sky-100 text-sky-700 border-2 border-sky-300' },
   { id: 'fairness', label: 'Fairness', icon: ShieldCheck, activeClass: 'bg-violet-100 text-violet-700 border-2 border-violet-300' },
-  { id: 'verdict', label: 'Verdict', icon: CheckCircle, activeClass: 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300' },
 ];
 
-const extractItems = (payload, keys = []) => {
-  if (!payload) return [];
+const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
 
-  for (const key of keys) {
-    if (Array.isArray(payload?.[key])) {
-      return payload[key];
-    }
-  }
-
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.results)) return payload.results;
-  if (Array.isArray(payload)) return payload;
-  return [];
+function fileTypeIcon(fileType) {
+  if (!fileType) return '📄';
+  const t = fileType.toLowerCase();
+  if (t.includes('pdf')) return '📕';
+  if (t.includes('image') || t.includes('jpg') || t.includes('jpeg') || t.includes('png')) return '🖼️';
+  if (t.includes('word') || t.includes('doc')) return '📝';
+  if (t.includes('excel') || t.includes('sheet') || t.includes('csv')) return '📊';
+  if (t.includes('video')) return '🎬';
+  if (t.includes('audio')) return '🎵';
+  return '📄';
+}
+const extractEvidenceGapItems = (payload) => {
+  const root = payload?.data || payload || {};
+  const weakEvidence = extractItems(root, ['weak_evidence']).map((item, index) => ({
+    id: item.id || `weak-evidence-${index}`,
+    title: `Weak ${item.evidence_type || 'evidence'} item`,
+    description:
+      Object.keys(item.admissibility_flags || {}).length > 0
+        ? `Admissibility flags: ${Object.keys(item.admissibility_flags).join(', ')}`
+        : 'This evidence item needs corroboration or closer admissibility review.',
+    severity: item.strength === 'weak' ? 'significant' : 'medium',
+    status: item.strength || 'unrated',
+    next_step: 'Probe authenticity, corroboration, and legal sufficiency at hearing.',
+  }));
+  const uncorroboratedFacts = extractItems(root, ['uncorroborated_facts']).map((item, index) => ({
+    id: item.id || `uncorroborated-${index}`,
+    title: 'Uncorroborated fact',
+    description: item.description || 'A fact record lacks corroborating support.',
+    severity: item.confidence === 'high' ? 'significant' : 'medium',
+    status: item.status || 'uncorroborated',
+    next_step: 'Seek corroborating testimony or source material.',
+  }));
+  return [...weakEvidence, ...uncorroboratedFacts];
 };
-
-const extractEvidenceGapItems = (payload) =>
-  extractItems(payload, ['gaps', 'items', 'evidence_gaps', 'missing_evidence']);
 
 const extractDisputedFacts = (payload) =>
-  extractItems(payload, ['disputed_facts', 'facts', 'items']);
+  extractItems(payload, ['events', 'disputed_facts', 'facts', 'items']).filter(
+    (fact) => String(fact?.status || '').toLowerCase() === 'disputed',
+  );
 
 const extractFairnessChecks = (payload) =>
-  extractItems(payload, ['checks', 'items', 'audit_checks']);
+  extractItems(payload, ['governance_checks', 'checks', 'items', 'audit_checks']).map(
+    (check, index) => ({
+      id: check.id || check.audit_log_id || `fairness-${index}`,
+      title: check.title || check.action || `Governance Check ${index + 1}`,
+      description:
+        check.description ||
+        check.summary ||
+        JSON.stringify(check.fairness_data || {}, null, 2),
+      status:
+        check.status ||
+        check.fairness_data?.status ||
+        check.fairness_data?.result ||
+        'review',
+      recommendation:
+        check.recommendation ||
+        check.fairness_data?.recommendation ||
+        check.fairness_data?.action ||
+        null,
+    }),
+  );
 
 const extractPrecedentItems = (payload) =>
-  extractItems(payload, ['results', 'precedents', 'items']);
-
-const normalizeKnowledgeBase = (payload) => {
-  const root = payload?.data || payload || {};
-  return {
-    initialized: Boolean(root.initialized ?? root.ready ?? root.available),
-    status: root.status || (root.initialized ? 'ready' : 'not_initialized'),
-    documents: root.documents_count ?? root.document_count ?? root.documents ?? 0,
-    chunks: root.chunks_count ?? root.chunk_count ?? null,
-    lastUpdated: root.updated_at || root.last_updated_at || root.last_indexed_at || null,
-  };
-};
+  extractItems(payload, ['results', 'precedents', 'items']).map((item) => ({
+    ...item,
+    title: item.title || item.citation || item.case_name || item.name,
+    summary:
+      item.summary || item.reasoning_summary || item.snippet || item.holding || null,
+    score: item.score ?? item.relevance_score ?? item.similarity_score ?? null,
+    url: item.url || item.link || item.elitigation_url || null,
+  }));
 
 const getFairnessSummary = (payload, checks) => {
-  if (!payload) return null;
+  const root = payload?.data || payload || {};
+  const fairnessReport = root.verdict_fairness_report || {};
   return {
-    score: payload.score ?? payload.fairness_score ?? payload.overall_score ?? null,
-    summary: payload.summary || payload.assessment || payload.notes || null,
-    flagged: payload.flagged_issues ?? payload.issue_count ?? checks.filter((check) => !isCheckPassing(check)).length,
+    score:
+      fairnessReport.score ??
+      fairnessReport.overall_score ??
+      root.score ??
+      root.fairness_score ??
+      root.overall_score ??
+      null,
+    summary:
+      fairnessReport.summary ||
+      root.summary ||
+      root.assessment ||
+      root.notes ||
+      null,
+    flagged:
+      fairnessReport.flagged_issues ??
+      fairnessReport.issue_count ??
+      root.flagged_issues ??
+      root.issue_count ??
+      checks.filter((check) => !isCheckPassing(check)).length,
   };
 };
 
@@ -92,8 +166,6 @@ const isCheckPassing = (check) => {
 };
 
 const evidenceTypeLabel = (item, idx) => item.title || item.label || item.name || `Evidence ${idx + 1}`;
-const gapLabel = (item, idx) => item.title || item.label || item.category || `Gap ${idx + 1}`;
-const factLabel = (fact, idx) => fact.statement || fact.text || fact.title || `Fact ${idx + 1}`;
 
 function MetaBadge({ children, tone = 'gray' }) {
   const tones = {
@@ -114,25 +186,21 @@ function MetaBadge({ children, tone = 'gray' }) {
 
 export default function CaseDossier() {
   const { caseId } = useParams();
+  useAuth();
   const { showError, showNotification } = useAPI();
-  const { activeTab, setActiveTab } = useCase();
+  const {
+    activeTab,
+    setActiveTab,
+    caseDetail: contextCaseDetail,
+    updateCaseDetail,
+    pipelineStatus,
+    dossierCache,
+    updateDossierCache,
+  } = useCase();
 
-  const [loading, setLoading] = useState(true);
+  // ── UI-only local state (does NOT need to survive tab navigation) ─────────
+  const [restarting, setRestarting] = useState(false);
   const [expandedItems, setExpandedItems] = useState({});
-  const [evidence, setEvidence] = useState(null);
-  const [evidenceGaps, setEvidenceGaps] = useState(null);
-  const [timeline, setTimeline] = useState(null);
-  const [witnesses, setWitnesses] = useState(null);
-  const [statutes, setStatutes] = useState(null);
-  const [arguments_, setArguments] = useState(null);
-  const [deliberation, setDeliberation] = useState(null);
-  const [verdict, setVerdict] = useState(null);
-  const [fairnessAudit, setFairnessAudit] = useState(null);
-  const [knowledgeBaseStatus, setKnowledgeBaseStatus] = useState(null);
-  const [decisionType, setDecisionType] = useState('accept');
-  const [decisionReason, setDecisionReason] = useState('');
-  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
-  const [decisionLocked, setDecisionLocked] = useState(false);
   const [disputeReason, setDisputeReason] = useState({});
   const [disputeSubmitting, setDisputeSubmitting] = useState({});
   const [precedentQuery, setPrecedentQuery] = useState('');
@@ -140,72 +208,168 @@ export default function CaseDossier() {
   const [precedentResults, setPrecedentResults] = useState([]);
   const [searchingPrecedents, setSearchingPrecedents] = useState(false);
   const [precedentSearched, setPrecedentSearched] = useState(false);
+  const [precedentSearchedAt, setPrecedentSearchedAt] = useState(null);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [showDecisionForm, setShowDecisionForm] = useState(false);
+  const [excerptTarget, setExcerptTarget] = useState(null);
+  const [editingQuestions, setEditingQuestions] = useState({});
+  const [savingQuestions, setSavingQuestions] = useState(false);
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);
+  // ── Shorthand aliases from the shared cache ──────────────────────────────
+  const loading = dossierCache.dossierLoading;
+  const caseDetail = dossierCache.caseDetail;
+  const evidence = dossierCache.evidence;
+  const evidenceGaps = dossierCache.evidenceGaps;
+  const timeline = dossierCache.timeline;
+  const witnesses = dossierCache.witnesses;
+  const statutes = dossierCache.statutes;
+  const arguments_ = dossierCache.arguments_;
+  const hearingAnalysis = dossierCache.hearingAnalysis;
+  const fairnessAudit = dossierCache.fairnessAudit;
+  const knowledgeBaseStatus = dossierCache.knowledgeBaseStatus;
+  const reopenRequests = dossierCache.reopenRequests;
 
-        const [
-          evidenceRes,
-          evidenceGapsRes,
-          timelineRes,
-          witnessesRes,
-          statutesRes,
-          argumentsRes,
-          deliberationRes,
-          verdictRes,
-          fairnessRes,
-          kbRes,
-        ] = await Promise.allSettled([
-          api.getEvidence(caseId),
-          api.getEvidenceGaps(caseId),
-          api.getTimeline(caseId),
-          api.getWitnesses(caseId),
-          api.getStatutes(caseId),
-          api.getArguments(caseId),
-          api.getDeliberation(caseId),
-          api.getVerdict(caseId),
-          api.getFairnessAudit(caseId),
-          api.getKnowledgeBaseStatus(),
-        ]);
+  // ── Helpers for local updates that must also persist to cache ─────────────
+  const setTimeline = useCallback(
+    (updater) => {
+      const next = typeof updater === 'function' ? updater(dossierCache.timeline) : updater;
+      updateDossierCache({ timeline: next });
+    },
+    [dossierCache.timeline, updateDossierCache],
+  );
 
-        setEvidence(evidenceRes.status === 'fulfilled' ? evidenceRes.value?.data : null);
-        setEvidenceGaps(evidenceGapsRes.status === 'fulfilled' ? evidenceGapsRes.value : null);
-        setTimeline(timelineRes.status === 'fulfilled' ? timelineRes.value?.data : null);
-        setWitnesses(witnessesRes.status === 'fulfilled' ? witnessesRes.value?.data : null);
-        setStatutes(statutesRes.status === 'fulfilled' ? statutesRes.value?.data : null);
-        setArguments(argumentsRes.status === 'fulfilled' ? argumentsRes.value?.data : null);
-        setDeliberation(deliberationRes.status === 'fulfilled' ? deliberationRes.value?.data : null);
-        setVerdict(verdictRes.status === 'fulfilled' ? normalizeVerdict(verdictRes.value) : null);
-        setFairnessAudit(fairnessRes.status === 'fulfilled' ? fairnessRes.value : null);
-        setKnowledgeBaseStatus(
-          kbRes.status === 'fulfilled' ? normalizeKnowledgeBase(kbRes.value) : null,
-        );
+  const setReopenRequests = useCallback(
+    (updater) => {
+      const next = typeof updater === 'function' ? updater(dossierCache.reopenRequests) : updater;
+      updateDossierCache({ reopenRequests: next });
+    },
+    [dossierCache.reopenRequests, updateDossierCache],
+  );
 
-        if (verdictRes.status === 'fulfilled') {
-          const normalizedVerdict = normalizeVerdict(verdictRes.value);
-          if (normalizedVerdict?.judge_decision || normalizedVerdict?.decision_recorded_at) {
-            setDecisionLocked(true);
-          }
-        }
-      } catch (err) {
-        showError(getErrorMessage(err, 'Failed to fetch case analysis'));
-      } finally {
-        setLoading(false);
-      }
-    };
+  // ── Data fetcher (writes directly into shared cache) ─────────────────────
+  const fetchAllData = useCallback(async () => {
+    updateDossierCache({ dossierLoading: true });
+    try {
+      const [
+        caseDetailRes,
+        evidenceRes,
+        evidenceGapsRes,
+        timelineRes,
+        witnessesRes,
+        statutesRes,
+        argumentsRes,
+        deliberationRes,
+        fairnessRes,
+        kbRes,
+        reopenRequestsRes,
+      ] = await Promise.allSettled([
+        api.getCaseDetail(caseId),
+        api.getEvidence(caseId),
+        api.getEvidenceGaps(caseId),
+        api.getTimeline(caseId),
+        api.getWitnesses(caseId),
+        api.getStatutes(caseId),
+        api.getArguments(caseId),
+        api.getHearingAnalysis(caseId),
+        api.getFairnessAudit(caseId),
+        api.getKnowledgeBaseStatus(),
+        api.listReopenRequests(caseId),
+      ]);
 
-    fetchAllData();
+      updateDossierCache({
+        cachedForCaseId: caseId,
+        caseDetail: caseDetailRes.status === 'fulfilled' ? caseDetailRes.value : dossierCache.caseDetail,
+        evidence: evidenceRes.status === 'fulfilled'
+          ? normalizeEvidenceResource(evidenceRes.value)
+          : dossierCache.evidence,
+        evidenceGaps: evidenceGapsRes.status === 'fulfilled'
+          ? evidenceGapsRes.value
+          : dossierCache.evidenceGaps,
+        timeline: timelineRes.status === 'fulfilled'
+          ? normalizeTimelineResource(timelineRes.value)
+          : dossierCache.timeline,
+        witnesses: witnessesRes.status === 'fulfilled'
+          ? normalizeWitnessResource(witnessesRes.value)
+          : dossierCache.witnesses,
+        statutes: statutesRes.status === 'fulfilled'
+          ? normalizeStatutesResource(statutesRes.value)
+          : dossierCache.statutes,
+        arguments_: argumentsRes.status === 'fulfilled'
+          ? normalizeArgumentsResource(argumentsRes.value)
+          : dossierCache.arguments_,
+        hearingAnalysis: deliberationRes.status === 'fulfilled'
+          ? normalizeHearingAnalysis(deliberationRes.value)
+          : dossierCache.hearingAnalysis,
+        fairnessAudit: fairnessRes.status === 'fulfilled'
+          ? fairnessRes.value
+          : dossierCache.fairnessAudit,
+        knowledgeBaseStatus: kbRes.status === 'fulfilled'
+          ? normalizeKnowledgeBaseStatus(kbRes.value)
+          : dossierCache.knowledgeBaseStatus,
+        reopenRequests: reopenRequestsRes.status === 'fulfilled'
+          ? (reopenRequestsRes.value?.items || reopenRequestsRes.value?.data?.items || [])
+          : dossierCache.reopenRequests,
+      });
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to fetch case analysis'));
+    } finally {
+      updateDossierCache({ dossierLoading: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, showError]);
 
+  // ── Initial load: only fetch when cache is cold / belongs to a different case
+  useEffect(() => {
+    if (dossierCache.cachedForCaseId !== caseId && !dossierCache.dossierLoading) {
+      fetchAllData();
+    }
+  // fetchAllData is stable per caseId; we only want to run on mount or caseId change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId]);
+
+  // ── Auto-refresh when pipeline transitions to a terminal / gate-pause state
+  const pipelineOverallStatus = pipelineStatus?.overall_status;
+  const prevPipelineStatusRef = useRef(pipelineOverallStatus);
+  useEffect(() => {
+    const prev = prevPipelineStatusRef.current;
+    prevPipelineStatusRef.current = pipelineOverallStatus;
+
+    if (!pipelineOverallStatus || pipelineOverallStatus === prev) return;
+
+    // Re-fetch dossier data whenever an agent phase completes or gate pauses
+    const triggering = new Set([
+      'ready_for_review',
+      'awaiting_review_gate1',
+      'awaiting_review_gate2',
+      'awaiting_review_gate3',
+      'awaiting_review_gate4',
+      'failed',
+      'escalated',
+    ]);
+    if (triggering.has(pipelineOverallStatus)) {
+      fetchAllData();
+    }
+  }, [pipelineOverallStatus, fetchAllData]);
+
   const evidenceGapItems = useMemo(() => extractEvidenceGapItems(evidenceGaps), [evidenceGaps]);
-  const disputedFacts = useMemo(() => extractDisputedFacts(evidenceGaps), [evidenceGaps]);
+  const disputedFacts = useMemo(() => extractDisputedFacts(timeline), [timeline]);
   const fairnessChecks = useMemo(() => extractFairnessChecks(fairnessAudit), [fairnessAudit]);
   const fairnessSummary = useMemo(
     () => getFairnessSummary(fairnessAudit, fairnessChecks),
     [fairnessAudit, fairnessChecks],
   );
+
+  // Resolved raw case status: global context (updated by CaseDetail on uploads/restart)
+  // takes precedence over the cache entry.
+  const caseRawStatus = contextCaseDetail?.raw_status || caseDetail?.status || null;
+
+  // Resolved documents: global context is always up-to-date after uploads.
+  // Fall back to the locally-fetched caseDetail if context isn't populated yet.
+  const resolvedDocuments = useMemo(() => {
+    const contextDocs = contextCaseDetail?.documents;
+    if (Array.isArray(contextDocs) && contextDocs.length > 0) return contextDocs;
+    return caseDetail?.documents || [];
+  }, [contextCaseDetail?.documents, caseDetail?.documents]);
 
   const toggleExpanded = (id) => {
     setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -221,11 +385,10 @@ export default function CaseDossier() {
       witnesses: witnesses || null,
       statutes: statutes || null,
       arguments: arguments_ || null,
-      deliberation: deliberation || null,
+      hearing_analysis: hearingAnalysis || null,
       fairness_audit: fairnessAudit || null,
       knowledge_base_status: knowledgeBaseStatus || null,
       precedent_search_results: precedentResults || [],
-      verdict: verdict || null,
     };
 
     const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
@@ -237,38 +400,6 @@ export default function CaseDossier() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  const handleDecisionSubmit = async () => {
-    const requiresReason = decisionType === 'modify' || decisionType === 'reject';
-
-    if (requiresReason && !decisionReason.trim()) {
-      showError('Modify and Reject decisions require a written reason.');
-      return;
-    }
-
-    try {
-      setDecisionSubmitting(true);
-      const payload = await api.recordDecision(caseId, {
-        decision_type: decisionType,
-        reason: decisionReason.trim() || undefined,
-      });
-
-      const nextVerdict = normalizeVerdict(payload);
-      setVerdict({
-        ...verdict,
-        ...nextVerdict,
-        judge_decision: decisionType,
-        judge_reason: decisionReason.trim() || null,
-        decision_recorded_at: new Date().toISOString(),
-      });
-      setDecisionLocked(true);
-      showNotification('Decision recorded successfully.', 'success');
-    } catch (error) {
-      showError(getErrorMessage(error, 'Failed to record decision'));
-    } finally {
-      setDecisionSubmitting(false);
-    }
   };
 
   const handleDisputeFact = async (fact, idx) => {
@@ -283,28 +414,22 @@ export default function CaseDossier() {
     try {
       setDisputeSubmitting((prev) => ({ ...prev, [factId]: true }));
       await api.disputeFact(caseId, factId, { reason });
-      setEvidenceGaps((current) => {
+      setTimeline((current) => {
         if (!current) return current;
-        const nextFacts = extractDisputedFacts(current).map((item, itemIdx) => {
-          const itemKey = item?.id || item?.fact_id || item?.uuid || itemIdx;
-          if (String(itemKey) !== String(factId)) return item;
+        if (Array.isArray(current?.events)) {
           return {
-            ...item,
-            status: 'disputed',
-            disputed: true,
-            dispute_reason: reason,
+            ...current,
+            events: current.events.map((item, itemIdx) => {
+              const itemKey = item?.id || item?.fact_id || item?.uuid || itemIdx;
+              if (String(itemKey) !== String(factId)) return item;
+              return {
+                ...item,
+                status: 'disputed',
+                disputed: true,
+                dispute_reason: reason,
+              };
+            }),
           };
-        });
-
-        if (Array.isArray(current)) return nextFacts;
-        if (Array.isArray(current?.disputed_facts)) {
-          return { ...current, disputed_facts: nextFacts };
-        }
-        if (Array.isArray(current?.facts)) {
-          return { ...current, facts: nextFacts };
-        }
-        if (Array.isArray(current?.items)) {
-          return { ...current, items: nextFacts };
         }
         return current;
       });
@@ -327,6 +452,7 @@ export default function CaseDossier() {
       setPrecedentSearched(true);
       const payload = await api.searchPrecedents(precedentQuery.trim(), precedentDomain.trim() || undefined);
       setPrecedentResults(extractPrecedentItems(payload));
+      setPrecedentSearchedAt(payload?.searched_at || payload?.data?.searched_at || new Date().toISOString());
     } catch (error) {
       showError(getErrorMessage(error, 'Failed to search precedents'));
       setPrecedentResults([]);
@@ -335,7 +461,39 @@ export default function CaseDossier() {
     }
   };
 
-  if (loading) {
+  const handleReopenRequest = async (payload) => {
+    try {
+      setReopenSubmitting(true);
+      const response = await api.requestCaseReopen(caseId, payload);
+      const item = response?.data || response;
+      setReopenRequests((prev) => [item, ...prev]);
+      showNotification('Reopen request submitted for senior review.', 'success');
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to submit reopen request'));
+    } finally {
+      setReopenSubmitting(false);
+    }
+  };
+
+  const handleRestartPipeline = async () => {
+    try {
+      setRestarting(true);
+      await api.restartPipeline(caseId);
+      showNotification('Pipeline restarted — processing will begin shortly.', 'success');
+      // Refresh global context (header status badge) and dossier cache
+      const updated = await api.getCaseDetail(caseId);
+      updateCaseDetail(normalizeCaseDetail(updated, caseId));
+      updateDossierCache({ caseDetail: updated });
+    } catch (err) {
+      showError(getErrorMessage(err, 'Failed to restart pipeline'));
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  // Only block the whole view on the very first load (cache cold).
+  // Subsequent refreshes show an inline spinner in the header instead.
+  if (loading && dossierCache.cachedForCaseId !== caseId) {
     return (
       <div className="card-lg flex items-center justify-center h-96">
         <div className="text-center">
@@ -358,13 +516,7 @@ export default function CaseDossier() {
               <h1 className="text-2xl font-bold text-navy-900">Case dossier</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {knowledgeBaseStatus?.initialized ? (
-                <MetaBadge tone="emerald">
-                  KB ready{knowledgeBaseStatus.documents ? ` • ${knowledgeBaseStatus.documents} docs` : ''}
-                </MetaBadge>
-              ) : (
-                <MetaBadge tone="amber">KB not initialized</MetaBadge>
-              )}
+              <KnowledgeBaseStatusChip status={knowledgeBaseStatus} />
               {fairnessSummary?.score !== null && fairnessSummary?.score !== undefined && (
                 <MetaBadge tone="violet">Fairness score {fairnessSummary.score}%</MetaBadge>
               )}
@@ -375,21 +527,44 @@ export default function CaseDossier() {
                 <MetaBadge tone="rose">{disputedFacts.length} disputed facts</MetaBadge>
               )}
             </div>
-            {knowledgeBaseStatus && (
-              <p className="text-sm text-gray-600">
-                Knowledge base status: {knowledgeBaseStatus.status}
-                {knowledgeBaseStatus.lastUpdated && ` • Updated ${new Date(knowledgeBaseStatus.lastUpdated).toLocaleString()}`}
-              </p>
-            )}
           </div>
 
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Inline refresh spinner / manual refresh button */}
+            {loading ? (
+              <span className="flex items-center gap-1.5 text-xs text-gray-400 px-3 py-1.5">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                Refreshing…
+              </span>
+            ) : (
+              <button
+                onClick={fetchAllData}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                title="Refresh all dossier data from the server"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Refresh
+              </button>
+            )}
+            {RESTARTABLE_STATUSES.has(caseRawStatus) && (
+              <button
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-60"
+                title="Restart the pipeline for this case"
+              >
+                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </button>
+            )}
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -415,6 +590,86 @@ export default function CaseDossier() {
         </div>
       </div>
 
+      {activeTab === 'documents' && (
+        <div className="card-lg">
+          <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
+            <Paperclip className="w-6 h-6" />
+            Case Documents
+          </h2>
+
+          {RESTARTABLE_STATUSES.has(caseRawStatus) && (
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-300 bg-rose-50 px-5 py-4">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-rose-900">
+                  Pipeline {caseRawStatus === 'escalated' ? 'escalated' : 'failed'}
+                </p>
+                <p className="text-sm text-rose-800 mt-1">
+                  {caseRawStatus === 'failed_retryable'
+                    ? 'The pipeline was interrupted before completing. You can restart it using the button above.'
+                    : caseRawStatus === 'escalated'
+                    ? 'This case was escalated for human review. You may restart the pipeline if the issue has been resolved.'
+                    : 'The pipeline encountered an error and could not complete. Check the audit log for details, then restart the pipeline.'}
+                </p>
+              </div>
+              <button
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-60 shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </button>
+            </div>
+          )}
+
+          {(() => {
+            const docs = resolvedDocuments;
+            if (docs.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <Paperclip className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No documents attached to this case</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Documents are uploaded during case intake and are listed here for reference.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="divide-y divide-gray-100">
+                {docs.map((doc, idx) => (
+                  <div key={doc.id || idx} className="flex items-center gap-4 py-3">
+                    <span className="text-2xl" aria-hidden="true">{fileTypeIcon(doc.file_type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-navy-900 truncate">{doc.filename || `Document ${idx + 1}`}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {doc.file_type && <span className="capitalize mr-2">{doc.file_type}</span>}
+                        {doc.uploaded_at && (
+                          <span>
+                            Uploaded{' '}
+                            {new Date(doc.uploaded_at).toLocaleDateString('en-SG', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    {doc.openai_file_id && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-mono truncate max-w-[120px]">
+                        {doc.openai_file_id}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {activeTab === 'evidence' && (
         <div className="space-y-4">
           <div className="card-lg">
@@ -436,7 +691,7 @@ export default function CaseDossier() {
                         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description || ''}</p>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-sm">
                           {item.type || 'Document'}
                         </span>
                         {expandedItems[`ev-${idx}`] ? (
@@ -484,99 +739,15 @@ export default function CaseDossier() {
 
       {activeTab === 'evidence-gaps' && (
         <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <TriangleAlert className="w-6 h-6 text-amber-600" />
-              Evidence Gaps
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Missing proof, unresolved contradictions, and factual records that need judicial review.
-            </p>
+          <EvidenceGapsPanel items={evidenceGapItems} />
 
-            {evidenceGapItems.length > 0 ? (
-              <div className="space-y-3">
-                {evidenceGapItems.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-navy-900">{gapLabel(item, idx)}</h3>
-                        <p className="text-sm text-gray-700 mt-1">
-                          {item.description || item.summary || item.reason || 'No description provided.'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.severity && <MetaBadge tone="amber">{item.severity}</MetaBadge>}
-                        {item.status && <MetaBadge tone="gray">{item.status}</MetaBadge>}
-                      </div>
-                    </div>
-                    {(item.recommended_action || item.next_step) && (
-                      <p className="text-sm text-amber-900 mt-3">
-                        <span className="font-semibold">Next step:</span> {item.recommended_action || item.next_step}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-6">No evidence gaps flagged yet</p>
-            )}
-          </div>
-
-          <div className="card-lg">
-            <h3 className="text-xl font-bold text-navy-900 mb-2">Disputed Facts</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Mark contested facts directly in the dossier so the backend can track judicial disputes.
-            </p>
-
-            {disputedFacts.length > 0 ? (
-              <div className="space-y-4">
-                {disputedFacts.map((fact, idx) => {
-                  const factId = fact?.id || fact?.fact_id || fact?.uuid || idx;
-                  const isDisputed = Boolean(fact?.disputed) || String(fact?.status || '').toLowerCase() === 'disputed';
-                  return (
-                    <div key={factId} className="rounded-lg border border-gray-200 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="font-semibold text-navy-900">{factLabel(fact, idx)}</p>
-                          {fact.source && <p className="text-xs text-gray-500 mt-1">Source: {fact.source}</p>}
-                        </div>
-                        {isDisputed ? <MetaBadge tone="rose">Disputed</MetaBadge> : <MetaBadge tone="blue">Open fact</MetaBadge>}
-                      </div>
-
-                      {(fact.explanation || fact.notes) && (
-                        <p className="text-sm text-gray-700 mb-3">{fact.explanation || fact.notes}</p>
-                      )}
-
-                      <textarea
-                        value={disputeReason[factId] ?? fact.dispute_reason ?? ''}
-                        onChange={(event) =>
-                          setDisputeReason((prev) => ({ ...prev, [factId]: event.target.value }))
-                        }
-                        disabled={isDisputed}
-                        placeholder="State why this fact is contested"
-                        className="input-field min-h-24"
-                      />
-
-                      <div className="mt-3 flex items-center justify-between gap-4">
-                        <p className="text-xs text-gray-500">
-                          This sends a dispute marker to the case record for downstream review.
-                        </p>
-                        <button
-                          onClick={() => handleDisputeFact(fact, idx)}
-                          disabled={isDisputed || disputeSubmitting[factId]}
-                          className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
-                        >
-                          {disputeSubmitting[factId] ? 'Submitting...' : isDisputed ? 'Marked disputed' : 'Dispute fact'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-6">No disputed facts were returned for this case</p>
-            )}
-          </div>
+          <DisputedFactsPanel 
+            facts={disputedFacts}
+            disputeReasons={disputeReason}
+            onReasonChange={(id, val) => setDisputeReason(prev => ({ ...prev, [id]: val }))}
+            onDispute={handleDisputeFact}
+            submitting={disputeSubmitting}
+          />
         </div>
       )}
 
@@ -604,6 +775,14 @@ export default function CaseDossier() {
                         <p className="text-xs text-gray-600 mt-2">
                           <span className="font-semibold">Parties:</span> {event.participants.join(', ')}
                         </p>
+                      )}
+                      {event.source_document_id && event.page_number && (
+                        <button
+                          onClick={() => setExcerptTarget({ documentId: event.source_document_id, page: event.page_number })}
+                          className="mt-2 text-xs text-purple-600 hover:text-purple-800 font-semibold underline"
+                        >
+                          View source (p.{event.page_number})
+                        </button>
                       )}
                     </div>
                   </div>
@@ -647,8 +826,31 @@ export default function CaseDossier() {
                       <div className="border-t p-4 bg-gray-50 space-y-3 text-sm">
                         {witness.statement && (
                           <div>
-                            <p className="font-semibold text-gray-700 mb-2">Statement</p>
+                            <p className="font-semibold text-gray-700 mb-2">Written Statement</p>
                             <p className="text-gray-700 whitespace-pre-wrap">{witness.statement}</p>
+                          </div>
+                        )}
+                        {witness.simulated_testimony && (
+                          <div className="border border-amber-200 rounded-lg overflow-hidden">
+                            <button
+                              onClick={() => toggleExpanded(`wit-sim-${idx}`)}
+                              className="w-full flex items-center justify-between px-4 py-2 bg-amber-50 hover:bg-amber-100 transition-colors"
+                            >
+                              <span className="text-xs font-semibold text-amber-700">Anticipated Testimony</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">Simulated — For Judicial Preparation Only</span>
+                                {expandedItems[`wit-sim-${idx}`] ? (
+                                  <ChevronUp className="w-4 h-4 text-amber-600" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-amber-600" />
+                                )}
+                              </div>
+                            </button>
+                            {expandedItems[`wit-sim-${idx}`] && (
+                              <div className="p-4 bg-amber-50/50">
+                                <p className="text-gray-700 whitespace-pre-wrap">{witness.simulated_testimony}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                         {witness.credibility && (
@@ -745,93 +947,17 @@ export default function CaseDossier() {
       )}
 
       {activeTab === 'precedents' && (
-        <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <FileSearch className="w-6 h-6 text-cyan-600" />
-              Live Precedent Search
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Search precedents directly from the dossier to validate the current legal theory before issuing a decision.
-            </p>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px_auto] gap-3">
-              <input
-                value={precedentQuery}
-                onChange={(event) => setPrecedentQuery(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && handlePrecedentSearch()}
-                placeholder="Search by issue, statute, holding, or legal principle"
-                className="input-field"
-              />
-              <input
-                value={precedentDomain}
-                onChange={(event) => setPrecedentDomain(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && handlePrecedentSearch()}
-                placeholder="Domain or court"
-                className="input-field"
-              />
-              <button
-                onClick={handlePrecedentSearch}
-                disabled={searchingPrecedents}
-                className="px-4 py-2.5 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Search className="w-4 h-4" />
-                {searchingPrecedents ? 'Searching...' : 'Search'}
-              </button>
-            </div>
-          </div>
-
-          <div className="card-lg">
-            {precedentResults.length > 0 ? (
-              <div className="space-y-4">
-                {precedentResults.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border border-cyan-200 bg-cyan-50/50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-navy-900">
-                          {item.title || item.case_name || item.name || `Precedent ${idx + 1}`}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {[item.citation, item.court, item.jurisdiction].filter(Boolean).join(' • ')}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {(item.score || item.relevance) && (
-                          <MetaBadge tone="blue">
-                            Match {Math.round((item.score ?? item.relevance) * ((item.score ?? item.relevance) <= 1 ? 100 : 1))}%
-                          </MetaBadge>
-                        )}
-                        {item.source && <MetaBadge tone="gray">{item.source}</MetaBadge>}
-                      </div>
-                    </div>
-
-                    {(item.summary || item.holding || item.snippet || item.text) && (
-                      <p className="text-sm text-gray-700 mt-3">
-                        {item.summary || item.holding || item.snippet || item.text}
-                      </p>
-                    )}
-
-                    {(item.url || item.link) && (
-                      <a
-                        href={item.url || item.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-700 hover:text-cyan-800 mt-3"
-                      >
-                        Open source
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : precedentSearched ? (
-              <p className="text-gray-600 text-center py-8">No precedent matches returned for this search</p>
-            ) : (
-              <p className="text-gray-600 text-center py-8">Run a search to load precedent matches</p>
-            )}
-          </div>
-        </div>
+        <PrecedentSearchPanel
+          query={precedentQuery}
+          onQueryChange={setPrecedentQuery}
+          domain={precedentDomain}
+          onDomainChange={setPrecedentDomain}
+          onSearch={handlePrecedentSearch}
+          results={precedentResults}
+          searching={searchingPrecedents}
+          searched={precedentSearched}
+          searchedAt={precedentSearchedAt}
+        />
       )}
 
       {activeTab === 'arguments' && (
@@ -852,6 +978,11 @@ export default function CaseDossier() {
                         <div key={idx} className="bg-rose-50 border border-rose-200 rounded-lg p-4">
                           <p className="font-semibold text-navy-900 mb-2">{arg.title || `Argument ${idx + 1}`}</p>
                           <p className="text-sm text-gray-700 mb-3">{arg.text}</p>
+                          {arg.weaknesses && (
+                            <p className="text-xs text-rose-800 mb-3">
+                              <span className="font-semibold">Weakness:</span> {arg.weaknesses}
+                            </p>
+                          )}
                           {arg.strength && (
                             <div className="flex items-center gap-2 text-xs">
                               <span className="font-semibold text-gray-600">Strength:</span>
@@ -882,6 +1013,11 @@ export default function CaseDossier() {
                         <div key={idx} className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                           <p className="font-semibold text-navy-900 mb-2">{arg.title || `Argument ${idx + 1}`}</p>
                           <p className="text-sm text-gray-700 mb-3">{arg.text}</p>
+                          {arg.weaknesses && (
+                            <p className="text-xs text-emerald-800 mb-3">
+                              <span className="font-semibold">Weakness:</span> {arg.weaknesses}
+                            </p>
+                          )}
                           {arg.strength && (
                             <div className="flex items-center gap-2 text-xs">
                               <span className="font-semibold text-gray-600">Strength:</span>
@@ -911,29 +1047,147 @@ export default function CaseDossier() {
         </div>
       )}
 
-      {activeTab === 'deliberation' && (
+      {activeTab === 'questions' && (
+        <div className="space-y-4">
+          {['claimant', 'respondent'].map((side) => {
+            const sideArgs = arguments_?.[side]?.arguments || [];
+            const allQuestions = sideArgs.flatMap((arg, argIdx) =>
+              (arg.suggested_questions || []).map((q, qIdx) => ({
+                ...q,
+                _argIdx: argIdx,
+                _qIdx: qIdx,
+                _key: `${side}-${argIdx}-${qIdx}`,
+              })),
+            );
+
+            const TAG_COLORS = {
+              factual_clarification: 'bg-blue-100 text-blue-700',
+              evidence_gap: 'bg-amber-100 text-amber-700',
+              credibility_probe: 'bg-rose-100 text-rose-700',
+              legal_interpretation: 'bg-violet-100 text-violet-700',
+            };
+
+            return (
+              <div key={side} className="card-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-navy-900 capitalize">
+                    {side === 'claimant' ? 'Claimant / Prosecution' : 'Respondent / Defense'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      const newQ = { question: '', rationale: '', question_type: 'factual_clarification', targets_weakness: '' };
+                      setEditingQuestions((prev) => ({
+                        ...prev,
+                        [`${side}-new`]: [...(prev[`${side}-new`] || []), newQ],
+                      }));
+                    }}
+                    className="flex items-center gap-1 text-sm font-semibold text-teal-600 hover:text-teal-700"
+                  >
+                    <Plus className="w-4 h-4" /> Add Question
+                  </button>
+                </div>
+                {allQuestions.length === 0 && !editingQuestions[`${side}-new`]?.length && (
+                  <p className="text-gray-500 text-sm">No suggested questions for this side yet.</p>
+                )}
+                <div className="space-y-3">
+                  {allQuestions.map((q) => (
+                    <div key={q._key} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          {editingQuestions[q._key] !== undefined ? (
+                            <input
+                              value={editingQuestions[q._key]}
+                              onChange={(e) => setEditingQuestions((prev) => ({ ...prev, [q._key]: e.target.value }))}
+                              className="input-field w-full text-sm"
+                            />
+                          ) : (
+                            <p className="text-sm text-gray-800">{q.question}</p>
+                          )}
+                          {q.question_type && (
+                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full font-semibold ${TAG_COLORS[q.question_type] || 'bg-gray-100 text-gray-700'}`}>
+                              {q.question_type.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setEditingQuestions((prev) => ({
+                            ...prev,
+                            [q._key]: prev[q._key] !== undefined ? undefined : q.question,
+                          }))}
+                          className="p-1 hover:bg-gray-100 rounded-sm text-gray-400 hover:text-gray-600"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(editingQuestions).some((k) => k !== `${side}-new` && editingQuestions[k] !== undefined) && (
+                  <button
+                    disabled={savingQuestions}
+                    onClick={async () => {
+                      setSavingQuestions(true);
+                      try {
+                        const updatedArgs = sideArgs.map((arg, argIdx) => ({
+                          ...arg,
+                          suggested_questions: (arg.suggested_questions || []).map((q, qIdx) => {
+                            const key = `${side}-${argIdx}-${qIdx}`;
+                            return editingQuestions[key] !== undefined
+                              ? { ...q, question: editingQuestions[key] }
+                              : q;
+                          }),
+                        }));
+                        const allUpdated = updatedArgs.flatMap((a) => a.suggested_questions || []);
+                        await api.updateSuggestedQuestions(caseId, { side, questions: allUpdated });
+                        setEditingQuestions({});
+                        showNotification('Questions saved.', 'success');
+                      } catch (err) {
+                        showError(getErrorMessage(err, 'Failed to save questions'));
+                      } finally {
+                        setSavingQuestions(false);
+                      }
+                    }}
+                    className="mt-3 btn-primary text-sm"
+                  >
+                    {savingQuestions ? 'Saving...' : 'Save Edits'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTab === 'hearing_analysis' && (
         <div className="card-lg">
           <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
             <Scale className="w-6 h-6" />
-            Deliberation & Reasoning
+            Hearing Analysis & Reasoning
           </h2>
 
-          {deliberation ? (
+          {hearingAnalysis ? (
             <div className="space-y-6">
-              {deliberation.reasoning && (
+              {hearingAnalysis.preliminary_conclusion && (
+                <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-navy-900 mb-2">Preliminary Conclusion</h3>
+                  <p className="text-sm text-gray-800">{hearingAnalysis.preliminary_conclusion}</p>
+                </div>
+              )}
+
+              {hearingAnalysis.reasoning && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Reasoning Chain</h3>
                   <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-800 max-h-96 overflow-y-auto">
-                    {deliberation.reasoning}
+                    {hearingAnalysis.reasoning}
                   </div>
                 </div>
               )}
 
-              {deliberation.key_points && deliberation.key_points.length > 0 && (
+              {hearingAnalysis.key_points && hearingAnalysis.key_points.length > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Key Points</h3>
                   <ul className="space-y-2">
-                    {deliberation.key_points.map((point, idx) => (
+                    {hearingAnalysis.key_points.map((point, idx) => (
                       <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                         <span className="text-cyan-600 font-bold text-lg mt-0.5">{idx + 1}.</span>
                         <span className="text-gray-700">{point}</span>
@@ -943,246 +1197,88 @@ export default function CaseDossier() {
                 </div>
               )}
 
-              {deliberation.risks && deliberation.risks.length > 0 && (
+              {hearingAnalysis.risks && hearingAnalysis.risks.length > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Potential Risks</h3>
                   <div className="space-y-2">
-                    {deliberation.risks.map((risk, idx) => (
+                    {hearingAnalysis.risks.map((risk, idx) => (
                       <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                         <span className="text-amber-900">{risk}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              <div className="border-t border-gray-200 pt-6">
+                {showDecisionForm ? (
+                  <DecisionEntryForm
+                    caseId={caseId}
+                    hearingAnalysis={hearingAnalysis}
+                    onDecisionRecorded={() => {
+                      setShowDecisionForm(false);
+                      showNotification('Judicial decision recorded.', 'success');
+                    }}
+                    onCancel={() => setShowDecisionForm(false)}
+                  />
+                ) : (
+                  <div className="mb-6">
+                    <button
+                      onClick={() => setShowDecisionForm(true)}
+                      className="btn-primary"
+                    >
+                      Record Decision
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-semibold text-navy-900 mb-3">Request Re-analysis</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  If new evidence has been submitted or a procedural issue is identified, you can request the pipeline to re-run this case.
+                </p>
+                <ReopenRequestForm
+                  onSubmit={handleReopenRequest}
+                  submitting={reopenSubmitting}
+                />
+                {reopenRequests.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-gray-700">Submitted requests:</p>
+                    {reopenRequests.map((req, idx) => (
+                      <div key={idx} className="text-sm text-gray-600 bg-gray-50 rounded-sm px-3 py-2">
+                        {req.reason} — <span className="capitalize">{req.status || 'pending'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-gray-600 text-center py-8">No deliberation available yet</p>
+            <p className="text-gray-600 text-center py-8">No hearing analysis available yet</p>
           )}
         </div>
       )}
 
       {activeTab === 'fairness' && (
-        <div className="space-y-4">
-          <div className="card-lg">
-            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
-              <ShieldCheck className="w-6 h-6 text-violet-600" />
-              Fairness Audit Checklist
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Review parity, procedural fairness, and any automated concerns before the final judicial action.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 mb-2">Score</p>
-                <p className="text-3xl font-bold text-violet-900">
-                  {fairnessSummary?.score ?? '--'}
-                  {fairnessSummary?.score !== null && fairnessSummary?.score !== undefined ? '%' : ''}
-                </p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Checks</p>
-                <p className="text-3xl font-bold text-navy-900">{fairnessChecks.length}</p>
-              </div>
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 mb-2">Flagged</p>
-                <p className="text-3xl font-bold text-rose-900">{fairnessSummary?.flagged ?? 0}</p>
-              </div>
-            </div>
-
-            {fairnessSummary?.summary && (
-              <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4 text-sm text-gray-700">
-                {fairnessSummary.summary}
-              </div>
-            )}
-          </div>
-
-          <div className="card-lg">
-            {fairnessChecks.length > 0 ? (
-              <div className="space-y-3">
-                {fairnessChecks.map((check, idx) => {
-                  const passing = isCheckPassing(check);
-                  return (
-                    <div
-                      key={idx}
-                      className={`rounded-lg border p-4 ${passing ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'}`}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-navy-900">
-                            {check.title || check.label || check.category || `Check ${idx + 1}`}
-                          </h3>
-                          <p className="text-sm text-gray-700 mt-1">
-                            {check.description || check.summary || check.note || 'No additional context provided.'}
-                          </p>
-                        </div>
-                        <MetaBadge tone={passing ? 'emerald' : 'amber'}>
-                          {check.status || check.result || check.outcome || (passing ? 'pass' : 'review')}
-                        </MetaBadge>
-                      </div>
-
-                      {(check.recommendation || check.mitigation || check.action) && (
-                        <p className="text-sm mt-3 text-gray-700">
-                          <span className="font-semibold">Action:</span> {check.recommendation || check.mitigation || check.action}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-gray-600 text-center py-8">No fairness checklist data available yet</p>
-            )}
-          </div>
-        </div>
+        <FairnessAuditPanel 
+          summary={fairnessSummary}
+          checks={fairnessChecks}
+        />
       )}
 
-      {activeTab === 'verdict' && (
-        <div className="card-lg">
-          <h2 className="text-2xl font-bold text-navy-900 mb-6 flex items-center gap-2">
-            <CheckCircle className="w-6 h-6 text-emerald-600" />
-            Verdict & Recommendation
-          </h2>
-
-          {verdict ? (
-            <div className="space-y-6">
-              <div className="rounded-lg border border-gray-200 p-5 bg-gray-50">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-navy-900">Judge Decision</h3>
-                    <p className="text-sm text-gray-600">
-                      Record the final judicial action for this case workspace.
-                    </p>
-                  </div>
-                  {decisionLocked && (
-                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                      Decision recorded
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                  {[
-                    { value: 'accept', label: 'Accept', activeClass: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
-                    { value: 'modify', label: 'Modify', activeClass: 'border-amber-400 bg-amber-50 text-amber-700' },
-                    { value: 'reject', label: 'Reject', activeClass: 'border-rose-400 bg-rose-50 text-rose-700' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setDecisionType(option.value)}
-                      disabled={decisionLocked}
-                      className={`px-4 py-3 rounded-lg border-2 font-semibold transition-all ${
-                        decisionType === option.value
-                          ? option.activeClass
-                          : 'border-gray-200 bg-white text-gray-700'
-                      } disabled:opacity-60`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-sm font-semibold text-navy-900">
-                    Reason {decisionType === 'modify' || decisionType === 'reject' ? '(required)' : '(optional)'}
-                  </label>
-                  <textarea
-                    value={decisionReason}
-                    onChange={(event) => setDecisionReason(event.target.value)}
-                    disabled={decisionLocked}
-                    placeholder={
-                      decisionType === 'accept'
-                        ? 'Optional note for accepting the recommendation'
-                        : `Explain why this case should be ${decisionType}ed`
-                    }
-                    className="input-field min-h-28"
-                  />
-                </div>
-
-                <div className="mt-4 flex items-center justify-between gap-4">
-                  <p className="text-xs text-gray-500">
-                    Once recorded, the decision form becomes read-only in this workspace.
-                  </p>
-                  <button
-                    onClick={handleDecisionSubmit}
-                    disabled={
-                      decisionLocked ||
-                      decisionSubmitting ||
-                      ((decisionType === 'modify' || decisionType === 'reject') && !decisionReason.trim())
-                    }
-                    className="px-5 py-2.5 bg-navy-900 text-white rounded-lg font-semibold hover:bg-navy-800 disabled:opacity-50"
-                  >
-                    {decisionSubmitting ? 'Recording...' : 'Record Decision'}
-                  </button>
-                </div>
-              </div>
-
-              {verdict.recommendation && (
-                <div className="border-l-4 border-emerald-500 pl-6 py-4">
-                  <p className="text-sm text-gray-600 uppercase tracking-wide font-semibold mb-2">Recommendation</p>
-                  <p className="text-xl font-bold text-navy-900 mb-2">{verdict.recommendation}</p>
-                  {verdict.recommendation_reason && <p className="text-gray-700">{verdict.recommendation_reason}</p>}
-                </div>
-              )}
-
-              {verdict.confidence !== undefined && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-6">
-                  <p className="text-sm text-gray-600 uppercase tracking-wide font-semibold mb-2">Confidence Score</p>
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="w-full bg-gray-300 rounded-full h-3">
-                        <div className="bg-emerald-600 h-3 rounded-full transition-all" style={{ width: `${verdict.confidence}%` }} />
-                      </div>
-                    </div>
-                    <span className="text-3xl font-bold text-emerald-600 min-w-max">{verdict.confidence}%</span>
-                  </div>
-                  {verdict.confidence_reason && <p className="text-sm text-gray-700 mt-3">{verdict.confidence_reason}</p>}
-                </div>
-              )}
-
-              {verdict.remedy && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Remedy / Outcome</h3>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-gray-800 whitespace-pre-wrap">
-                    {verdict.remedy}
-                  </div>
-                </div>
-              )}
-
-              {verdict.fairness_assessment && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Fairness Assessment</h3>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-gray-800">
-                    {verdict.fairness_assessment}
-                  </div>
-                </div>
-              )}
-
-              {verdict.conditions && verdict.conditions.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Conditions & Notes</h3>
-                  <ul className="space-y-2">
-                    {verdict.conditions.map((condition, idx) => (
-                      <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
-                        <span className="text-blue-600 font-semibold">•</span>
-                        <span className="text-gray-700">{condition}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-600 text-center py-8">No verdict available yet</p>
-          )}
-        </div>
+      {excerptTarget && (
+        <SourceExcerptModal
+          documentId={excerptTarget.documentId}
+          page={excerptTarget.page}
+          onClose={() => setExcerptTarget(null)}
+        />
       )}
 
-      {!knowledgeBaseStatus?.initialized && (
+      {!knowledgeBaseStatus?.initialized && !caseDetail?.domain_has_vector_store && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 flex items-start gap-3">
-          <Database className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+          <Database className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-amber-900">Knowledge base is not ready</p>
             <p className="text-sm text-amber-800 mt-1">

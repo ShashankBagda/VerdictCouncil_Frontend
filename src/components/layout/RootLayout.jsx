@@ -1,189 +1,242 @@
 import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Bell,
+  BookOpen,
+  ChevronsLeft,
+  ChevronsRight,
+  Database,
+  FolderOpen,
+  Inbox,
+  LayoutDashboard,
+  LogOut,
+  Scale,
+  Shield,
+} from 'lucide-react';
+
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { useAuth } from '../../hooks';
-import { Menu, LogOut, Home, FileText, Users, Settings, Database } from 'lucide-react';
-import api from '../../lib/api';
-import { buildWorkflowCounts, getStoredWorkflowItems, normalizeWorkflowItem } from '../../lib/escalationWorkflow';
+
+const NAV_ITEMS = [
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/', exact: true, roles: ['judge', 'admin'] },
+  { icon: FolderOpen, label: 'Cases', path: '/cases', roles: ['judge', 'admin'] },
+  { icon: BookOpen, label: 'Knowledge Base', path: '/knowledge-base', roles: ['judge'] },
+  { icon: Inbox, label: 'Senior Inbox', path: '/senior-inbox', roles: ['senior_judge', 'admin'] },
+  { icon: Shield, label: 'Domain Management', path: '/admin/domains', roles: ['admin'] },
+];
+
+function pageTitle(pathname) {
+  if (pathname === '/') return 'Dashboard';
+  if (pathname.startsWith('/cases/intake')) return 'New Case';
+  if (pathname.startsWith('/cases')) return 'Case Docket';
+  if (pathname.startsWith('/case/')) return 'Case Workspace';
+  if (pathname.startsWith('/knowledge-base')) return 'Knowledge Base';
+  if (pathname.startsWith('/admin/domains')) return 'Domain Management';
+  return 'VerdictCouncil';
+}
 
 export function RootLayout() {
   const navigate = useNavigate();
-  const { logout, user, hasAnyRole } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [inboxCount, setInboxCount] = React.useState(0);
+  const location = useLocation();
+  const { logout, user, isAuthenticated, isAuthResolved } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
 
-  const roleLabel = user?.role
-    ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-    : 'Authenticated User';
+  const userRole = user?.role || '';
+  const isAdmin = userRole === 'admin';
+  const roleLabel = userRole
+    ? userRole.charAt(0).toUpperCase() + userRole.slice(1).replace('_', ' ')
+    : null;
+  const userInitials = user?.email ? user.email.split('@')[0].slice(0, 2).toUpperCase() : 'VC';
+  const allowedNav = NAV_ITEMS.filter((item) => item.roles.includes(userRole));
+  const title = pageTitle(location.pathname);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
-  React.useEffect(() => {
-    let isMounted = true;
+  const isActive = (path, exact) => (exact ? location.pathname === path : location.pathname.startsWith(path));
 
-    const loadInboxCount = async () => {
-      try {
-        const res = await api.getEscalatedCases();
-        if (!isMounted) return;
-        const remoteItems = (res?.data?.items || res?.items || []).map(normalizeWorkflowItem);
-        const localItems = getStoredWorkflowItems();
-        const counts = buildWorkflowCounts([...remoteItems, ...localItems]);
-        setInboxCount(counts.pending);
-      } catch {
-        if (isMounted) {
-          const counts = buildWorkflowCounts(getStoredWorkflowItems());
-          setInboxCount(counts.pending);
-        }
-      }
-    };
+  if (!isAuthResolved) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex w-80 flex-col gap-4 rounded-lg border bg-card p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-10 rounded-full" />
+            <div className="flex flex-1 flex-col gap-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">Restoring session…</p>
+        </div>
+      </div>
+    );
+  }
 
-    loadInboxCount();
-    const intervalId = window.setInterval(loadInboxCount, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
+    <div className="flex min-h-screen bg-muted/30 text-foreground">
       <aside
-        className={`${
-          sidebarOpen ? 'w-64' : 'w-20'
-        } bg-navy-900 text-white transition-all duration-300 flex flex-col`}
+        className={cn(
+          'hidden shrink-0 border-r bg-background md:flex md:flex-col',
+          sidebarOpen ? 'w-64' : 'w-[72px]',
+        )}
         role="navigation"
         aria-label="Main Navigation"
       >
-        {/* Logo area */}
-        <div className="flex items-center justify-between p-4 border-b border-navy-700">
-          <h1 className={`font-bold text-lg ${!sidebarOpen && 'hidden'}`}>
-            VerdictCouncil
-          </h1>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1 hover:bg-navy-800 rounded"
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            aria-expanded={sidebarOpen}
-          >
-            <Menu size={20} />
-          </button>
+        <div className="flex h-14 items-center gap-3 px-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+            <img src="/logo.png" alt="VerdictCouncil" className="size-7 object-contain" />
+          </div>
+          {sidebarOpen && (
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">VerdictCouncil</p>
+              <p className="truncate text-xs text-muted-foreground">Judicial AI support</p>
+            </div>
+          )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-2 py-4 space-y-2">
-          <NavItem
-            icon={<Home size={20} />}
-            label="Dashboard"
-            onClick={() => navigate('/')}
-            show={sidebarOpen}
-          />
-          <NavItem
-            icon={<FileText size={20} />}
-            label="Cases"
-            onClick={() => navigate('/cases')}
-            show={sidebarOpen}
-          />
-          <NavItem
-            icon={<Users size={20} />}
-            label="Escalated Cases"
-            onClick={() => navigate('/escalated-cases')}
-            show={sidebarOpen}
-            badge={inboxCount > 0 ? String(inboxCount) : null}
-          />
-          {hasAnyRole(['admin', 'senior_judge']) && (
-            <NavItem
-              icon={<Users size={20} />}
-              label="Senior Inbox"
-              onClick={() => navigate('/senior-inbox')}
-              show={sidebarOpen}
-              badge={inboxCount > 0 ? String(inboxCount) : null}
-            />
-          )}
-          {hasAnyRole(['admin', 'senior_judge']) && (
-            <NavItem
-              icon={<Database size={20} />}
-              label="Knowledge Base"
-              onClick={() => navigate('/knowledge-base')}
-              show={sidebarOpen}
-            />
-          )}
-          <NavItem
-            icon={<Settings size={20} />}
-            label="Settings"
-            onClick={() => {}}
-            show={sidebarOpen}
-          />
+        <Separator />
+
+        <nav className="flex flex-1 flex-col gap-1 p-2">
+          {allowedNav.map(({ icon: Icon, label, path, exact }) => {
+            const active = isActive(path, exact);
+            const button = (
+              <Button
+                key={path}
+                type="button"
+                variant={active ? 'secondary' : 'ghost'}
+                className={cn('w-full justify-start', !sidebarOpen && 'justify-center px-0')}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => navigate(path)}
+              >
+                {React.createElement(Icon, { 'data-icon': sidebarOpen ? 'inline-start' : undefined })}
+                {sidebarOpen && <span className="truncate">{label}</span>}
+              </Button>
+            );
+
+            if (sidebarOpen) return button;
+
+            return (
+              <Tooltip key={path}>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right">{label}</TooltipContent>
+              </Tooltip>
+            );
+          })}
         </nav>
 
-        {/* User profile */}
-        <div className="border-t border-navy-700 p-4">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 p-2 hover:bg-navy-800 rounded transition-colors"
-            aria-label={`Logout ${user?.email || 'user'}`}
+        <Separator />
+
+        <div className="flex items-center gap-2 p-2">
+          <Avatar size="sm">
+            <AvatarFallback>{userInitials}</AvatarFallback>
+          </Avatar>
+          {sidebarOpen && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium">{user?.email}</p>
+              {roleLabel && <p className="text-xs text-muted-foreground">{roleLabel}</p>}
+            </div>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setSidebarOpen((value) => !value)}
           >
-            <LogOut size={20} />
-            {sidebarOpen && <span>Logout</span>}
-          </button>
+            {sidebarOpen ? <ChevronsLeft /> : <ChevronsRight />}
+          </Button>
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 p-4 shadow-sm flex items-center justify-between" role="banner">
-          <h1 className="text-2xl font-bold text-navy-900">VerdictCouncil</h1>
-          <div className="text-sm text-gray-600 flex items-center gap-3" role="status">
-            {user?.role && (
-              <span className="px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="flex min-w-0 items-center gap-3">
+            <Scale className="hidden text-muted-foreground sm:block" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{title}</p>
+              <p className="hidden truncate text-xs text-muted-foreground sm:block">
+                Court operations workbench
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="hidden gap-1.5 sm:inline-flex">
+              <span className="size-1.5 rounded-full bg-primary" />
+              System live
+            </Badge>
+            {roleLabel && (
+              <Badge variant={isAdmin ? 'secondary' : 'outline'} className="hidden sm:inline-flex">
                 {roleLabel}
-              </span>
+              </Badge>
             )}
-            {user?.email && (
-              <span>
-                Logged in as <strong>{user.email}</strong>
-              </span>
-            )}
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Notifications">
+              <Bell />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="User menu"
+                >
+                  <Avatar size="sm">
+                    <AvatarFallback>{userInitials}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>
+                  <span className="block truncate text-foreground">{user?.email}</span>
+                  {roleLabel && <span className="block text-muted-foreground">{roleLabel}</span>}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onSelect={() => navigate('/')}>
+                    <LayoutDashboard />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => navigate('/cases')}>
+                    <Database />
+                    Case docket
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
+                  <LogOut />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
-        {/* Page content */}
-        <main
-          className="flex-1 overflow-auto"
-          role="main"
-          id="main-content"
-        >
-          <div className="max-w-7xl mx-auto p-6">
+        <main className="flex-1 overflow-auto" role="main" id="main-content">
+          <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:py-6">
             <Outlet />
           </div>
         </main>
       </div>
     </div>
-  );
-}
-
-function NavItem({ icon, label, onClick, show, badge = null }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-navy-800 transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-navy-900"
-      aria-label={label}
-      title={label}
-    >
-      <span className="flex items-center gap-3 min-w-0">
-        <span aria-hidden="true">{icon}</span>
-        {show && <span>{label}</span>}
-      </span>
-      {badge && show && (
-        <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs font-semibold">
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }
 

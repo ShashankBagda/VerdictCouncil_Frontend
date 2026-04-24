@@ -1,19 +1,43 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
+import { useAPI } from '../../hooks';
 import { getErrorMessage } from '../../lib/api';
 
 export function SessionWarning() {
-  const { sessionWarning, extendSession, logout } = useAuth();
+  const navigate = useNavigate();
+  const {
+    sessionWarning,
+    extendSession,
+    logout,
+    isAuthenticated,
+  } = useAuth();
+  const { showError, showNotification } = useAPI();
 
   const handleExtendSession = async () => {
     try {
       await extendSession();
+      showNotification('Session refreshed.', 'success');
     } catch (error) {
-      console.error(getErrorMessage(error, 'Unable to extend session'));
+      if (error?.status === 401) {
+        await logout();
+        navigate('/login', { replace: true });
+        return;
+      }
+      showError(getErrorMessage(error, 'Unable to extend session'));
     }
   };
 
-  if (!sessionWarning) return null;
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (error) {
+      showError(getErrorMessage(error, 'Unable to logout cleanly'));
+    }
+  };
+
+  if (!sessionWarning || !isAuthenticated) return null;
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 bg-amber-50 border-b-4 border-amber-400 p-4">
@@ -24,7 +48,7 @@ export function SessionWarning() {
             Your session expires in 5 minutes. <button onClick={handleExtendSession} className="ml-2 underline hover:no-underline font-semibold">Extend</button>
           </p>
         </div>
-        <button onClick={logout} className="text-sm text-amber-700 hover:text-amber-900 underline">
+        <button onClick={handleLogout} className="text-sm text-amber-700 hover:text-amber-900 underline">
           Logout
         </button>
       </div>

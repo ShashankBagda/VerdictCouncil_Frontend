@@ -24,7 +24,7 @@ export default function ProtectedRoute({
       <div className="card-lg flex items-center justify-center h-64">
         <div className="text-center">
           <div className="spinner w-8 h-8 mx-auto mb-4" />
-          <p className="text-gray-600">Checking session…</p>
+          <p className="text-gray-600">Checking session...</p>
         </div>
       </div>
     );

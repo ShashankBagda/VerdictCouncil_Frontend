@@ -1,13 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, Outlet, NavLink } from 'react-router-dom';
-import { CheckCircle, FilePlus2, RefreshCw, UploadCloud } from 'lucide-react';
+import { FilePlus2, RefreshCw, UploadCloud } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAPI, useCase } from '../../hooks';
 import api, { getErrorMessage } from '../../lib/api';
-import {
-  normalizeCaseDetail,
-  normalizeUploadedDocument,
-} from '../../lib/caseWorkspace';
+import { cn } from '@/lib/utils';
+import { normalizeCaseDetail } from '../../lib/caseWorkspace';
+import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus';
 import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
+import DocumentUploadList from '../../components/cases/DocumentUploadList';
+import GateReviewPanel from '../../components/cases/GateReviewPanel';
+
+const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
 
 const VALID_APPEND_TYPES = [
   'application/pdf',
@@ -19,21 +26,32 @@ const VALID_APPEND_TYPES = [
 ];
 
 function StatusBadge({ status }) {
-  const tone =
+  const variant =
     status === 'closed'
-      ? 'bg-gray-100 text-gray-700'
+      ? 'secondary'
       : status === 'failed'
-        ? 'bg-rose-100 text-rose-700'
-        : status === 'completed'
-          ? 'bg-emerald-100 text-emerald-700'
-          : 'bg-blue-100 text-blue-700';
+        ? 'destructive'
+        : status === 'completed' || status === 'ready_for_review'
+          ? 'secondary'
+          : isGatePauseStatus(status)
+            ? 'outline'
+            : 'outline';
 
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${tone}`}>
+    <Badge variant={variant} className="capitalize">
       {String(status || 'processing').replace(/_/g, ' ')}
-    </span>
+    </Badge>
   );
 }
+
+const WORKSPACE_TABS = [
+  ['building', 'Building'],
+  ['graph', 'Graph Mesh'],
+  ['dossier', 'Dossier'],
+  ['what-if', 'What-If'],
+  ['hearing-pack', 'Hearing Pack'],
+  ['orchestrator', 'Orchestrator'],
+];
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -42,6 +60,7 @@ export default function CaseDetail() {
   const { caseDetail, updateCaseDetail, selectCase } = useCase();
 
   const [loading, setLoading] = useState(true);
+  const [restarting, setRestarting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [uploadErrors, setUploadErrors] = useState({});
@@ -83,6 +102,20 @@ export default function CaseDetail() {
     return caseDetail;
   }, [caseDetail, caseId]);
 
+  const handleRestartPipeline = useCallback(async () => {
+    try {
+      setRestarting(true);
+      await api.restartPipeline(caseId);
+      showNotification('Pipeline restart enqueued successfully.', 'success');
+      const payload = await api.getCaseDetail(caseId);
+      updateCaseDetail(normalizeCaseDetail(payload, caseId));
+    } catch (error) {
+      showError(getErrorMessage(error, 'Failed to restart pipeline'));
+    } finally {
+      setRestarting(false);
+    }
+  }, [caseId, showError, showNotification, updateCaseDetail]);
+
   const handleFileSelection = (fileList) => {
     const files = Array.from(fileList || []);
     const validFiles = files.filter((file) => {
@@ -117,17 +150,14 @@ export default function CaseDetail() {
     setUploadErrors({});
 
     try {
-      const appendedDocuments = [];
-
+      let anySuccess = false;
       for (let index = 0; index < selectedFiles.length; index += 1) {
         const file = selectedFiles[index];
-
         try {
-          const payload = await api.uploadDocuments(caseId, [file], (progress) => {
+          await api.uploadDocuments(caseId, [file], (progress) => {
             setUploadProgress((prev) => ({ ...prev, [index]: progress }));
           });
-
-          appendedDocuments.push(normalizeUploadedDocument(payload, file.name, index));
+          anySuccess = true;
         } catch (error) {
           setUploadErrors((prev) => ({
             ...prev,
@@ -136,19 +166,17 @@ export default function CaseDetail() {
         }
       }
 
-      if (appendedDocuments.length) {
-        const existing = workspaceCase.documents || [];
-        updateCaseDetail({
-          ...workspaceCase,
-          documents: [...appendedDocuments, ...existing].sort((a, b) => {
-            return new Date(b.uploaded_at || 0).getTime() - new Date(a.uploaded_at || 0).getTime();
-          }),
-        });
-        showNotification('Documents uploaded and version history updated.', 'success');
+      if (anySuccess) {
+        // Refetch complete state to ensure all downstream analysis (KB, Dossier) reflects new data
+        const payload = await api.getCaseDetail(caseId);
+        updateCaseDetail(normalizeCaseDetail(payload, caseId));
+        showNotification('Documents uploaded and workspace synchronized.', 'success');
       }
 
       setSelectedFiles([]);
       setUploadProgress({});
+    } catch (error) {
+      showError(getErrorMessage(error, 'Unexpected error during upload sync'));
     } finally {
       setUploading(false);
     }
@@ -156,112 +184,98 @@ export default function CaseDetail() {
 
   if (loading && !workspaceCase) {
     return (
-      <div className="card-lg flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="spinner w-8 h-8 mx-auto mb-4" />
-          <p className="text-gray-600">Loading case workspace...</p>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex h-96 flex-col justify-center gap-4">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-full max-w-2xl" />
+          <Skeleton className="h-72 w-full" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="card-lg">
-        <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-5">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-4xl font-bold text-navy-900">Case {caseId}</h1>
-              <StatusBadge status={workspaceCase?.status} />
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle className="text-2xl">
+                {workspaceCase?.title || `Case ${caseId}`}
+              </CardTitle>
+              <StatusBadge status={workspaceCase?.raw_status || workspaceCase?.status} />
             </div>
-            <p className="text-gray-600 max-w-3xl">
+            <CardDescription className="mt-2 max-w-3xl">
               {workspaceCase?.case_description || 'Case workspace for evidence, analysis, and judge actions.'}
-            </p>
+            </CardDescription>
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-primary flex items-center gap-2"
-          >
-            <FilePlus2 className="w-4 h-4" />
-            Add Documents
-          </button>
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {RESTARTABLE_STATUSES.has(workspaceCase?.raw_status) && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleRestartPipeline}
+                disabled={restarting}
+              >
+                <RefreshCw data-icon="inline-start" className={cn(restarting && 'animate-spin')} />
+                {restarting ? 'Restarting…' : 'Restart Pipeline'}
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FilePlus2 data-icon="inline-start" />
+              Add Documents
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
+      {isGatePauseStatus(workspaceCase?.raw_status) && (
+        <GateReviewPanel
+          caseId={caseId}
+          gateName={gateNameFromStatus(workspaceCase.raw_status)}
+          onAdvanced={async () => {
+            const payload = await api.getCaseDetail(caseId);
+            updateCaseDetail(normalizeCaseDetail(payload, caseId));
+          }}
+        />
+      )}
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
-          <div className="flex gap-4 mb-6 border-b border-gray-200 pb-0 overflow-x-auto">
-            <NavLink
-              to={`/case/${caseId}/building`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Building
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/graph`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Graph Mesh
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/dossier`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Dossier
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/what-if`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              What-If
-            </NavLink>
-            <NavLink
-              to={`/case/${caseId}/hearing-pack`}
-              className={({ isActive }) =>
-                `px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-teal-600 text-teal-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`
-              }
-            >
-              Hearing Pack
-            </NavLink>
+          <div className="mb-4 flex gap-1 overflow-x-auto rounded-lg border bg-background p-1">
+            {WORKSPACE_TABS.map(([slug, label]) => (
+              <NavLink
+                key={slug}
+                to={`/case/${caseId}/${slug}`}
+                className={({ isActive }) =>
+                  cn(
+                    'whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    isActive && 'bg-muted text-foreground',
+                  )
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
           </div>
 
           <Outlet />
         </div>
 
-        <aside className="space-y-4">
-          <div className="card-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-navy-900">Add Documents</h2>
-              <UploadCloud className="w-5 h-5 text-teal-600" />
-            </div>
+        <aside className="flex flex-col gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+              <div>
+                <CardTitle className="text-base">Add Documents</CardTitle>
+                <CardDescription>Append evidence to this case.</CardDescription>
+              </div>
+              <UploadCloud className="text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
             <input
               ref={fileInputRef}
               type="file"
@@ -270,109 +284,26 @@ export default function CaseDetail() {
               accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
               className="hidden"
             />
-            <button
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
-              className="w-full px-4 py-3 border border-dashed border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              className="h-auto border-dashed py-4"
             >
               Select files to append to this case
-            </button>
+            </Button>
 
-            {selectedFiles.length > 0 && (
-              <div className="mt-4 space-y-3">
-                {selectedFiles.map((file, index) => (
-                  <div key={`${file.name}-${index}`} className="rounded-lg bg-gray-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-navy-900 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                      {!uploading && (
-                        <button
-                          onClick={() => removeSelectedFile(index)}
-                          className="text-xs font-semibold text-gray-600 hover:text-gray-900"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    {uploadProgress[index] ? (
-                      <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                        <div
-                          className="bg-teal-500 h-1.5 rounded-full transition-all"
-                          style={{ width: `${uploadProgress[index]}%` }}
-                        />
-                      </div>
-                    ) : null}
-                    {uploadErrors[index] ? (
-                      <p className="text-xs text-rose-700 mt-2">{uploadErrors[index]}</p>
-                    ) : null}
-                  </div>
-                ))}
-
-                <button
-                  onClick={handleAppendDocuments}
-                  disabled={uploading}
-                  className="w-full px-4 py-2 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Uploading…
-                    </>
-                  ) : (
-                    'Upload Documents'
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="card-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-navy-900">Version History</h2>
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-            </div>
-
-            {workspaceCase?.documents?.length ? (
-              <div className="space-y-3">
-                {workspaceCase.documents.map((document) => (
-                  <div key={document.id} className="rounded-lg border border-gray-200 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-navy-900 truncate">
-                          {document.filename}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Version {document.version}
-                        </p>
-                      </div>
-                      <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-semibold">
-                        {document.status}
-                      </span>
-                    </div>
-                    {document.uploaded_at && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        Uploaded {new Date(document.uploaded_at).toLocaleString()}
-                      </p>
-                    )}
-                    {document.affected_stages?.length ? (
-                      <p className="text-xs text-teal-700 mt-2">
-                        Re-runs: {document.affected_stages.join(', ')}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-gray-500 mt-2">
-                        No affected stages reported
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-600">No uploaded documents recorded yet.</p>
-            )}
-          </div>
+            <DocumentUploadList 
+              selectedFiles={selectedFiles}
+              onRemoveFile={removeSelectedFile}
+              uploadProgress={uploadProgress}
+              uploadErrors={uploadErrors}
+              onUpload={handleAppendDocuments}
+              uploading={uploading}
+              documents={workspaceCase?.documents || []}
+            />
+            </CardContent>
+          </Card>
 
           <CaseExceptionPanel caseId={caseId} caseDetail={workspaceCase} />
         </aside>
