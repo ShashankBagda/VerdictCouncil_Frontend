@@ -53,7 +53,7 @@ export default function AgentStreamPanel({
         }
       };
 
-      es.onmessage = (event) => {
+      const handleSseEvent = (event) => {
         let data;
         try {
           data = JSON.parse(event.data);
@@ -88,6 +88,11 @@ export default function AgentStreamPanel({
           }));
         }
       };
+      // Backend emits named SSE event types (`event: progress` / `event: agent`)
+      // so EventSource.addEventListener fires correctly; onmessage only fires
+      // for un-typed frames, which is now just the intake stream.
+      es.addEventListener('progress', handleSseEvent);
+      es.addEventListener('agent', handleSseEvent);
 
       es.onerror = () => {
         setSseConnected(false);

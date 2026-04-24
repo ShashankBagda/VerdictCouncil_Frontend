@@ -349,7 +349,7 @@ export default function BuildingSimulation() {
         if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
       };
 
-      es.onmessage = (raw) => {
+      const handleSseEvent = (raw) => {
         let data;
         try { data = JSON.parse(raw.data); } catch { return; }
 
@@ -368,6 +368,9 @@ export default function BuildingSimulation() {
           }));
         }
       };
+      // Named SSE event types emitted by the backend (event: progress / event: agent).
+      es.addEventListener('progress', handleSseEvent);
+      es.addEventListener('agent', handleSseEvent);
 
       es.onerror = () => {
         setSseConnected(false);
