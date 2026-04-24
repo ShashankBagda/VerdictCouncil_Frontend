@@ -32,7 +32,7 @@ describe('RootLayout', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Restoring session...')).toBeInTheDocument();
+    expect(screen.getByText('Restoring session\u2026')).toBeInTheDocument();
   });
 
   it('redirects to login when auth is resolved but user is not authenticated', () => {
