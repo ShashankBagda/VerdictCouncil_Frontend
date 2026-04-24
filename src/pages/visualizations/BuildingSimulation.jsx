@@ -89,10 +89,9 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
   const status = agentStatus?.status || 'pending';
   const isRunning = status === 'running';
 
-  // MLflow ids ride on the Redis-driven lifecycle SSE events (phase
-  // transitions emitted by the mesh runner), not the per-call Solace
-  // events. Find the most recent lifecycle event that carries them so
-  // the link works even if the polled /status endpoint has no idea.
+  // MLflow ids are included in PipelineProgressEvent SSE events emitted
+  // by the LangGraph runner. Find the most recent event that carries them
+  // so the link works even if the polled /status endpoint has no idea.
   const mlflowEvent = [...events].reverse().find((e) => e?.mlflow_run_id);
   const mlflowRunId = mlflowEvent?.mlflow_run_id ?? agentStatus?.mlflow_run_id;
   const mlflowExperimentId =
@@ -303,33 +302,61 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
 }
 
 // ── Individual event line ────────────────────────────────────────────────────
+// Events come from two sources:
+//   1. PipelineProgressEvent (SSE): {agent, phase, step, total, ts, error, detail, mlflow_run_id}
+//   2. Synthetic poll-fallback: {agent, event, synthetic: true}
 function EventLine({ ev }) {
   if (ev.synthetic) {
-    return <span className="text-gray-400">~ status update: {ev.event}</span>;
+    return <span className="text-gray-400">~ status: {ev.event}</span>;
   }
-  switch (ev.event) {
+  // Normalise: LangGraph sends ev.phase; legacy Solace events used ev.event.
+  const phase = ev.phase || ev.event;
+  const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+  const tsSpan = ts ? <span className="text-gray-600 mr-1">[{ts}]</span> : null;
+
+  switch (phase) {
+    case 'started':
     case 'agent_started':
-      return <span className="text-blue-400">▶ Agent started</span>;
+      return (
+        <span className="text-blue-400">
+          {tsSpan}▶ Agent started
+          {ev.step != null ? <span className="text-gray-500 ml-1">(step {ev.step}/{ev.total})</span> : null}
+        </span>
+      );
+    case 'completed':
     case 'agent_completed':
       return (
         <span className="text-emerald-400">
-          ✓ Completed
-          {ev.output_summary ? (
-            <span className="text-gray-300 ml-2">{ev.output_summary}</span>
+          {tsSpan}✓ Completed
+          {ev.detail?.output_summary ? (
+            <span className="text-gray-300 ml-2">{String(ev.detail.output_summary).slice(0, 120)}</span>
+          ) : ev.output_summary ? (
+            <span className="text-gray-300 ml-2">{String(ev.output_summary).slice(0, 120)}</span>
           ) : null}
         </span>
       );
+    case 'failed':
     case 'agent_failed':
       return (
         <span className="text-rose-400">
-          ✗ Failed{ev.error ? <span className="text-rose-300 ml-1">— {ev.error}</span> : null}
+          {tsSpan}✗ Failed
+          {ev.error ? <span className="text-rose-300 ml-1">— {String(ev.error).slice(0, 160)}</span> : null}
         </span>
       );
-    case 'thinking':
+    case 'awaiting_review':
       return (
-        <span className="text-gray-200">
-          <span className="text-amber-400">💭 </span>
-          {ev.content || ev.message || JSON.stringify(ev)}
+        <span className="text-amber-400">
+          {tsSpan}⏸ Paused for gate review
+          {ev.detail?.stopped_at ? (
+            <span className="text-gray-400 ml-1">({ev.detail.stopped_at})</span>
+          ) : null}
+        </span>
+      );
+    case 'terminal':
+      return (
+        <span className="text-gray-400 italic">
+          {tsSpan}■ Pipeline halted
+          {ev.detail?.reason ? <span className="ml-1">({ev.detail.reason})</span> : null}
         </span>
       );
     case 'tool_call': {
@@ -361,8 +388,9 @@ function EventLine({ ev }) {
     default:
       return (
         <span className="text-gray-300">
-          {ev.event ? <span className="text-gray-400">[{ev.event}] </span> : null}
-          {ev.content || ev.message || JSON.stringify(ev).slice(0, 160)}
+          {tsSpan}
+          {phase ? <span className="text-gray-400">[{phase}] </span> : null}
+          {ev.content || ev.message || (ev.detail ? JSON.stringify(ev.detail).slice(0, 120) : JSON.stringify(ev).slice(0, 120))}
         </span>
       );
   }

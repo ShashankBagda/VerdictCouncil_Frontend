@@ -7,6 +7,7 @@ import {
   ChevronsRight,
   Database,
   FolderOpen,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Scale,
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/', exact: true, roles: ['judge', 'admin'] },
   { icon: FolderOpen, label: 'Cases', path: '/cases', roles: ['judge', 'admin'] },
   { icon: BookOpen, label: 'Knowledge Base', path: '/knowledge-base', roles: ['judge'] },
+  { icon: Inbox, label: 'Senior Inbox', path: '/senior-inbox', roles: ['senior_judge', 'admin'] },
   { icon: Shield, label: 'Domain Management', path: '/admin/domains', roles: ['admin'] },
 ];
 
