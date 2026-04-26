@@ -496,7 +496,7 @@ describe('usePipelineStatus hook', () => {
 
     expect(mockApi.getPipelineStatus).not.toHaveBeenCalled();
     expect(result.current.pipelineStatus).not.toBeNull();
-    expect(result.current.pipelineStatus.agents).toHaveLength(9);
+    expect(result.current.pipelineStatus.agents).toHaveLength(7);
     expect(result.current.pipelineStatus.overall_status).toBe('processing');
   });
 

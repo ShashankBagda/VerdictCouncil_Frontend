@@ -115,7 +115,7 @@ export default function LoginPage() {
 
           {/* Feature pills */}
           <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-            {['9-Agent Pipeline', 'JWT Secured', 'Real-time AI'].map((f) => (
+            {['7-Agent LangGraph Pipeline', 'JWT Secured', 'Real-time SSE'].map((f) => (
               <span
                 key={f}
                 className="px-3 py-1 rounded-full text-[10px] font-semibold text-teal-300"

@@ -21,13 +21,13 @@ describe('pipelineStatus helpers', () => {
       data: {
         agents: [
           { agent_id: 'deliberation', status: 'in_progress' },
-          { agent_id: 'case-processing', status: 'completed' },
+          { agent_id: 'intake', status: 'completed' },
         ],
       },
     });
 
     expect(result.agents.map((a) => a.agent_id)).toEqual([
-      'case-processing',
+      'intake',
       'deliberation',
     ]);
     expect(result.agents[1].status).toBe('running');
@@ -38,7 +38,7 @@ describe('pipelineStatus helpers', () => {
   it('normalizes alternative backend field names', () => {
     const result = normalizePipelineStatus({
       agent_states: [
-        { id: 'case-processing', state: 'done', started_at: '2025-01-01T00:00:00Z', finished_at: '2025-01-01T00:01:00Z', duration_seconds: 60 },
+        { id: 'intake', state: 'done', started_at: '2025-01-01T00:00:00Z', finished_at: '2025-01-01T00:01:00Z', duration_seconds: 60 },
       ],
     });
 
@@ -60,7 +60,7 @@ describe('pipelineStatus helpers', () => {
   it('filters out agents without an id', () => {
     const result = normalizePipelineStatus({
       agents: [
-        { agent_id: 'case-processing', status: 'completed' },
+        { agent_id: 'intake', status: 'completed' },
         { status: 'running' }, // no id
       ],
     });
@@ -69,7 +69,7 @@ describe('pipelineStatus helpers', () => {
 
   it('uses backend overall_progress_percent when provided', () => {
     const result = normalizePipelineStatus({
-      agents: [{ agent_id: 'case-processing', status: 'completed' }],
+      agents: [{ agent_id: 'intake', status: 'completed' }],
       overall_progress_percent: 42,
     });
     expect(result.overall_progress_percent).toBe(42);
@@ -78,11 +78,28 @@ describe('pipelineStatus helpers', () => {
   it('computes progress from agent completion when not provided', () => {
     const result = normalizePipelineStatus({
       agents: [
-        { agent_id: 'case-processing', status: 'completed' },
+        { agent_id: 'intake', status: 'completed' },
         { agent_id: 'deliberation', status: 'running' },
       ],
     });
     expect(result.overall_progress_percent).toBe(50);
+  });
+
+  it('preserves backend-supplied agent ids unchanged', () => {
+    // The backend now emits canonical LangGraph IDs on /status (see
+    // src/pipeline/manifest.py); the normalizer no longer remaps.
+    const result = normalizePipelineStatus({
+      agents: [
+        { agent_id: 'intake', status: 'completed' },
+        { agent_id: 'research-evidence', status: 'running' },
+        { agent_id: 'audit', status: 'pending' },
+      ],
+    });
+    expect(result.agents.map((a) => a.agent_id)).toEqual([
+      'intake',
+      'research-evidence',
+      'audit',
+    ]);
   });
 
   // ── isTerminalPipelineStatus ────────────────────────────────────────────
@@ -91,8 +108,8 @@ describe('pipelineStatus helpers', () => {
     expect(
       isTerminalPipelineStatus({
         agents: [
-          { agent_id: 'case-processing', status: 'completed' },
-          { agent_id: 'deliberation', status: 'completed' },
+          { agent_id: 'intake', status: 'completed' },
+          { agent_id: 'audit', status: 'completed' },
         ],
       }),
     ).toBe(true);
@@ -102,8 +119,8 @@ describe('pipelineStatus helpers', () => {
     expect(
       isTerminalPipelineStatus({
         agents: [
-          { agent_id: 'case-processing', status: 'completed' },
-          { agent_id: 'deliberation', status: 'failed' },
+          { agent_id: 'intake', status: 'completed' },
+          { agent_id: 'audit', status: 'failed' },
         ],
       }),
     ).toBe(true);
@@ -113,8 +130,8 @@ describe('pipelineStatus helpers', () => {
     expect(
       isTerminalPipelineStatus({
         agents: [
-          { agent_id: 'case-processing', status: 'completed' },
-          { agent_id: 'deliberation', status: 'running' },
+          { agent_id: 'intake', status: 'completed' },
+          { agent_id: 'synthesis', status: 'running' },
         ],
       }),
     ).toBe(false);
@@ -151,7 +168,7 @@ describe('pipelineStatus helpers', () => {
     const caseId = 'demo-refund-delay';
     const result = buildDemoPipelineStatus(caseId);
 
-    expect(result.agents).toHaveLength(9);
+    expect(result.agents).toHaveLength(7);
     expect(result.overall_status).toBe('processing');
     expect(result.updated_at).toBeTruthy();
 
@@ -193,29 +210,27 @@ describe('pipelineStatus helpers', () => {
 
   // ── Agent order ─────────────────────────────────────────────────────────
 
-  it('defines exactly 9 agents in the pipeline order', () => {
-    expect(PIPELINE_AGENT_ORDER).toHaveLength(9);
+  it('defines exactly 7 agents matching the LangGraph pipeline order', () => {
+    expect(PIPELINE_AGENT_ORDER).toHaveLength(7);
     expect(PIPELINE_AGENT_ORDER).toEqual([
-      'case-processing',
-      'complexity-routing',
-      'evidence-analysis',
-      'fact-reconstruction',
-      'witness-analysis',
-      'legal-knowledge',
-      'argument-construction',
-      'hearing-analysis',
-      'hearing-governance',
+      'intake',
+      'research-evidence',
+      'research-facts',
+      'research-witnesses',
+      'research-law',
+      'synthesis',
+      'audit',
     ]);
   });
 
   // ── isTerminalPipelineSseEvent ──────────────────────────────────────────
 
-  it('treats hearing-governance completed/failed as a terminal SSE event', () => {
+  it('treats audit completed/failed as a terminal SSE event', () => {
     expect(
-      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'completed' }),
+      isTerminalPipelineSseEvent({ agent: 'audit', phase: 'completed' }),
     ).toBe(true);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'failed' }),
+      isTerminalPipelineSseEvent({ agent: 'audit', phase: 'failed' }),
     ).toBe(true);
   });
 
@@ -237,13 +252,13 @@ describe('pipelineStatus helpers', () => {
 
   it('does not treat per-agent started/completed events as terminal', () => {
     expect(
-      isTerminalPipelineSseEvent({ agent: 'case-processing', phase: 'started' }),
+      isTerminalPipelineSseEvent({ agent: 'intake', phase: 'started' }),
     ).toBe(false);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'hearing-analysis', phase: 'completed' }),
+      isTerminalPipelineSseEvent({ agent: 'synthesis', phase: 'completed' }),
     ).toBe(false);
     expect(
-      isTerminalPipelineSseEvent({ agent: 'hearing-governance', phase: 'started' }),
+      isTerminalPipelineSseEvent({ agent: 'audit', phase: 'started' }),
     ).toBe(false);
   });
 

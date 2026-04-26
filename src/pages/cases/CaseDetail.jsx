@@ -10,7 +10,6 @@ import api, { getErrorMessage } from '../../lib/api';
 import { cn } from '@/lib/utils';
 import { normalizeCaseDetail } from '../../lib/caseWorkspace';
 import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus';
-import CaseExceptionPanel from '../../components/cases/CaseExceptionPanel';
 import DocumentUploadList from '../../components/cases/DocumentUploadList';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 
@@ -305,7 +304,6 @@ export default function CaseDetail() {
             </CardContent>
           </Card>
 
-          <CaseExceptionPanel caseId={caseId} caseDetail={workspaceCase} />
         </aside>
       </div>
     </div>
