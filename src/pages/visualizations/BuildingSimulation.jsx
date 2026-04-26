@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
+import { Activity, AlertCircle, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
@@ -90,14 +90,6 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
   const status = agentStatus?.status || 'pending';
   const isRunning = status === 'running';
 
-  // MLflow ids are included in PipelineProgressEvent SSE events emitted
-  // by the LangGraph runner. Find the most recent event that carries them
-  // so the link works even if the polled /status endpoint has no idea.
-  const mlflowEvent = [...events].reverse().find((e) => e?.mlflow_run_id);
-  const mlflowRunId = mlflowEvent?.mlflow_run_id ?? agentStatus?.mlflow_run_id;
-  const mlflowExperimentId =
-    mlflowEvent?.mlflow_experiment_id ?? agentStatus?.mlflow_experiment_id;
-
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
     if (!isManualRef.current && scrollRef.current) {
@@ -171,24 +163,6 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
           )}
         </div>
       </div>
-
-      {/* MLflow run link (shown only when the backend reported a real MLflow run_id) */}
-      {mlflowRunId && (
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-black/10 border-b border-white/5">
-          <Activity className="w-3 h-3 text-amber-400 flex-shrink-0" />
-          <span className="text-[10px] text-gray-400">MLflow run:</span>
-          <a
-            href={`${import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001'}/#/experiments/${mlflowExperimentId ?? 0}/runs/${mlflowRunId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-amber-400 hover:text-amber-300 font-mono flex items-center gap-0.5"
-            title="Open in MLflow UI"
-          >
-            {mlflowRunId.slice(0, 12)}…
-            <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-        </div>
-      )}
 
       {/* Event stream */}
       <div
@@ -304,7 +278,7 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
 
 // ── Individual event line ────────────────────────────────────────────────────
 // Events come from two sources:
-//   1. PipelineProgressEvent (SSE): {agent, phase, step, total, ts, error, detail, mlflow_run_id}
+//   1. PipelineProgressEvent (SSE): {agent, phase, step, total, ts, error, detail, trace_id}
 //   2. Synthetic poll-fallback: {agent, event, synthetic: true}
 function EventLine({ ev }) {
   if (ev.synthetic) {
@@ -494,8 +468,6 @@ export default function BuildingSimulation() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [retry]);
 
-  const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001';
-
   const overallStatus = pipelineStatus?.overall_status || '';
   const currentGate = currentGateFromStatus(overallStatus);
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
@@ -615,18 +587,6 @@ export default function BuildingSimulation() {
             Restart Pipeline
           </button>
         )}
-
-        <a
-          href={mlflowUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 border border-amber-700/40 hover:border-amber-500/60 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0"
-          title="Open MLflow tracking UI"
-        >
-          <Activity className="w-3.5 h-3.5" />
-          MLflow
-          <ExternalLink className="w-3 h-3" />
-        </a>
       </div>
 
       {/* ── Error / stale banners ── */}
@@ -701,7 +661,7 @@ export default function BuildingSimulation() {
           </div>
         ))}
         <span className="ml-auto text-xs text-gray-600">
-          All agent streams are live via SSE · MLflow tracks every run
+          All agent streams are live via SSE
         </span>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Phaser from 'phaser';
-import { Activity, AlertCircle, ExternalLink, Play, RefreshCw, WifiOff } from 'lucide-react';
+import { Activity, AlertCircle, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
@@ -180,7 +180,6 @@ export default function OfficeSimulation() {
   }, [transcript.length]);
 
   // ── Pipeline actions ────────────────────────────────────────────────────────
-  const mlflowUrl = import.meta.env.VITE_MLFLOW_URL || 'http://localhost:5001';
   const overallStatus = pipelineStatus?.overall_status || '';
   const currentGate = currentGateFromStatus(overallStatus);
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
@@ -266,16 +265,6 @@ export default function OfficeSimulation() {
             Restart Pipeline
           </button>
         )}
-        <a
-          href={mlflowUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 border border-amber-700/40 hover:border-amber-500/60 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0"
-        >
-          <Activity className="w-3.5 h-3.5" />
-          MLflow
-          <ExternalLink className="w-3 h-3" />
-        </a>
         <Link
           to={`/case/${caseId}/building/grid`}
           className="text-xs text-gray-500 hover:text-gray-300 border border-gray-700/40 hover:border-gray-600/60 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0"

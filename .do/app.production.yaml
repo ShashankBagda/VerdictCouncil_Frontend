@@ -15,6 +15,3 @@ static_sites:
       - key: VITE_API_URL
         value: https://api.verdictcouncil.sg
         scope: BUILD_TIME
-      - key: VITE_MLFLOW_URL
-        value: ""
-        scope: BUILD_TIME

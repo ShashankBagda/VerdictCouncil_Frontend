@@ -13,8 +13,6 @@ export interface ProgressEvent {
   ts: string;
   error?: string | null;
   detail?: Record<string, unknown> | null;
-  mlflow_run_id?: string | null;
-  mlflow_experiment_id?: string | null;
   // Sprint 2 2.C1.6: W3C OTEL trace id propagated from the API request.
   trace_id?: string | null;
 }

@@ -72,7 +72,7 @@
  *   DELETE /api/v1/domains/admin/{id}/documents/{doc_id} → domains.router
  *
  * 🔄 LangGraph pipeline events (SSE format: PipelineProgressEvent):
- *   {case_id, agent, phase, step, total, ts, error, detail, mlflow_run_id, mlflow_experiment_id}
+ *   {case_id, agent, phase, step, total, ts, error, detail, trace_id}
  *   Agents: case-processing → complexity-routing → [evidence-analysis, fact-reconstruction,
  *           witness-analysis, legal-knowledge] → argument-construction → hearing-analysis
  *           → hearing-governance
