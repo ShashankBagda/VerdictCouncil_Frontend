@@ -51,6 +51,57 @@ export function gateNameFromStatus(status) {
   return match ? match[1] : null;
 }
 
+// Total ordering on the four review gates. Used by pickCurrentGate to
+// decide which signal wins when polled status and the SSE interrupt
+// frame disagree.
+const GATE_ORDER = ['gate1', 'gate2', 'gate3', 'gate4'];
+
+function gateRank(gate) {
+  return GATE_ORDER.indexOf(gate);
+}
+
+// Polled overall_status values where the SSE-pushed interrupt is allowed
+// to override the (slower) polled gate without further checks. Any
+// awaiting_review_* / completed / failed / escalated / ready_for_review
+// value means polled status is either already accurate or has moved past
+// — handled by the explicit rank comparison below.
+const SSE_INTERRUPT_OVERRIDABLE = new Set(['', 'pending', 'processing']);
+
+/**
+ * Pick which review gate (if any) the gate panel should render, given
+ * the polled overall_status and the most recent SSE InterruptEvent.
+ *
+ * Resolution rules, in order:
+ *   1. No interrupt → return polledGate.
+ *   2. Polled status is pre-gate (pending / processing / empty) →
+ *      SSE wins — the poll just hasn't caught up yet.
+ *   3. Polled status is at a gate AND the SSE-pushed gate is strictly
+ *      later → SSE wins — back-to-back gate transition where polling
+ *      missed the brief processing window between gates.
+ *   4. Otherwise → polled wins (handles stale interrupt replay on
+ *      reconnect, terminal states, and rank-equal ties deterministically).
+ *
+ * Unknown SSE gate labels (i.e. outside GATE_ORDER) are treated as no
+ * signal so a future schema change cannot cause a phantom mount.
+ *
+ * @param {string|null} polledGate     gateName from gateNameFromStatus()
+ * @param {string|null} interruptGate  gate field of the latest InterruptEvent
+ * @param {string}      overallStatus  raw overall_status from /status poll
+ * @returns {string|null}              gate name to mount, or null
+ */
+export function pickCurrentGate(polledGate, interruptGate, overallStatus) {
+  if (!interruptGate || gateRank(interruptGate) < 0) {
+    return polledGate;
+  }
+  if (SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)) {
+    return interruptGate;
+  }
+  if (polledGate && gateRank(interruptGate) > gateRank(polledGate)) {
+    return interruptGate;
+  }
+  return polledGate;
+}
+
 const AGENT_ORDER_INDEX = PIPELINE_AGENT_ORDER.reduce((acc, agentId, index) => {
   acc[agentId] = index;
   return acc;
