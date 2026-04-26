@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 import { Activity, AlertCircle, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { Streamdown } from 'streamdown';
 import { code } from '@streamdown/code';
-import { useAPI, useCase, usePipelineStatus } from '../../hooks';
-import { useAgentStream } from '../../hooks/useAgentStream';
-import GateReviewPanel from '../../components/cases/GateReviewPanel';
+import { useAPI } from '../../hooks';
 import api from '../../lib/api';
+import AgentChatPanel from '../../components/AgentChatPanel';
 import {
   pickCurrentGate,
   PIPELINE_AGENT_LABELS,
@@ -86,31 +85,59 @@ const RAG_TOOLS = new Set([
   'search_legal_rules',      // alias for search_domain_guidance
 ]);
 
-// Backend emits one `llm_chunk` event per model token (factory.py
-// uses `agent.astream(stream_mode="messages")`). At ~30-100 tok/s
-// that's a lot of DOM nodes; coalesce consecutive chunks from the
-// same agent into a single rolling `llm_stream` event so the UI
-// renders them as one growing bubble.
+// Resolve the event type from a SSE frame. Backend agent-event schemas
+// (`LlmTokenEvent`, `ToolCallDeltaEvent`, `StructuredArtifactEvent`)
+// overload `phase` to mean "the agent's scope name" (e.g. "intake")
+// and put the actual event type in `event`. The older `PipelineProgress`
+// envelope only carries `phase` (the lifecycle stage). So `event` wins
+// when present; otherwise fall back to `phase`. Without this, every
+// `llm_token` frame from intake gets misclassified as phase="intake"
+// and falls through the EventLine switch into the "no payload" default.
+function frameType(ev) {
+  return ev.event || ev.phase;
+}
+
+// Backend emits per-token model events at ~30-100 tok/s — `llm_chunk`
+// from non-conversational phases (factory.py `astream(stream_mode=
+// "messages")`) and `llm_token` from conversational phases (intake,
+// research, …) where StreamCoalescer batches deltas under a stable
+// `message_id`. Both kinds get folded into a single rolling
+// `llm_stream` event so the UI renders one growing markdown bubble
+// per assistant turn instead of hundreds of DOM nodes. A change in
+// `message_id` flushes the current bubble so a follow-up turn after
+// a tool result starts fresh. `tool_call_delta` frames are dropped
+// here — the wrapping `tool_call`/`tool_result` events from
+// `sse_tool_emitter` already render the full call once.
 function coalesceLlmChunks(events) {
   const out = [];
   let buffer = null;
+  let bufferMessageId = null;
   for (const ev of events) {
-    const phase = ev.phase || ev.event;
-    if (phase === 'llm_chunk') {
+    const phase = frameType(ev);
+    if (phase === 'tool_call_delta') continue;
+    if (phase === 'llm_chunk' || phase === 'llm_token') {
       const delta = ev.delta || ev.content || '';
+      const msgId = ev.message_id || null;
+      if (buffer && msgId && bufferMessageId && msgId !== bufferMessageId) {
+        buffer.streaming = false;
+        out.push(buffer);
+        buffer = null;
+        bufferMessageId = null;
+      }
       if (buffer) {
         buffer.delta += delta;
         buffer.ts = ev.ts || buffer.ts;
         buffer.streaming = true;
       } else {
         buffer = { event: 'llm_stream', delta, ts: ev.ts, streaming: true };
+        bufferMessageId = msgId;
       }
     } else {
       if (buffer) {
-        // A non-chunk event arrived → the streaming response is done.
         buffer.streaming = false;
         out.push(buffer);
         buffer = null;
+        bufferMessageId = null;
       }
       out.push(ev);
     }
@@ -139,7 +166,7 @@ function statusDot(status) {
 }
 
 // ── Single agent card ───────────────────────────────────────────────────────
-function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRun, isFocused, onFocus }) {
+function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRun, isFocused, onFocus, awaitingInput }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
@@ -186,6 +213,18 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
           <span className="text-sm font-semibold text-white truncate" title={label}>{label}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Q1.11 chat-steering — pulse the card header when this agent
+              is paused on a `human_input` interrupt waiting for the
+              judge. The drawer is the only place the judge can reply,
+              so the badge doubles as an affordance to click into it. */}
+          {awaitingInput && (
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-700/60 border border-violet-400/60 text-violet-50 animate-pulse"
+              title="Agent is waiting for your reply — click to open the chat panel"
+            >
+              awaiting reply
+            </span>
+          )}
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusStyle(status)}`}>
             {status === 'pending' ? 'waiting' : status}
           </span>
@@ -250,7 +289,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
 // Expanded detail view for a single agent. Renders beneath the grid when a
 // card is clicked. Gives each event far more room than the 200px card pane —
 // larger font, no height cap on the pane (scroll inside the drawer instead).
-function FocusDrawer({ agentId, agentStatus, events, onClose }) {
+function FocusDrawer({ agentId, agentStatus, events, onClose, caseId, interrupt, onChatError }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
@@ -336,6 +375,21 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
           ))
         )}
       </div>
+
+      {/* Q1.11 chat-steering — only synthesis is wired with the
+          `human_input` tool today (PHASE_TOOL_NAMES["synthesis"]). Other
+          agents render the panel in idle state if mounted, which is just
+          noise — gate by agentId here. */}
+      {agentId === 'synthesis' && (
+        <div className="border-t border-white/10 px-4 py-3 bg-slate-950/40">
+          <AgentChatPanel
+            caseId={caseId}
+            agentId={agentId}
+            interrupt={interrupt}
+            onError={onChatError}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -348,8 +402,7 @@ function EventLine({ ev }) {
   if (ev.synthetic) {
     return <span className="text-gray-400">~ status: {ev.event}</span>;
   }
-  // Normalise: LangGraph sends ev.phase; legacy Solace events used ev.event.
-  const phase = ev.phase || ev.event;
+  const phase = frameType(ev);
   const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
   const tsSpan = ts ? <span className="text-gray-600 mr-1">[{ts}]</span> : null;
 
@@ -564,9 +617,21 @@ function OverallProgressBar({ pipelineStatus, isStale, isGivenUp, error: _error,
 export default function BuildingSimulation() {
   const { caseId } = useParams();
   const { showError, showNotification } = useAPI();
-  const { updatePipelineStatus } = useCase();
 
-  const { events, status: sseStatus, interrupt, clearInterrupt } = useAgentStream(caseId);
+  // Live state for the workspace lives at the CaseDetail route — both
+  // the SSE stream and the /status polling open network connections, so
+  // they're hoisted to the parent and shared via Outlet context. Reading
+  // them here avoids a second EventSource + a second polling loop.
+  const { stream, pipeline } = useOutletContext();
+  const { events, status: sseStatus, interrupt } = stream;
+  const {
+    loading,
+    pipelineStatus,
+    error,
+    isStale,
+    isGivenUp,
+    retry,
+  } = pipeline;
 
   // Which agent card is currently expanded in the detail drawer. Clicking
   // the same card again closes the drawer.
@@ -581,28 +646,6 @@ export default function BuildingSimulation() {
   // Full pipeline start pending
   const [pipelinePending, setPipelinePending] = useState(false);
 
-  const {
-    loading,
-    pipelineStatus,
-    error,
-    isStale,
-    isGivenUp,
-    retry,
-  } = usePipelineStatus(caseId, {
-    onStatus: updatePipelineStatus,
-    onError: showError,
-  });
-
-  // Force an immediate status poll when the tab regains focus so that
-  // gate-pause transitions aren't missed while the tab was hidden.
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') retry();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [retry]);
-
   const overallStatus = pipelineStatus?.overall_status || '';
   const polledGate = currentGateFromStatus(overallStatus);
   // Reconcile the polled gate with the SSE-pushed interrupt: SSE wins
@@ -615,13 +658,8 @@ export default function BuildingSimulation() {
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
   const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
 
-  // Drop the sticky SSE frame once the resolved gate no longer comes
-  // from it — either polled status caught up, or the case advanced
-  // past the gate the frame announced. Without this the panel would
-  // linger after resume because the hook never sees overall_status.
-  useEffect(() => {
-    if (interrupt && currentGate !== interrupt.gate) clearInterrupt();
-  }, [interrupt, currentGate, clearInterrupt]);
+  // CaseDetail owns clearing the sticky SSE interrupt frame once the
+  // resolved gate has moved on — no per-tab cleanup needed here.
 
   // Run the full pipeline (when pending/failed)
   const handleRunPipeline = useCallback(async () => {
@@ -763,14 +801,9 @@ export default function BuildingSimulation() {
         </div>
       )}
 
-      {/* ── Gate review panel ── */}
-      {currentGate && (
-        <GateReviewPanel
-          caseId={caseId}
-          gateName={currentGate}
-          onAdvanced={retry}
-        />
-      )}
+      {/* Gate review panel is rendered once at the CaseDetail route
+          level (above the tab strip), so it appears for every tab
+          without each tab re-mounting it. */}
 
       {/* ── Agent grid (one row per LangGraph layer) ── */}
       <div className="flex flex-col gap-3">
@@ -796,6 +829,15 @@ export default function BuildingSimulation() {
                   const agentStatus = pipelineStatus?.agents?.find((a) => a.agent_id === agentId);
                   const agentEvents = events[agentId] || [];
                   const agentCanRun = currentGate != null && AGENT_GATE[agentId] === currentGate;
+                  // Q1.11 — agent is paused on a human_input interrupt
+                  // targeting this card. Surfaces the "awaiting reply"
+                  // badge in the header.
+                  const awaitingInput =
+                    !!interrupt
+                    && interrupt.kind === 'interrupt'
+                    && interrupt.case_id === caseId
+                    && interrupt.agent === agentId
+                    && typeof interrupt.question === 'string';
                   return (
                     <AgentCard
                       key={agentId}
@@ -807,6 +849,7 @@ export default function BuildingSimulation() {
                       onRun={() => handleRunAgent(agentId)}
                       isFocused={focusedAgentId === agentId}
                       onFocus={toggleFocus}
+                      awaitingInput={awaitingInput}
                     />
                   );
                 })}
@@ -823,6 +866,9 @@ export default function BuildingSimulation() {
           agentStatus={pipelineStatus?.agents?.find((a) => a.agent_id === focusedAgentId)}
           events={events[focusedAgentId] || []}
           onClose={() => setFocusedAgentId(null)}
+          caseId={caseId}
+          interrupt={interrupt}
+          onChatError={showError}
         />
       )}
 

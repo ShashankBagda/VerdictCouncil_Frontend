@@ -5,11 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAPI, useCase } from '../../hooks';
+import { useAPI, useCase, usePipelineStatus } from '../../hooks';
+import { useAgentStream } from '../../hooks/useAgentStream';
 import api, { getErrorMessage } from '../../lib/api';
 import { cn } from '@/lib/utils';
 import { normalizeCaseDetail } from '../../lib/caseWorkspace';
-import { isGatePauseStatus, gateNameFromStatus } from '../../lib/pipelineStatus';
+import { gateNameFromStatus, isGatePauseStatus, pickCurrentGate } from '../../lib/pipelineStatus';
 import DocumentUploadList from '../../components/cases/DocumentUploadList';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 
@@ -56,7 +57,7 @@ export default function CaseDetail() {
   const { caseId } = useParams();
   const fileInputRef = useRef(null);
   const { showError, showNotification } = useAPI();
-  const { caseDetail, updateCaseDetail, selectCase } = useCase();
+  const { caseDetail, updateCaseDetail, selectCase, updatePipelineStatus } = useCase();
 
   const [loading, setLoading] = useState(true);
   const [restarting, setRestarting] = useState(false);
@@ -100,6 +101,50 @@ export default function CaseDetail() {
 
     return caseDetail;
   }, [caseDetail, caseId]);
+
+  // Single source of live state for the case workspace. Both hooks open
+  // network connections (HTTP polling + SSE), so they live at the route
+  // level and the result is forwarded to tab pages via Outlet context;
+  // BuildingSimulation and any other tab read the same stream / status
+  // without spinning up duplicate connections.
+  const pipeline = usePipelineStatus(caseId, {
+    onStatus: updatePipelineStatus,
+    onError: showError,
+  });
+  const stream = useAgentStream(caseId);
+
+  // Re-poll the moment the tab regains focus so a gate-pause that fired
+  // while hidden surfaces immediately. Used to live in BuildingSimulation
+  // when polling lived there too.
+  const { retry: pipelineRetry } = pipeline;
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') pipelineRetry();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [pipelineRetry]);
+
+  // Resolve the gate to mount: polled overall_status + the SSE-pushed
+  // interrupt frame combined via pickCurrentGate. workspaceCase.raw_status
+  // is the cold-start fallback before the first poll lands.
+  const { interrupt, clearInterrupt } = stream;
+  const overallStatus =
+    pipeline.pipelineStatus?.overall_status || workspaceCase?.raw_status || '';
+  const polledGate = gateNameFromStatus(overallStatus);
+  const interruptGate = interrupt?.case_id === caseId ? interrupt.gate : null;
+  const currentGate = pickCurrentGate(polledGate, interruptGate, overallStatus);
+  useEffect(() => {
+    if (interrupt && currentGate !== interrupt.gate) clearInterrupt();
+  }, [interrupt, currentGate, clearInterrupt]);
+
+  // Forwarded to children via <Outlet context>. Memoised so tab pages
+  // don't see a fresh object reference on every keystroke / unrelated
+  // re-render.
+  const outletContext = useMemo(
+    () => ({ pipeline, stream }),
+    [pipeline, stream],
+  );
 
   const handleRestartPipeline = useCallback(async () => {
     try {
@@ -232,10 +277,10 @@ export default function CaseDetail() {
         </CardHeader>
       </Card>
 
-      {isGatePauseStatus(workspaceCase?.raw_status) && (
+      {currentGate && (
         <GateReviewPanel
           caseId={caseId}
-          gateName={gateNameFromStatus(workspaceCase.raw_status)}
+          gateName={currentGate}
           onAdvanced={async () => {
             const payload = await api.getCaseDetail(caseId);
             updateCaseDetail(normalizeCaseDetail(payload, caseId));
@@ -262,7 +307,7 @@ export default function CaseDetail() {
             ))}
           </div>
 
-          <Outlet />
+          <Outlet context={outletContext} />
         </div>
 
         <aside className="flex flex-col gap-4">

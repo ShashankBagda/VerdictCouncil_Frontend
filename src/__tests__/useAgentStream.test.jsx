@@ -337,6 +337,78 @@ describe('useAgentStream', () => {
     expect(result.current.interrupt.phase_output).toEqual({ research: { citations: [] } });
   });
 
+  it('clears the interrupt frame on matching agent_resumed event (Q1.11)', async () => {
+    const { result } = renderHook(() => useAgentStream('case-1'));
+    const es = await waitForConnect();
+    act(() => es.open());
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+
+    const interruptId = 'a'.repeat(32);
+    act(() =>
+      es.emit('interrupt', {
+        kind: 'interrupt',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'synthesis',
+        question: 'Reading A or B?',
+        interrupt_id: interruptId,
+        ts: '2026-04-27T00:00:00Z',
+      }),
+    );
+    await waitFor(() => expect(result.current.interrupt).not.toBeNull());
+    expect(result.current.interrupt.question).toBe('Reading A or B?');
+
+    // matching agent_resumed clears
+    act(() =>
+      es.emit('agent', {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'synthesis',
+        event: 'agent_resumed',
+        interrupt_id: interruptId,
+        ts: '2026-04-27T00:00:01Z',
+      }),
+    );
+    await waitFor(() => expect(result.current.interrupt).toBeNull());
+  });
+
+  it('agent_resumed for a different interrupt_id does not clear an active one', async () => {
+    const { result } = renderHook(() => useAgentStream('case-1'));
+    const es = await waitForConnect();
+    act(() => es.open());
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+
+    act(() =>
+      es.emit('interrupt', {
+        kind: 'interrupt',
+        case_id: 'case-1',
+        agent: 'synthesis',
+        question: 'Q1?',
+        interrupt_id: 'a'.repeat(32),
+        ts: '2026-04-27T00:00:00Z',
+      }),
+    );
+    await waitFor(() => expect(result.current.interrupt).not.toBeNull());
+
+    // resumed event with a different id (e.g. stale replay from a prior
+    // interrupt) must NOT clear the current pending one
+    act(() =>
+      es.emit('agent', {
+        kind: 'agent',
+        case_id: 'case-1',
+        agent: 'synthesis',
+        event: 'agent_resumed',
+        interrupt_id: 'b'.repeat(32),
+        ts: '2026-04-27T00:00:01Z',
+      }),
+    );
+    // small delay then re-check; if the buggy code cleared regardless,
+    // this would fail
+    await waitFor(() => expect(result.current.interrupt).not.toBeNull());
+    expect(result.current.interrupt.interrupt_id).toBe('a'.repeat(32));
+  });
+
   it('cleanup closes the EventSource on unmount', async () => {
     const { unmount } = renderHook(() => useAgentStream('case-1'));
     const es = await waitForConnect();

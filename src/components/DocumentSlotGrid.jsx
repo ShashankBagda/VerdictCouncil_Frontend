@@ -26,81 +26,39 @@ import { Progress } from '@/components/ui/progress';
 // share a group value are jointly required — any one filled satisfies
 // the group. Slots with `required: true` are strictly required on their
 // own and cannot be combined with a group.
+// Two slots — what every traffic case minimally needs.
+//
+// History: this file used to enumerate eight typed slots (notice, charge
+// sheet, police report, witness statement, speed camera record, medical
+// report, mitigation letter, evidence bundle). That granularity asked
+// the judge to play paralegal — pre-classifying every PDF before the
+// case could even start. The classification work belongs to the intake
+// agent, not the human filing the case. So: one trigger slot for the
+// authoritative document (notice OR charge sheet), one bundle slot for
+// everything else. Supplementary documents can also be appended later
+// via the case workspace's "Add Documents" flow on CaseDetail.
 const SLOT_SCHEMA = {
   traffic_violation: [
     {
       kind: 'notice_of_traffic_offence',
-      label: 'Traffic Notice (Summons or Advisory)',
+      label: 'Traffic Notice or Charge Sheet',
       icon: Gavel,
-      requiredGroup: 'intake_authority',
+      required: true,
       multi: false,
       intake_trigger: true,
       accept: 'application/pdf',
-      hint: 'Police-issued notice — covers both active summons and advisory-only notices.',
-    },
-    {
-      kind: 'charge_sheet',
-      label: 'Charge Sheet',
-      icon: FileText,
-      requiredGroup: 'intake_authority',
-      multi: false,
-      intake_trigger: true,
-      accept: 'application/pdf',
-      hint: 'Use when the matter has progressed to arraignment.',
-    },
-    {
-      kind: 'police_report',
-      label: 'Police Report',
-      icon: ShieldAlert,
-      required: false,
-      multi: true,
-      accept: 'application/pdf',
-      hint: 'Formal police investigation or incident report.',
-    },
-    {
-      kind: 'witness_statement',
-      label: 'Witness Statement / Affidavit',
-      icon: Users,
-      required: false,
-      multi: true,
-      accept: 'application/pdf',
-      hint: 'Written statements or sworn affidavits from witnesses.',
-    },
-    {
-      kind: 'speed_camera_record',
-      label: 'Speed Camera Record',
-      icon: Radar,
-      required: false,
-      multi: false,
-      accept: 'application/pdf',
-      hint: 'Speed camera ticket plus calibration certificate (RTA s.137C auth).',
-    },
-    {
-      kind: 'medical_report',
-      label: 'Medical Report',
-      icon: Stethoscope,
-      required: false,
-      multi: false,
-      accept: 'application/pdf',
-      hint: 'Attach when injury or medical defence is relevant.',
-    },
-    {
-      kind: 'letter_of_mitigation',
-      label: 'Letter of Mitigation',
-      icon: FileCheck,
-      required: false,
-      multi: false,
-      accept: 'application/pdf,text/plain',
-      hint: 'Attach when the accused has pleaded guilty with mitigation.',
+      hint:
+        'The authoritative pleading that starts this case — either a police-issued notice or a charge sheet. The intake agent reads this first.',
     },
     {
       kind: 'evidence_bundle',
-      label: 'Other Supporting Documents',
+      label: 'Supporting Documents (optional)',
       icon: FilePlus,
       required: false,
       multi: true,
       accept: 'application/pdf',
-      hint: 'Anything else that does not fit the typed slots above.',
+      hint:
+        'Anything else relevant — witness statements, police reports, speed camera records, medical reports, mitigation. Drop them in together; the agent will sort them.',
     },
   ],
   // Small-claims intake is still served by the legacy form until we ingest
@@ -109,9 +67,10 @@ const SLOT_SCHEMA = {
 };
 
 // Human-readable text for a required-group gate.
-const REQUIRED_GROUP_HINTS = {
-  intake_authority: 'Upload at least one: a Traffic Notice or a Charge Sheet.',
-};
+// Kept exported for any consumers that still pass through the slot
+// schema, but with the slot collapse there are no requiredGroups left
+// in the traffic_violation flow. Empty by design.
+const REQUIRED_GROUP_HINTS = {};
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MiB per file
 
