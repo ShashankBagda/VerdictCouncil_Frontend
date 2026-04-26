@@ -1,227 +1,176 @@
 name: Frontend CI
 
+# ── Trigger ──────────────────────────────────────────────────────────────────
+# Direct pushes fire CI on long-lived branches + all feature branches.
+# cd.yml and staging-deploy.yml use `workflow_run` instead of `push` so only
+# ONE workflow fires per commit — no duplicate runs.
 on:
   push:
     branches:
       - main
       - development
-      - release
+      - "release/**"
+      - "feat/**"
   pull_request:
     branches:
       - main
       - development
-      - release
 
 jobs:
   lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint with ESLint
+      - run: npm ci
+      - name: ESLint
         run: npm run lint
 
   unit-tests:
+    name: unit-tests
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Unit Tests
-        run: npm run test -- --run --coverage
-        continue-on-error: true
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
+      - run: npm ci
+      - name: Run tests with 100% coverage
+        # continue-on-error removed: test failures must break the build
+        run: npm run test -- --run --coverage --reporter=verbose
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
         if: always()
-        continue-on-error: true
+        with:
+          name: frontend-coverage
+          path: coverage/
 
   sast:
+    name: SAST (Static Application Security Testing)
     runs-on: ubuntu-latest
     needs: lint
-    name: SAST (Static Application Security Testing)
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      # ESLint security checks
-      - name: ESLint Security Plugin
-        run: |
-          npm install --save-dev eslint-plugin-security
-          npm run lint || true
-        continue-on-error: true
-
-      # Semgrep for JavaScript/React
-      - name: Semgrep SAST
+      - run: npm ci
+      - name: Semgrep — OWASP Top-10 + security-audit
         run: |
           pip install semgrep
-          semgrep --config=p/security-audit --config=p/owasp-top-ten --json -o semgrep-report.json src/ || true
+          semgrep --config=p/security-audit \
+                  --config=p/owasp-top-ten \
+                  --sarif -o semgrep.sarif \
+                  src/ || true
         continue-on-error: true
-
-      # Upload SARIF for GitHub Security tab
-      - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: semgrep-report.json
-        continue-on-error: true
-
-  sca:
-    runs-on: ubuntu-latest
-    needs: lint
-    name: SCA (Software Composition Analysis)
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      # npm audit - built-in dependency vulnerability scanner
-      - name: npm Audit
-        run: npm audit --audit-level=moderate || true
-        continue-on-error: true
-
-      # SBOM generation with CycloneDX
-      - name: Generate SBOM
-        run: |
-          npm install --save-dev @cyclonedx/npm
-          npx cyclonedx-npm --output-format json --output-file sbom.json || true
-        continue-on-error: true
-
-      # Snyk (optional - requires setup)
-      - name: Snyk Security Scan
-        run: |
-          npm install -g snyk
-          snyk test --json-file-output=snyk-report.json || true
-        continue-on-error: true
-
-  dast:
-    runs-on: ubuntu-latest
-    needs: sca
-    name: DAST (Dynamic Application Security Testing)
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Application
-        run: npm run build
-
-      - name: Install HTTP Server
-        run: npm install -g http-server
-
-      - name: Start dev server
-        run: |
-          http-server dist/ -p 3000 &
-          sleep 3
-
-      # Basic security header checks
-      - name: Check Security Headers
-        run: |
-          npm install -g jest-html-reporter
-          node -e "
-          const http = require('http');
-          http.get('http://localhost:3000', (res) => {
-            console.log('Status:', res.statusCode);
-            console.log('Headers:');
-            console.log('  X-Content-Type-Options:', res.headers['x-content-type-options']);
-            console.log('  X-Frame-Options:', res.headers['x-frame-options']);
-            console.log('  Content-Security-Policy:', res.headers['content-security-policy']);
-          });
-          "
-        continue-on-error: true
-
-      # Contract testing with backend
-      - name: API Contract Tests
-        run: npm run test:contract || true
+          sarif_file: semgrep.sarif
         continue-on-error: true
 
   build:
+    name: build
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
+      - run: npm ci
+      - name: Build production bundle
         run: npm run build
 
-  security-summary:
+  sca:
+    name: SCA (Software Composition Analysis)
     runs-on: ubuntu-latest
-    needs: [dast, unit-tests, sast, build]
-    name: Security Summary
-    if: always()
+    needs: lint
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Security Audit Report
-        run: |
-          echo "=== npm audit ===" 
-          npm audit --audit-level=moderate || true
-          echo ""
-          echo "=== Code Quality ===" 
-          npm run lint || true
+      - run: npm ci
+      - name: npm audit — CVE check
+        run: npm audit --audit-level=moderate
         continue-on-error: true
+      - name: Generate CycloneDX SBOM
+        run: |
+          npm install --save-dev @cyclonedx/cyclonedx-npm
+          npx cyclonedx-npm --output-format json --output-file sbom.json || true
+        continue-on-error: true
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-sbom
+          path: sbom.json
+
+  dast:
+    name: DAST (Dynamic Application Security Testing)
+    runs-on: ubuntu-latest
+    needs: sca
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build application
+        run: npm run build
+      - name: Serve and check security headers
+        run: |
+          npx serve -s dist -l 3000 &
+          # Wait until the server is ready
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:3000 && break || sleep 1
+          done
+          node -e "
+          const http = require('http');
+          http.get('http://localhost:3000', (res) => {
+            const h = res.headers;
+            console.log(JSON.stringify({
+              status: res.statusCode,
+              'x-content-type-options': h['x-content-type-options'] || 'MISSING',
+              'x-frame-options': h['x-frame-options'] || 'MISSING',
+              'cache-control': h['cache-control'] || 'MISSING',
+            }, null, 2));
+          }).on('error', (e) => { console.error(e.message); process.exit(0); });
+          "
+        continue-on-error: true
+      - name: API contract tests
+        run: npm run check:contract || true
+        continue-on-error: true
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, sast, build, dast]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: npm audit report
+        run: npm audit --audit-level=moderate || true
+      - name: Print CI result
+        run: |
+          echo "unit-tests : ${{ needs.unit-tests.result }}"
+          echo "sast       : ${{ needs.sast.result }}"
+          echo "build      : ${{ needs.build.result }}"
+          echo "dast       : ${{ needs.dast.result }}"

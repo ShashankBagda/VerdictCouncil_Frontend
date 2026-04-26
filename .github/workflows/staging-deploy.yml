@@ -1,11 +1,18 @@
 name: Deploy to Staging
 
+# ── Trigger ──────────────────────────────────────────────────────────────────
+# Fires ONLY after the Frontend CI workflow passes on `development`.
+# This eliminates the double-trigger where ci.yml + staging-deploy.yml both
+# fired on every push to development.
 on:
-  push:
+  workflow_run:
+    workflows: ["Frontend CI"]
+    types: [completed]
     branches: [development]
 
 jobs:
   deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
     steps:

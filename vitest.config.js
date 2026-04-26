@@ -18,14 +18,33 @@ export default defineConfig({
     setupFiles: ['./src/__tests__/setup.js'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json-summary'],
+      reporter: ['text', 'json-summary', 'lcov', 'json'],
+      // Expanded: cover ALL application source, not just auth pages
       include: [
-        'src/pages/auth/*.jsx',
-        'src/components/auth/*.jsx',
+        'src/**/*.{js,jsx,ts,tsx}',
+      ],
+      exclude: [
+        // Test files themselves
+        'src/__tests__/**',
+        // Entry point — no logic to test
+        'src/main.jsx',
+        // CSS module stubs
+        'src/**/*.css',
+        // Static data files with no branching logic
+        'src/data/**',
+        // Vite virtual modules / generated assets
+        'src/assets/**',
       ],
       thresholds: {
-        lines: 98,
-        statements: 98,
+        // 100% on lines, statements, functions.
+        // Branches set to 90% — exhausting every conditional branch in React
+        // components (e.g. error boundaries, loading states combined) would
+        // require an unreasonable number of brittle mocks.  The other three
+        // metrics remain at 100%.
+        lines: 100,
+        statements: 100,
+        functions: 100,
+        branches: 90,
       },
     },
   },
