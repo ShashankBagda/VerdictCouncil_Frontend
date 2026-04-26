@@ -329,4 +329,182 @@ describe('useAgentStream', () => {
     unmount();
     expect(es.close).toHaveBeenCalled();
   });
+
+  // ── Q1.8 — conversational-mode prose/artifact accumulator ──────────────────
+  //
+  // The hook exposes a parallel `agentStreams` field that consumers of the
+  // new chat UI (Q1.10) read directly; the legacy `events` dict remains
+  // unchanged for the back-compat consumers in the inventory.
+
+  describe('agentStreams (Q1.8)', () => {
+    it('initialises as an empty object', async () => {
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      await waitForConnect();
+      expect(result.current.agentStreams).toEqual({});
+    });
+
+    it('concatenates llm_token deltas by message_id under the agent', async () => {
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      const es = await waitForConnect();
+      act(() => es.open());
+
+      act(() => {
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'llm_token',
+          message_id: 'msg-1',
+          delta: 'The notice ',
+          ts: '2026-04-26T00:00:00Z',
+        });
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'llm_token',
+          message_id: 'msg-1',
+          delta: 'describes a traffic offence.',
+          ts: '2026-04-26T00:00:00Z',
+        });
+      });
+
+      await waitFor(() =>
+        expect(result.current.agentStreams['intake']?.prose?.['msg-1']).toBe(
+          'The notice describes a traffic offence.',
+        ),
+      );
+    });
+
+    it('stores structured_artifact last-wins under the agent', async () => {
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      const es = await waitForConnect();
+      act(() => es.open());
+
+      act(() => {
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'structured_artifact',
+          artifact: { domain: 'placeholder' },
+          ts: '2026-04-26T00:00:00Z',
+        });
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'structured_artifact',
+          artifact: { domain: 'criminal', parties: [{ role: 'defendant' }] },
+          ts: '2026-04-26T00:00:00Z',
+        });
+      });
+
+      await waitFor(() =>
+        expect(result.current.agentStreams['intake']?.artifact?.domain).toBe(
+          'criminal',
+        ),
+      );
+    });
+
+    it('accumulates tool_call_delta args by tool_call_id', async () => {
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      const es = await waitForConnect();
+      act(() => es.open());
+
+      act(() => {
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'tool_call_delta',
+          tool_call_id: 'call-1',
+          name: 'parse_document',
+          args_delta: '{"file_id":',
+          ts: '2026-04-26T00:00:00Z',
+        });
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'tool_call_delta',
+          tool_call_id: 'call-1',
+          name: 'parse_document',
+          args_delta: '"f-123"}',
+          ts: '2026-04-26T00:00:00Z',
+        });
+      });
+
+      await waitFor(() => {
+        const tc = result.current.agentStreams['intake']?.toolCalls?.['call-1'];
+        expect(tc?.name).toBe('parse_document');
+        expect(tc?.argsDelta).toBe('{"file_id":"f-123"}');
+      });
+    });
+
+    it('records agent_failed under the agent (error_class only — no PII)', async () => {
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      const es = await waitForConnect();
+      act(() => es.open());
+
+      act(() => {
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          event: 'agent_failed',
+          error_class: 'TimeoutError',
+          ts: '2026-04-26T00:00:00Z',
+        });
+      });
+
+      await waitFor(() =>
+        expect(result.current.agentStreams['intake']?.failure?.errorClass).toBe(
+          'TimeoutError',
+        ),
+      );
+    });
+
+    it('keeps the legacy events dict shape for back-compat consumers', async () => {
+      // AgentStreamPanel + BuildingSimulation + OfficeSimulation still
+      // read events[agentId] as a flat Event[] — the conversational-mode
+      // events MUST still appear there (raw frame fidelity), not only in
+      // agentStreams.
+      const { result } = renderHook(() => useAgentStream('case-1'));
+      const es = await waitForConnect();
+      act(() => es.open());
+
+      act(() => {
+        es.emit('agent', {
+          kind: 'agent',
+          schema_version: 1,
+          case_id: 'case-1',
+          agent: 'intake',
+          phase: 'intake',
+          event: 'llm_token',
+          message_id: 'msg-1',
+          delta: 'hello',
+          ts: '2026-04-26T00:00:00Z',
+        });
+      });
+
+      await waitFor(() =>
+        expect(result.current.events['intake']).toHaveLength(1),
+      );
+      expect(result.current.events['intake'][0].event).toBe('llm_token');
+    });
+  });
 });
