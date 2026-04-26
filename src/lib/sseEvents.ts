@@ -17,19 +17,79 @@ export interface ProgressEvent {
   trace_id?: string | null;
 }
 
-export interface AgentEvent {
+// Q1.7 — `kind: "agent"` is the umbrella for all fine-grained agent
+// telemetry. The legacy classic events plus the four conversational-mode
+// events (Q1.2 / Q1.3 / Q1.5) discriminate on the `event` literal so
+// consumers narrow safely. Backend source of truth:
+// VerdictCouncil_Backend/src/api/schemas/pipeline_events.py.
+
+interface AgentEventBase {
   kind: "agent";
   schema_version: 1;
   case_id: string;
   agent: string;
-  event: "thinking" | "tool_call" | "tool_result" | "llm_response" | "agent_completed";
+  ts: string;
+  trace_id?: string | null;
+}
+
+export type AgentClassicEventName =
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "llm_response"
+  | "agent_completed";
+
+export interface AgentClassicEvent extends AgentEventBase {
+  event: AgentClassicEventName;
   content?: string | null;
   tool_name?: string | null;
   args?: Record<string, unknown> | null;
   result?: string | null;
-  ts: string;
-  trace_id?: string | null;
 }
+
+// Q1.2 — terminal failure of an agent's stream after at least one chunk
+// was emitted. Consumers render a red error card. PII-safe — only the
+// exception class name crosses the boundary.
+export interface AgentFailedEvent extends AgentEventBase {
+  event: "agent_failed";
+  error_class: string;
+}
+
+// Q1.3 — coalesced prose delta during conversational streaming. Emitted
+// only when the agent's phase is in
+// `PIPELINE_CONVERSATIONAL_STREAMING_PHASES`. Concatenate by `message_id`.
+export interface LlmTokenEvent extends AgentEventBase {
+  event: "llm_token";
+  phase: string;
+  message_id: string;
+  delta: string;
+}
+
+// Q1.3 — partial tool-call args streaming. Frontend renders these into
+// the inline <ToolCallChip> (Q1.9). Concatenate `args_delta` across
+// matching `tool_call_id`s to assemble the JSON args.
+export interface ToolCallDeltaEvent extends AgentEventBase {
+  event: "tool_call_delta";
+  phase: string;
+  tool_call_id: string;
+  name: string;
+  args_delta: string;
+}
+
+// Q1.5 — schema-bound artifact emitted at end of conversational
+// streaming. Exactly one per phase.
+export interface StructuredArtifactEvent extends AgentEventBase {
+  event: "structured_artifact";
+  phase: string;
+  artifact: Record<string, unknown>;
+}
+
+export type AgentEvent =
+  | AgentClassicEvent
+  | AgentFailedEvent
+  | LlmTokenEvent
+  | ToolCallDeltaEvent
+  | StructuredArtifactEvent;
 
 export interface HeartbeatEvent {
   kind: "heartbeat";

@@ -6,6 +6,50 @@ import {
 } from '../lib/pipelineStatus';
 import { clearSessionTags, tagSession } from '../sentry';
 
+// Q1.8 — fold a single conversational-mode agent frame into the per-agent
+// accumulator. Mutates a shallow copy of the supplied state via setter.
+//
+// Shape per agent:
+//   { raw: Event[],
+//     prose: Record<message_id, string>,
+//     toolCalls: Record<tool_call_id, { name, argsDelta }>,
+//     artifact: Artifact | null,
+//     failure: { errorClass: string } | null }
+//
+// `raw` keeps every frame in arrival order so consumers can reconstruct
+// the prose/tool-call interleave that Q1.10 needs for inline chip
+// placement; the structured fields are pre-derived for the common case.
+function emptyAgentStreamSlot() {
+  return { raw: [], prose: {}, toolCalls: {}, artifact: null, failure: null };
+}
+
+function accumulateAgentStream(setter, frame) {
+  setter((prev) => {
+    const slot = { ...(prev[frame.agent] || emptyAgentStreamSlot()) };
+    slot.raw = [...slot.raw, frame];
+
+    if (frame.event === 'llm_token' && frame.message_id) {
+      const existing = slot.prose[frame.message_id] || '';
+      slot.prose = { ...slot.prose, [frame.message_id]: existing + (frame.delta || '') };
+    } else if (frame.event === 'tool_call_delta' && frame.tool_call_id) {
+      const existing = slot.toolCalls[frame.tool_call_id];
+      slot.toolCalls = {
+        ...slot.toolCalls,
+        [frame.tool_call_id]: {
+          name: frame.name || existing?.name || '',
+          argsDelta: (existing?.argsDelta || '') + (frame.args_delta || ''),
+        },
+      };
+    } else if (frame.event === 'structured_artifact') {
+      slot.artifact = frame.artifact || null;
+    } else if (frame.event === 'agent_failed') {
+      slot.failure = { errorClass: frame.error_class || '' };
+    }
+
+    return { ...prev, [frame.agent]: slot };
+  });
+}
+
 /**
  * useAgentStream — live agent event stream over SSE with polling fallback.
  *
@@ -19,6 +63,13 @@ import { clearSessionTags, tagSession } from '../sentry';
  *
  * @returns {{ events, status, retry, lastError, interrupt, clearInterrupt }}
  *   events         – dict keyed by agent_id, each value is an array of raw SSE event objects
+ *   agentStreams   – Q1.8 conversational-mode accumulator keyed by agent_id.
+ *                    Each value: { raw: Event[], prose: Record<message_id,
+ *                    string>, toolCalls: Record<tool_call_id, { name,
+ *                    argsDelta }>, artifact: Artifact|null,
+ *                    failure: { errorClass: string }|null }. Consumed by
+ *                    Q1.10 ConversationStream; legacy consumers keep
+ *                    reading the flat `events` dict.
  *   status         – 'connecting' | 'connected' | 'polling' | 'idle'
  *   retry          – function to force a reconnect
  *   lastError      – last polling error message, or null
@@ -35,6 +86,7 @@ export function useAgentStream(caseId, options = {}) {
   const { onTerminal = null } = options;
 
   const [events, setEvents] = useState({});
+  const [agentStreams, setAgentStreams] = useState({});
   const [status, setStatus] = useState('connecting');
   const [lastError, setLastError] = useState(null);
   const [interrupt, setInterrupt] = useState(null);
@@ -47,6 +99,7 @@ export function useAgentStream(caseId, options = {}) {
   if (prevCaseId !== caseId) {
     setPrevCaseId(caseId);
     if (interrupt !== null) setInterrupt(null);
+    setAgentStreams({});
   }
 
   const esRef = useRef(null);
@@ -106,6 +159,7 @@ export function useAgentStream(caseId, options = {}) {
           ...prev,
           [data.agent]: [...(prev[data.agent] || []), data],
         }));
+        accumulateAgentStream(setAgentStreams, data);
       }
     };
 
@@ -212,7 +266,7 @@ export function useAgentStream(caseId, options = {}) {
     };
   }, [caseId, connect, stopPoll]);
 
-  return { events, status, retry, lastError, interrupt, clearInterrupt };
+  return { events, agentStreams, status, retry, lastError, interrupt, clearInterrupt };
 }
 
 export default useAgentStream;

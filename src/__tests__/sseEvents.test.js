@@ -79,3 +79,173 @@ describe('InterruptEvent shape', () => {
     expect(interrupts[0].gate).toBe('gate2');
   });
 });
+
+// Q1.7 — runtime contracts for the four new conversational-mode agent
+// events: agent_failed, llm_token, tool_call_delta, structured_artifact.
+//
+// These all ride on `kind: "agent"` and discriminate on the `event`
+// literal. Backend source of truth:
+// VerdictCouncil_Backend/src/api/schemas/pipeline_events.py
+//   (AgentFailedEvent / LlmTokenEvent / ToolCallDeltaEvent /
+//    StructuredArtifactEvent).
+
+describe('AgentFailedEvent shape (Q1.2)', () => {
+  it('matches the backend AgentFailedEvent contract', () => {
+    const event = {
+      kind: 'agent',
+      schema_version: 1,
+      case_id: '00000000-0000-0000-0000-000000000abc',
+      agent: 'intake',
+      event: 'agent_failed',
+      // PII-safe — class name only, no message.
+      error_class: 'TimeoutError',
+      ts: '2026-04-26T00:00:00Z',
+    };
+
+    expect(event.kind).toBe('agent');
+    expect(event.event).toBe('agent_failed');
+    expect(typeof event.error_class).toBe('string');
+    expect(event).not.toHaveProperty('error_message');
+  });
+});
+
+describe('LlmTokenEvent shape (Q1.3)', () => {
+  it('matches the backend LlmTokenEvent contract', () => {
+    const event = {
+      kind: 'agent',
+      schema_version: 1,
+      case_id: '00000000-0000-0000-0000-000000000abc',
+      agent: 'intake',
+      phase: 'intake',
+      event: 'llm_token',
+      message_id: 'msg-1',
+      delta: 'The notice describes',
+      ts: '2026-04-26T00:00:00Z',
+    };
+
+    expect(event.kind).toBe('agent');
+    expect(event.event).toBe('llm_token');
+    expect(typeof event.message_id).toBe('string');
+    expect(typeof event.delta).toBe('string');
+    expect(typeof event.phase).toBe('string');
+  });
+});
+
+describe('ToolCallDeltaEvent shape (Q1.3)', () => {
+  it('matches the backend ToolCallDeltaEvent contract', () => {
+    const event = {
+      kind: 'agent',
+      schema_version: 1,
+      case_id: '00000000-0000-0000-0000-000000000abc',
+      agent: 'intake',
+      phase: 'intake',
+      event: 'tool_call_delta',
+      tool_call_id: 'call-abc',
+      name: 'parse_document',
+      args_delta: '{"file_id":',
+      ts: '2026-04-26T00:00:00Z',
+    };
+
+    expect(event.event).toBe('tool_call_delta');
+    expect(typeof event.tool_call_id).toBe('string');
+    expect(typeof event.name).toBe('string');
+    expect(typeof event.args_delta).toBe('string');
+  });
+});
+
+describe('StructuredArtifactEvent shape (Q1.5)', () => {
+  it('matches the backend StructuredArtifactEvent contract', () => {
+    const event = {
+      kind: 'agent',
+      schema_version: 1,
+      case_id: '00000000-0000-0000-0000-000000000abc',
+      agent: 'intake',
+      phase: 'intake',
+      event: 'structured_artifact',
+      artifact: {
+        domain: 'criminal',
+        parties: [{ role: 'defendant', name: 'Alice' }],
+      },
+      ts: '2026-04-26T00:00:00Z',
+    };
+
+    expect(event.event).toBe('structured_artifact');
+    expect(event.artifact).toBeDefined();
+    expect(event.artifact.domain).toBe('criminal');
+  });
+});
+
+describe('AgentEvent narrowing (Q1.7)', () => {
+  it('narrows on the event literal across the conversational-mode union', () => {
+    const events = [
+      {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'intake',
+        event: 'thinking',
+        content: 'classic content',
+        ts: '2026-04-26T00:00:00Z',
+      },
+      {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'intake',
+        phase: 'intake',
+        event: 'llm_token',
+        message_id: 'msg-1',
+        delta: 'hello',
+        ts: '2026-04-26T00:00:00Z',
+      },
+      {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'intake',
+        phase: 'intake',
+        event: 'tool_call_delta',
+        tool_call_id: 'call-1',
+        name: 'parse_document',
+        args_delta: '{"file_id":"f1"',
+        ts: '2026-04-26T00:00:00Z',
+      },
+      {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'intake',
+        phase: 'intake',
+        event: 'structured_artifact',
+        artifact: { domain: 'civil' },
+        ts: '2026-04-26T00:00:00Z',
+      },
+      {
+        kind: 'agent',
+        schema_version: 1,
+        case_id: 'case-1',
+        agent: 'intake',
+        event: 'agent_failed',
+        error_class: 'TimeoutError',
+        ts: '2026-04-26T00:00:00Z',
+      },
+    ];
+
+    const tokens = events.filter((e) => e.event === 'llm_token');
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].delta).toBe('hello');
+
+    const failures = events.filter((e) => e.event === 'agent_failed');
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error_class).toBe('TimeoutError');
+
+    const artifacts = events.filter((e) => e.event === 'structured_artifact');
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].artifact.domain).toBe('civil');
+
+    const toolDeltas = events.filter((e) => e.event === 'tool_call_delta');
+    expect(toolDeltas).toHaveLength(1);
+    expect(toolDeltas[0].tool_call_id).toBe('call-1');
+  });
+});
+
