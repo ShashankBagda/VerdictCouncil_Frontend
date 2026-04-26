@@ -46,4 +46,46 @@ export interface AuthExpiringEvent {
   expires_at: string;
 }
 
-export type SseEvent = ProgressEvent | AgentEvent | HeartbeatEvent | AuthExpiringEvent;
+// Sprint 4 4.A3.7 / 4.A3.8 — gate-pause interrupt frame.
+//
+// Emitted by the backend's `publish_interrupt(...)` whenever the LangGraph
+// pipeline pauses at one of the four review gates. The frontend mounts the
+// matching `<GateReviewPanel gate=N>` (4.C5b) on receipt and POSTs the
+// judge's response to `/cases/{id}/respond` (4.A3.15).
+//
+// Mirrors the backend Pydantic schema at
+// `VerdictCouncil_Backend/src/api/schemas/pipeline_events.py:InterruptEvent`.
+
+export type GateName = "gate1" | "gate2" | "gate3" | "gate4";
+
+export type ResumeAction = "advance" | "rerun" | "halt" | "send_back";
+
+export interface InterruptEvent {
+  kind: "interrupt";
+  schema_version: 1;
+  case_id: string;
+  gate: GateName;
+  // The set of actions valid at this gate. Gate 4 omits "advance" (the
+  // judge records a decision instead) and the apply-node-handled set
+  // (advance/rerun/halt) is always present; "send_back" is short-
+  // circuited at the API layer for gate4 only.
+  actions: ResumeAction[];
+  // Per-gate phase output snapshot the panel renders without an extra
+  // fetch — IntakeOutput / ResearchOutput / SynthesisOutput / AuditOutput
+  // shape varies by gate, so this stays a generic dict at the SSE
+  // boundary; the panel narrows the type before consumption.
+  phase_output?: Record<string, unknown> | null;
+  // Gate 4 only — surfaces auditor `recommend_send_back` so the panel
+  // can render a "Send back to ▼ <phase>" dropdown without re-fetching
+  // the full audit output.
+  audit_summary?: Record<string, unknown> | null;
+  trace_id?: string | null;
+  ts: string;
+}
+
+export type SseEvent =
+  | ProgressEvent
+  | AgentEvent
+  | HeartbeatEvent
+  | AuthExpiringEvent
+  | InterruptEvent;
