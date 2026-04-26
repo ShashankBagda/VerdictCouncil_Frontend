@@ -10,8 +10,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 // jsdom does not implement ResizeObserver; ai-elements' <Conversation>
 // uses use-stick-to-bottom which needs it. Stub the minimum surface.
-if (!global.ResizeObserver) {
-  global.ResizeObserver = vi.fn().mockImplementation(() => ({
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
