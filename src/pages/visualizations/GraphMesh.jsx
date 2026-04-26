@@ -8,9 +8,8 @@ import {
   Panel,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useParams } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { Clock, CheckCircle, AlertCircle, Info, RefreshCw, WifiOff } from 'lucide-react';
-import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { PIPELINE_AGENT_LABELS } from '../../lib/pipelineStatus';
 
 const STATUS_CONFIG = {
@@ -47,9 +46,7 @@ const AGENT_EDGES = [
 ];
 
 export default function GraphMesh() {
-  const { caseId } = useParams();
-  const { showError } = useAPI();
-  const { updatePipelineStatus } = useCase();
+  const { pipeline } = useOutletContext();
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -61,10 +58,7 @@ export default function GraphMesh() {
     isStale,
     isGivenUp,
     retry,
-  } = usePipelineStatus(caseId, {
-    onStatus: updatePipelineStatus,
-    onError: showError,
-  });
+  } = pipeline;
 
   useEffect(() => {
     if (!pipelineStatus?.agents?.length) {
