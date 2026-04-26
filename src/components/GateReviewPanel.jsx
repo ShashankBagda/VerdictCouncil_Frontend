@@ -20,6 +20,15 @@ import Gate1IntakeReview from './Gate1IntakeReview';
 import Gate2ResearchReview from './Gate2ResearchReview';
 import Gate3SynthesisReview from './Gate3SynthesisReview';
 import Gate4AuditorReview from './Gate4AuditorReview';
+import {
+  WhatIfModal,
+  WhatIfCompareView,
+  useWhatIfScenario,
+} from '../features/whatif';
+
+// What-if exploration only makes sense once research is in. Gate 1
+// (intake) is too early — there's nothing to perturb yet.
+const WHATIF_GATES = new Set(['gate2', 'gate3', 'gate4']);
 
 // Gate label / description metadata. Mirrors the four-phase topology
 // (intake / research / synthesis / audit) that 1.A1.7 introduced.
@@ -77,6 +86,9 @@ export default function GateReviewPanel({
 }) {
   const { gate, case_id, actions, audit_summary, phase_output } = interruptEvent;
   const [notes, setNotes] = useState('');
+  const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const whatIfEnabled = WHATIF_GATES.has(gate);
+  const whatIf = useWhatIfScenario(case_id);
 
   // Pre-fill send-back target with the auditor's recommendation when
   // present; fall back to "synthesis" (the most common rewind target).
@@ -111,6 +123,15 @@ export default function GateReviewPanel({
       to_phase: sendBackTarget,
       notes: notes || undefined,
     });
+  }
+
+  function openWhatIf() {
+    whatIf.reset();
+    setWhatIfOpen(true);
+  }
+  function closeWhatIf() {
+    setWhatIfOpen(false);
+    whatIf.reset();
   }
 
   return (
@@ -151,6 +172,16 @@ export default function GateReviewPanel({
 
       {/* Action buttons */}
       <div className="border-t border-slate-100 pt-4 flex flex-wrap items-center gap-2">
+        {whatIfEnabled && (
+          <button
+            type="button"
+            onClick={openWhatIf}
+            disabled={disabled}
+            className="inline-flex items-center px-3 py-1.5 rounded-md border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 disabled:opacity-50"
+          >
+            What if…
+          </button>
+        )}
         {allowedActions.has('advance') && (
           <button
             type="button"
@@ -211,6 +242,29 @@ export default function GateReviewPanel({
           </div>
         )}
       </div>
+
+      {/* What-if modal — overlays the panel; submitting drives the
+          backend fork primitive via /cases/{id}/what-if. The form is
+          shown while status is 'idle'; once a scenario is in flight or
+          terminal, the modal swaps to a result/progress body. */}
+      {whatIfOpen && whatIfEnabled && (
+        <WhatIfModal
+          open={whatIfOpen}
+          onClose={closeWhatIf}
+          onSubmit={(req) => whatIf.submit(req)}
+          submitting={whatIf.status === 'submitting' || whatIf.status === 'polling'}
+        >
+          {whatIf.status === 'completed' ? (
+            <WhatIfCompareView scenario={whatIf.scenario} />
+          ) : whatIf.status === 'failed' ? (
+            <p className="text-sm text-rose-600">
+              Scenario failed: {whatIf.error || 'unknown error'}
+            </p>
+          ) : whatIf.status === 'submitting' || whatIf.status === 'polling' ? (
+            <p className="text-sm text-slate-600">Running scenario…</p>
+          ) : null}
+        </WhatIfModal>
+      )}
 
       {/* Trace + audit links */}
       {(traceUrl || auditLogUrl) && (
