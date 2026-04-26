@@ -4,7 +4,7 @@ import {
   isTerminalPipelineSseEvent,
   normalizePipelineStatus,
 } from '../lib/pipelineStatus';
-import { tagSession } from '../sentry';
+import { clearSessionTags, tagSession } from '../sentry';
 
 /**
  * useAgentStream — live agent event stream over SSE with polling fallback.
@@ -149,6 +149,10 @@ export function useAgentStream(caseId, options = {}) {
         mountedRef.current = false;
         esRef.current?.close();
         stopPoll();
+        // Drop any tags carried over from a prior caseId — without this,
+        // a late frontend error would still attach the previous case's
+        // backend_trace_id (Sprint 3 review finding).
+        clearSessionTags();
       };
     }
 
@@ -166,6 +170,10 @@ export function useAgentStream(caseId, options = {}) {
       esRef.current?.close();
       stopPoll();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Drop the previous case's backend_trace_id tag so it cannot
+      // misattribute a late error from the prior session to the next
+      // caseId. The next case's first SSE frame will re-stamp.
+      clearSessionTags();
     };
   }, [caseId, connect, stopPoll]);
 

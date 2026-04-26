@@ -51,6 +51,13 @@ export function initSentry() {
   return true;
 }
 
+// W3C trace-context trace_id is 32 hex chars (128-bit). Some emitters
+// truncate to a 16-char span-id shape, so accept either length and
+// hex-only — anything else is rejected so a malformed or attacker-
+// supplied value cannot reach an <a href> as a path-traversal or
+// header-injection payload.
+const TRACE_ID_RE = /^[0-9a-f]{16,32}$/i;
+
 /**
  * Build the LangSmith trace URL for a given W3C OTEL trace_id.
  *
@@ -59,13 +66,24 @@ export function initSentry() {
  * propagates from the API request through ``trace_id`` on each SSE
  * frame (Sprint 2 2.C1.6).
  *
+ * Returns `null` when the trace_id is empty, malformed, or doesn't
+ * match the W3C trace-id shape — callers must handle the null branch
+ * and skip rendering the link rather than emit an unsafe href.
+ *
  * @param {string} traceId
  * @param {string} [project]
- * @returns {string}
+ * @returns {string|null}
  */
 export function langsmithTraceUrl(traceId, project = DEFAULT_LANGSMITH_PROJECT) {
-  const encoded = encodeURIComponent(project);
-  return `${LANGSMITH_BASE_URL}/o/projects/p/${encoded}/r/${traceId}`;
+  if (typeof traceId !== 'string' || !TRACE_ID_RE.test(traceId)) {
+    return null;
+  }
+  const encodedProject = encodeURIComponent(project);
+  // traceId already passed the hex-only regex; encodeURIComponent is
+  // belt-and-braces so a future regex change can't quietly let a
+  // path-traversal payload reach the URL.
+  const encodedTrace = encodeURIComponent(traceId);
+  return `${LANGSMITH_BASE_URL}/o/projects/p/${encodedProject}/r/${encodedTrace}`;
 }
 
 /**
@@ -82,8 +100,30 @@ export function langsmithTraceUrl(traceId, project = DEFAULT_LANGSMITH_PROJECT) 
  */
 export function tagSession(traceId, project = DEFAULT_LANGSMITH_PROJECT) {
   if (!traceId) return;
+  const url = langsmithTraceUrl(traceId, project);
+  if (url === null) {
+    // Malformed trace_id — refuse to stamp the tags rather than emit a
+    // broken backend_trace_url that, if rendered into an anchor, could
+    // surface as a reflected-link bug.
+    return;
+  }
   Sentry.setTag('backend_trace_id', traceId);
-  Sentry.setTag('backend_trace_url', langsmithTraceUrl(traceId, project));
+  Sentry.setTag('backend_trace_url', url);
+}
+
+/**
+ * Clear the backend trace tags from the current Sentry scope.
+ *
+ * Call when navigating between cases / sessions so a late-arriving
+ * frontend error from a prior case doesn't end up tagged with the
+ * *new* case's trace_id (or vice versa). Without this, the SSE
+ * consumer for case B overwrites case A's tags as soon as the first
+ * frame arrives, leaving a window where errors mid-navigation get
+ * misattributed.
+ */
+export function clearSessionTags() {
+  Sentry.setTag('backend_trace_id', null);
+  Sentry.setTag('backend_trace_url', null);
 }
 
 /** Test-only: reset the module-level guard so each test re-enters init(). */

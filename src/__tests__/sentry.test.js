@@ -90,31 +90,77 @@ describe('tagSession', () => {
   it('honours an explicit project override', async () => {
     const { tagSession } = await importFresh();
 
-    tagSession('abc123', 'staging-project');
+    tagSession('0af7651916cd43dd8448eb211c80319c', 'staging-project');
 
     const urlCall = setTagMock.mock.calls.find(
       (c) => c[0] === 'backend_trace_url',
     );
     expect(urlCall[1]).toContain('staging-project');
   });
+
+  it('drops malformed trace_ids without setting any tag', async () => {
+    // Sprint 3 review finding: a trace_id that doesn't match the W3C
+    // shape (32 hex chars) must not flow into the LangSmith URL — it
+    // would be a reflected-link surface if rendered as <a href>. The
+    // rejection happens silently so a transient malformed frame does
+    // not poison the whole session.
+    const { tagSession } = await importFresh();
+
+    tagSession('../../foo'); // path traversal attempt
+    tagSession('%0d%0aSet-Cookie:'); // header injection attempt
+    tagSession('abc123'); // too short to be a W3C trace_id
+    tagSession('GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'); // not hex
+
+    expect(setTagMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('langsmithTraceUrl', () => {
+  const validTraceId = '0af7651916cd43dd8448eb211c80319c';
+
   it('builds an absolute URL on the configured base + project', async () => {
     const { langsmithTraceUrl } = await importFresh();
 
-    const url = langsmithTraceUrl('trace-1');
+    const url = langsmithTraceUrl(validTraceId);
 
     expect(url).toBe(
-      'https://smith.langchain.com/o/projects/p/verdictcouncil/r/trace-1',
+      `https://smith.langchain.com/o/projects/p/verdictcouncil/r/${validTraceId}`,
     );
   });
 
   it('url-encodes the project name', async () => {
     const { langsmithTraceUrl } = await importFresh();
 
-    const url = langsmithTraceUrl('trace-2', 'has spaces');
+    const url = langsmithTraceUrl(validTraceId, 'has spaces');
 
     expect(url).toContain('/p/has%20spaces/');
+  });
+
+  it('returns null for malformed trace_ids', async () => {
+    const { langsmithTraceUrl } = await importFresh();
+
+    expect(langsmithTraceUrl('')).toBeNull();
+    expect(langsmithTraceUrl(undefined)).toBeNull();
+    expect(langsmithTraceUrl('../../foo')).toBeNull();
+    expect(langsmithTraceUrl('abc123')).toBeNull(); // too short
+    expect(langsmithTraceUrl('GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG')).toBeNull(); // non-hex
+  });
+
+  it('accepts both 16-char and 32-char W3C shapes', async () => {
+    const { langsmithTraceUrl } = await importFresh();
+
+    expect(langsmithTraceUrl('0af7651916cd43dd')).not.toBeNull(); // 16-char
+    expect(langsmithTraceUrl('0AF7651916CD43DD8448EB211C80319C')).not.toBeNull(); // upper hex
+  });
+});
+
+describe('clearSessionTags', () => {
+  it('clears the backend trace tags so a navigation does not leak attribution', async () => {
+    const { clearSessionTags } = await importFresh();
+
+    clearSessionTags();
+
+    expect(setTagMock).toHaveBeenCalledWith('backend_trace_id', null);
+    expect(setTagMock).toHaveBeenCalledWith('backend_trace_url', null);
   });
 });
