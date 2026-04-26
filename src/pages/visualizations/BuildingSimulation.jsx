@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Activity, AlertCircle, Play, RefreshCw, WifiOff } from 'lucide-react';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { useAgentStream } from '../../hooks/useAgentStream';
+import ConversationStream from '../../components/ConversationStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
 import {
@@ -191,13 +192,21 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
 // Expanded detail view for a single agent. Renders beneath the grid when a
 // card is clicked. Gives each event far more room than the 200px card pane —
 // larger font, no height cap on the pane (scroll inside the drawer instead).
-function FocusDrawer({ agentId, agentStatus, events, onClose }) {
+function FocusDrawer({ agentId, agentStatus, events, stream, onClose }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
   const layer = AGENT_LAYER[agentId] || 'Intake';
   const colors = LAYER_COLORS[layer];
   const status = agentStatus?.status || 'pending';
+
+  // Q1.10 routing — when the agent is running in conversational mode the
+  // Q1.8 accumulator on `stream` populates `prose` with one entry per
+  // assistant turn. If any prose has accumulated we render the chat-style
+  // ConversationStream; otherwise fall back to the raw event list (which
+  // is still what JSON-mode phases produce).
+  const hasConversationalProse =
+    stream && stream.prose && Object.keys(stream.prose).length > 0;
 
   // Auto-scroll the drawer stream to the newest event unless the user
   // scrolled up — same behaviour as the small card pane.
@@ -251,28 +260,33 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
         </button>
       </div>
 
-      {/* Event stream — larger font, taller pane than the card */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 font-mono text-[13px] leading-relaxed bg-black/20"
-        style={{ maxHeight: '520px' }}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          isManualRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 24;
-        }}
-      >
-        {events.length === 0 ? (
-          <span className="text-gray-400 italic">
-            {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
-          </span>
-        ) : (
-          events.map((ev, i) => (
-            <div key={i} className="py-0.5">
-              <EventLine ev={ev} />
-            </div>
-          ))
-        )}
-      </div>
+      {hasConversationalProse ? (
+        <div className="flex-1 overflow-hidden bg-black/20" style={{ maxHeight: '520px' }}>
+          <ConversationStream stream={stream} />
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 font-mono text-[13px] leading-relaxed bg-black/20"
+          style={{ maxHeight: '520px' }}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            isManualRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 24;
+          }}
+        >
+          {events.length === 0 ? (
+            <span className="text-gray-400 italic">
+              {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
+            </span>
+          ) : (
+            events.map((ev, i) => (
+              <div key={i} className="py-0.5">
+                <EventLine ev={ev} />
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -432,7 +446,7 @@ export default function BuildingSimulation() {
   const { showError, showNotification } = useAPI();
   const { updatePipelineStatus } = useCase();
 
-  const { events, status: sseStatus, interrupt, clearInterrupt } = useAgentStream(caseId);
+  const { events, agentStreams, status: sseStatus, interrupt, clearInterrupt } = useAgentStream(caseId);
 
   // Which agent card is currently expanded in the detail drawer. Clicking
   // the same card again closes the drawer.
@@ -663,6 +677,7 @@ export default function BuildingSimulation() {
           agentId={focusedAgentId}
           agentStatus={pipelineStatus?.agents?.find((a) => a.agent_id === focusedAgentId)}
           events={events[focusedAgentId] || []}
+          stream={agentStreams[focusedAgentId]}
           onClose={() => setFocusedAgentId(null)}
         />
       )}
