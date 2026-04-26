@@ -4,6 +4,7 @@ import {
   isTerminalPipelineSseEvent,
   normalizePipelineStatus,
 } from '../lib/pipelineStatus';
+import { tagSession } from '../sentry';
 
 /**
  * useAgentStream — live agent event stream over SSE with polling fallback.
@@ -62,6 +63,14 @@ export function useAgentStream(caseId, options = {}) {
       if (!mountedRef.current) return;
       let data;
       try { data = JSON.parse(raw.data); } catch { return; }
+
+      // Sprint 4 4.C5.2 — every frame that carries a backend trace_id
+      // updates the Sentry scope so a subsequent frontend error attaches
+      // the LangSmith trace URL of the most recent backend activity.
+      // tagSession() is a no-op when Sentry isn't initialised (no DSN).
+      if (data && data.trace_id) {
+        tagSession(data.trace_id);
+      }
 
       if (isTerminalPipelineSseEvent(data)) {
         terminalRef.current = true;
