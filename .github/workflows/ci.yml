@@ -6,6 +6,7 @@ on:
       - main
       - development
       - release
+      - 'feat/**'
   pull_request:
     branches:
       - main
@@ -47,14 +48,226 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Unit Tests
-        run: npm run test -- --run --coverage
-        continue-on-error: true
+      - name: Run Unit Tests with coverage (100% threshold)
+        run: npm run test -- --run --coverage --coverage.thresholds.lines=100 --coverage.thresholds.statements=100 --coverage.thresholds.functions=100
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         if: always()
         continue-on-error: true
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: build
+    name: E2E Tests (Playwright)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Run E2E tests (Chromium)
+        run: npx playwright test --project=chromium
+        env:
+          CI: true
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e/reports/
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
+
+  visual-regression:
+    runs-on: ubuntu-latest
+    needs: build
+    name: Visual Regression (Playwright Snapshots)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Run visual regression tests
+        run: npx playwright test e2e/visual.spec.js --project=chromium
+        env:
+          CI: true
+        continue-on-error: true
+
+      - name: Upload snapshot diff artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-regression-diffs
+          path: |
+            test-results/
+            e2e/snapshots/
+          retention-days: 14
+
+  accessibility-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    name: Accessibility Tests (jest-axe + Playwright axe)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit-level accessibility tests (jest-axe)
+        run: npx vitest run --config vitest.config.js src/__tests__/accessibility.test.jsx
+
+  storybook-tests:
+    runs-on: ubuntu-latest
+    needs: lint
+    name: Storybook Component Tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Storybook
+        run: npm run build-storybook -- --quiet
+
+      - name: Run Storybook test runner
+        run: |
+          npx concurrently -k -s first -n "SB,TEST" -c "magenta,blue" \
+            "npx http-server storybook-static --port 6006 --silent" \
+            "npx wait-on tcp:6006 && npm run test:storybook -- --ci"
+        continue-on-error: true
+
+      - name: Upload Storybook build
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: storybook-static
+          path: storybook-static/
+          retention-days: 7
+
+  mutation-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    name: Mutation Testing (Stryker)
+    # Mutation tests are advisory — they inform quality but don't gate the build
+    # Run only on main and development branches due to time cost
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Stryker mutation tests
+        run: npm run test:mutation
+        continue-on-error: true
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 14
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    needs: build
+    name: Lighthouse CI Performance Audit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Run Lighthouse CI
+        run: npm run lhci
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        continue-on-error: true
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-reports
+          path: .lighthouseci/
+          retention-days: 14
 
   sast:
     runs-on: ubuntu-latest
@@ -89,7 +302,7 @@ jobs:
 
       # Upload SARIF for GitHub Security tab
       - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: semgrep-report.json
@@ -199,10 +412,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1
+
   security-summary:
     runs-on: ubuntu-latest
-    needs: [dast, unit-tests, sast, build]
-    name: Security Summary
+    needs: [dast, unit-tests, sast, build, e2e-tests, accessibility-tests, storybook-tests, lighthouse]
+    name: Security & Quality Summary
     if: always()
     steps:
       - name: Checkout
@@ -224,4 +444,7 @@ jobs:
           echo ""
           echo "=== Code Quality ===" 
           npm run lint || true
+          echo ""
+          echo "=== Test Coverage Summary ==="
+          npm run test -- --run --coverage --reporter=verbose || true
         continue-on-error: true
