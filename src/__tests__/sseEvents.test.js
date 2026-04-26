@@ -249,3 +249,55 @@ describe('AgentEvent narrowing (Q1.7)', () => {
   });
 });
 
+
+// Q1.11 chat-steering — AgentAwaitingInputEvent + AgentResumedEvent shapes.
+describe('AgentAwaitingInputEvent shape (Q1.11)', () => {
+  it('matches the backend AgentAwaitingInputEvent contract', () => {
+    const event = {
+      kind: 'interrupt',
+      schema_version: 1,
+      case_id: '550e8400-e29b-41d4-a716-446655440000',
+      agent: 'synthesis',
+      question: 'Which reading should govern: A or B?',
+      interrupt_id: 'a'.repeat(32),
+      ts: '2026-04-27T10:00:00+00:00',
+    };
+    expect(event.kind).toBe('interrupt');
+    expect(event.agent).toBe('synthesis');
+    expect(typeof event.question).toBe('string');
+    expect(event.interrupt_id).toHaveLength(32);
+  });
+
+  it('discriminates from gate-pause InterruptEvent on payload shape', () => {
+    // Both share kind="interrupt" — the runtime discriminator is shape-based:
+    // agent pauses carry `question` + `interrupt_id`; gate pauses carry
+    // `gate` + `actions`. useAgentStream uses this to route correctly.
+    const agentPause = { kind: 'interrupt', question: 'q', interrupt_id: 'x'.repeat(32) };
+    const gatePause = { kind: 'interrupt', gate: 'gate2', actions: ['advance'] };
+
+    const isAgentPause = (e) => 'question' in e && 'interrupt_id' in e;
+    const isGatePause = (e) => 'gate' in e && 'actions' in e;
+
+    expect(isAgentPause(agentPause)).toBe(true);
+    expect(isAgentPause(gatePause)).toBe(false);
+    expect(isGatePause(gatePause)).toBe(true);
+    expect(isGatePause(agentPause)).toBe(false);
+  });
+});
+
+describe('AgentResumedEvent shape (Q1.11)', () => {
+  it('matches the backend AgentResumedEvent contract', () => {
+    const event = {
+      kind: 'agent',
+      schema_version: 1,
+      case_id: '550e8400-e29b-41d4-a716-446655440000',
+      agent: 'synthesis',
+      event: 'agent_resumed',
+      interrupt_id: 'a'.repeat(32),
+      ts: '2026-04-27T10:00:01+00:00',
+    };
+    expect(event.kind).toBe('agent');
+    expect(event.event).toBe('agent_resumed');
+    expect(event.interrupt_id).toHaveLength(32);
+  });
+});

@@ -89,7 +89,8 @@ export type AgentEvent =
   | AgentFailedEvent
   | LlmTokenEvent
   | ToolCallDeltaEvent
-  | StructuredArtifactEvent;
+  | StructuredArtifactEvent
+  | AgentResumedEvent;
 
 export interface HeartbeatEvent {
   kind: "heartbeat";
@@ -116,7 +117,33 @@ export interface AuthExpiringEvent {
 
 export type GateName = "gate1" | "gate2" | "gate3" | "gate4";
 
-export type ResumeAction = "advance" | "rerun" | "halt" | "send_back";
+export type ResumeAction = "advance" | "rerun" | "halt" | "send_back" | "message";
+
+// Q1.11 chat-steering — agent-initiated `human_input` interrupt. Shares
+// `kind: "interrupt"` with the gate-pause `InterruptEvent` (the SSE layer
+// routes both through the same channel). Consumers discriminate on payload
+// shape: gate pauses carry `gate`, agent pauses carry `question` + `interrupt_id`.
+//
+// Mirrors `VerdictCouncil_Backend/src/api/schemas/pipeline_events.py:AgentAwaitingInputEvent`.
+export interface AgentAwaitingInputEvent {
+  kind: "interrupt";
+  schema_version: 1;
+  case_id: string;
+  agent: string;
+  question: string;
+  interrupt_id: string;
+  ts: string;
+  trace_id?: string | null;
+}
+
+// Q1.11 chat-steering — fired immediately after /respond resumes the
+// graph. The frontend uses this to clear the chat input + return the
+// AgentCard to its `running` state before the next llm_token frame
+// lands. Mirrors the backend `AgentResumedEvent`.
+export interface AgentResumedEvent extends AgentEventBase {
+  event: "agent_resumed";
+  interrupt_id: string;
+}
 
 export interface InterruptEvent {
   kind: "interrupt";
@@ -146,4 +173,11 @@ export type SseEvent =
   | AgentEvent
   | HeartbeatEvent
   | AuthExpiringEvent
+  // AgentAwaitingInputEvent comes BEFORE InterruptEvent in the union so
+  // payload-shape narrowing prefers it for kind="interrupt" frames that
+  // carry `question` + `interrupt_id` (agent pauses), leaving InterruptEvent
+  // for `gate` + `actions` frames (gate pauses). The TS narrowing is
+  // structural — both shapes are valid at the type level — so consumers
+  // must check `"question" in event` to disambiguate at runtime.
+  | AgentAwaitingInputEvent
   | InterruptEvent;

@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAPI } from '@/hooks';
 import api, { getErrorMessage } from '@/lib/api';
 import DocumentSlotGrid, { SLOT_SCHEMA, REQUIRED_GROUP_HINTS } from '@/components/DocumentSlotGrid';
+import KnowledgeBaseCard from '@/components/KnowledgeBaseCard';
 
 const DEFAULT_DOMAIN_CODE = 'traffic_violation';
 
@@ -177,6 +178,8 @@ export default function CaseIntake() {
           </ToggleGroup>
         )}
       </section>
+
+      <KnowledgeBaseCard domain={selectedDomain} loading={domainsLoading} />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">

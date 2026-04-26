@@ -44,6 +44,13 @@ function accumulateAgentStream(setter, frame) {
       slot.artifact = frame.artifact || null;
     } else if (frame.event === 'agent_failed') {
       slot.failure = { errorClass: frame.error_class || '' };
+    } else if (frame.event === 'agent_resumed') {
+      // Q1.11 chat-steering — `agent_resumed` clears any locally-tracked
+      // awaiting state so the chat panel returns to its `running` UI
+      // before the next llm_token frame arrives. Per-slot bookkeeping
+      // is left to the slot consumers; the higher-level interrupt
+      // clearing happens in handleSseEvent below where we own the
+      // interrupt setter.
     }
 
     return { ...prev, [frame.agent]: slot };
@@ -175,6 +182,16 @@ export function useAgentStream(caseId, options = {}) {
           [data.agent]: [...(prev[data.agent] || []), data],
         }));
         accumulateAgentStream(setAgentStreams, data);
+      }
+
+      // Q1.11 chat-steering — clear the sticky interrupt frame as soon
+      // as the backend signals the resumed graph step. Without this the
+      // chat panel would linger in `awaiting` state until the next
+      // unrelated frame triggered a re-render.
+      if (data?.event === 'agent_resumed') {
+        setInterrupt((prev) =>
+          prev && prev.interrupt_id === data.interrupt_id ? null : prev,
+        );
       }
     };
 
