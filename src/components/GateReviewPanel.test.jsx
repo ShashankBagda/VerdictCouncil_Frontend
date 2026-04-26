@@ -189,6 +189,39 @@ describe('<GateReviewPanel> shared surface', () => {
     }
   });
 
+  // Sprint 4 4.A5.3 — "What if..." button is gated by gate number.
+  // Gate 1 (intake) is too early to perturb anything meaningful.
+  it.each([
+    ['gate1', false],
+    ['gate2', true],
+    ['gate3', true],
+    ['gate4', true],
+  ])('shows the "What if..." button on %s = %s', (gate, expected) => {
+    render(
+      <GateReviewPanel
+        interruptEvent={makeInterrupt({
+          gate,
+          actions: gate === 'gate4' ? ['rerun', 'halt'] : ['advance', 'rerun', 'halt'],
+        })}
+        onAction={vi.fn()}
+      />
+    );
+    const btn = screen.queryByRole('button', { name: /what if/i });
+    if (expected) expect(btn).toBeInTheDocument();
+    else expect(btn).toBeNull();
+  });
+
+  it('opens the what-if modal when the button is clicked at gate2', () => {
+    render(
+      <GateReviewPanel
+        interruptEvent={makeInterrupt({ gate: 'gate2' })}
+        onAction={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /what if/i }));
+    expect(screen.getByRole('dialog', { name: /what-if scenario/i })).toBeInTheDocument();
+  });
+
   it('every gate mounts (smoke) with realistic InterruptEvent fixtures', () => {
     const onAction = vi.fn();
     for (const gate of ['gate1', 'gate2', 'gate3', 'gate4']) {
