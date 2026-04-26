@@ -63,7 +63,7 @@
     "@lhci/cli": "^0.14.0",
     "@playwright/test": "^1.50.0",
     "@storybook/addon-a11y": "^8.6.0",
-    "@storybook/addon-coverage": "^8.6.0",
+    "@storybook/addon-coverage": "^3.0.1",
     "@storybook/addon-essentials": "^8.6.0",
     "@storybook/addon-interactions": "^8.6.0",
     "@storybook/react-vite": "^8.6.0",
