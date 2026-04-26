@@ -6,6 +6,7 @@ import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
 import {
+  pickCurrentGate,
   PIPELINE_AGENT_LABELS,
   PIPELINE_AGENT_ORDER,
 } from '../../lib/pipelineStatus';
@@ -34,12 +35,6 @@ const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retry
 
 // Statuses from which a failed/escalated pipeline can be restarted
 const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
-
-// Polled overall_status values where an SSE-pushed interrupt is allowed to
-// override the (slower) polled gate. Anything else (awaiting_review_*,
-// completed, failed, escalated, ready_for_review) means polled status is
-// either already accurate or has moved past — defer to it.
-const SSE_INTERRUPT_OVERRIDABLE = new Set(['', 'pending', 'processing']);
 
 // Map overall_status → gate name
 function currentGateFromStatus(overallStatus) {
@@ -476,28 +471,23 @@ export default function BuildingSimulation() {
 
   const overallStatus = pipelineStatus?.overall_status || '';
   const polledGate = currentGateFromStatus(overallStatus);
-  // Prefer SSE-pushed gate so the panel mounts immediately on pause
-  // (~50ms instead of the next 3 s poll tick); polled status takes over
-  // once it catches up. Gate the SSE override on case_id matching and on
-  // the case not having reached a terminal state, so a stale interrupt
-  // cannot resurrect the panel after the case completes or fails.
-  const ssePushedGate =
-    interrupt?.case_id === caseId && SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)
-      ? interrupt.gate
-      : null;
-  const currentGate = polledGate ?? ssePushedGate;
+  // Reconcile the polled gate with the SSE-pushed interrupt: SSE wins
+  // while polled is still pre-gate AND when it announces a strictly
+  // later gate (back-to-back transition where polling missed the brief
+  // processing window). Polled wins on tie or stale replay. See
+  // pickCurrentGate() in lib/pipelineStatus.js for the full rule.
+  const interruptGate = interrupt?.case_id === caseId ? interrupt.gate : null;
+  const currentGate = pickCurrentGate(polledGate, interruptGate, overallStatus);
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
   const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
 
-  // Once polled status confirms the gate (or moves past it), drop the
-  // sticky SSE frame so the panel doesn't linger after resume. The hook
-  // never sees overall_status, so the de-dup lives here at the seam.
+  // Drop the sticky SSE frame once the resolved gate no longer comes
+  // from it — either polled status caught up, or the case advanced
+  // past the gate the frame announced. Without this the panel would
+  // linger after resume because the hook never sees overall_status.
   useEffect(() => {
-    if (!interrupt) return;
-    if (polledGate || !SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)) {
-      clearInterrupt();
-    }
-  }, [interrupt, polledGate, overallStatus, clearInterrupt]);
+    if (interrupt && currentGate !== interrupt.gate) clearInterrupt();
+  }, [interrupt, currentGate, clearInterrupt]);
 
   // Run the full pipeline (when pending/failed)
   const handleRunPipeline = useCallback(async () => {

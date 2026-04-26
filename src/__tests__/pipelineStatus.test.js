@@ -9,6 +9,7 @@ import {
   isTerminalPipelineStatus,
   MAX_POLL_ERRORS,
   normalizePipelineStatus,
+  pickCurrentGate,
   PIPELINE_AGENT_ORDER,
 } from '../lib/pipelineStatus';
 
@@ -251,5 +252,54 @@ describe('pipelineStatus helpers', () => {
     expect(isTerminalPipelineSseEvent(undefined)).toBe(false);
     expect(isTerminalPipelineSseEvent('not-an-object')).toBe(false);
     expect(isTerminalPipelineSseEvent({})).toBe(false);
+  });
+
+  // ── pickCurrentGate ──────────────────────────────────────────────────────
+  // Closes the stale-polledGate window flagged in
+  // tasks/sse-interrupt-deferral-2026-04-26.md §4: when the backend
+  // transitions awaiting_review_gateN → processing → awaiting_review_gateM
+  // faster than the poll cadence, a fresh gateM interrupt arrives while
+  // polledGate is still the stale gateN. Rank-based override picks the
+  // forward gate; rank-equal-or-backward keeps polled (stale interrupt
+  // replay protection).
+
+  it('returns polledGate when no interrupt is present', () => {
+    expect(pickCurrentGate('gate2', null, 'awaiting_review_gate2')).toBe('gate2');
+    expect(pickCurrentGate(null, null, 'processing')).toBe(null);
+  });
+
+  it('lets the SSE-pushed gate win while polled status is still pre-gate', () => {
+    expect(pickCurrentGate(null, 'gate1', 'processing')).toBe('gate1');
+    expect(pickCurrentGate(null, 'gate1', 'pending')).toBe('gate1');
+    expect(pickCurrentGate(null, 'gate1', '')).toBe('gate1');
+  });
+
+  it('lets the SSE-pushed gate win when it is strictly ahead of the polled gate', () => {
+    // Backend transitioned gate1 → gate2 between poll ticks; the gate2
+    // interrupt should mount the gate2 panel without waiting for the
+    // next poll to land at awaiting_review_gate2.
+    expect(pickCurrentGate('gate1', 'gate2', 'awaiting_review_gate1')).toBe('gate2');
+    expect(pickCurrentGate('gate2', 'gate4', 'awaiting_review_gate2')).toBe('gate4');
+  });
+
+  it('keeps polled when the interrupt frame is for the same or an earlier gate', () => {
+    // Stale interrupt replay (e.g. SSE reconnect after the case advanced).
+    expect(pickCurrentGate('gate2', 'gate1', 'awaiting_review_gate2')).toBe('gate2');
+    expect(pickCurrentGate('gate3', 'gate3', 'awaiting_review_gate3')).toBe('gate3');
+  });
+
+  it('ignores the interrupt once polled status has reached a terminal state', () => {
+    // Case completed/failed/escalated — no panel should ever mount.
+    expect(pickCurrentGate(null, 'gate4', 'completed')).toBe(null);
+    expect(pickCurrentGate(null, 'gate2', 'failed')).toBe(null);
+    expect(pickCurrentGate(null, 'gate3', 'escalated')).toBe(null);
+    expect(pickCurrentGate(null, 'gate1', 'ready_for_review')).toBe(null);
+  });
+
+  it('treats an unknown SSE gate name as no override', () => {
+    // Defensive: an unrecognised gate label from a future schema must
+    // not silently mount nothing or crash the rank comparison.
+    expect(pickCurrentGate('gate1', 'gate9', 'awaiting_review_gate1')).toBe('gate1');
+    expect(pickCurrentGate(null, 'gate9', 'processing')).toBe(null);
   });
 });

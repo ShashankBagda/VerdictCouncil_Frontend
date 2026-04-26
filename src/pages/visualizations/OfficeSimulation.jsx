@@ -6,17 +6,12 @@ import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
 import api from '../../lib/api';
-import { PIPELINE_AGENT_LABELS } from '../../lib/pipelineStatus';
+import { pickCurrentGate, PIPELINE_AGENT_LABELS } from '../../lib/pipelineStatus';
 import { formatToolCallArgs } from '../../lib/eventFormatters';
 import { OfficeScene } from '../../game/OfficeScene';
 
 const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
 const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
-// Polled overall_status values where an SSE-pushed interrupt can win the
-// race against the next /status poll tick. See BuildingSimulation for the
-// full reasoning; the two screens render the same panel from the same
-// inputs, so the rule is shared.
-const SSE_INTERRUPT_OVERRIDABLE = new Set(['', 'pending', 'processing']);
 
 function currentGateFromStatus(overallStatus) {
   const m = String(overallStatus || '').match(/^awaiting_review_(gate\d)$/);
@@ -187,20 +182,14 @@ export default function OfficeSimulation() {
   // ── Pipeline actions ────────────────────────────────────────────────────────
   const overallStatus = pipelineStatus?.overall_status || '';
   const polledGate = currentGateFromStatus(overallStatus);
-  const ssePushedGate =
-    interrupt?.case_id === caseId && SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)
-      ? interrupt.gate
-      : null;
-  const currentGate = polledGate ?? ssePushedGate;
+  const interruptGate = interrupt?.case_id === caseId ? interrupt.gate : null;
+  const currentGate = pickCurrentGate(polledGate, interruptGate, overallStatus);
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
   const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
 
   useEffect(() => {
-    if (!interrupt) return;
-    if (polledGate || !SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)) {
-      clearInterrupt();
-    }
-  }, [interrupt, polledGate, overallStatus, clearInterrupt]);
+    if (interrupt && currentGate !== interrupt.gate) clearInterrupt();
+  }, [interrupt, currentGate, clearInterrupt]);
 
   const handleRunPipeline = useCallback(async () => {
     if (pipelinePending) return;
