@@ -34,7 +34,8 @@ All commands run from orchestration root `/Users/douglasswm/Project/AAS/VER/` un
 - [ ] `curl -sf http://localhost:5173/` → 200 HTML (Vite dev server)
 
 ## 3. Seed database
-- [ ] In a second terminal: `cd VerdictCouncil_Backend && .venv/bin/python -m scripts.seed_data`
+- [ ] `dev.sh` already ran `scripts.seed_users` (judge + admin login accounts). To skip the seed step or re-run on its own: `cd VerdictCouncil_Backend && .venv/bin/python -m scripts.seed_users`
+- [ ] (Optional) Rich demo fixtures — *PP v Ahmad bin Ismail* + sample SCT case with full pipeline output: `cd VerdictCouncil_Backend && .venv/bin/python -m scripts.fix_demo_data`
 - [ ] Seeded judge credentials work (default `judge@verdictcouncil.sg` / `password` unless overridden)
 
 ## 4. Contract verification (the critical checks)
