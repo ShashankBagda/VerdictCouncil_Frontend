@@ -1,5 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const stripShebang = {
   name: 'strip-shebang',
@@ -12,6 +17,9 @@ const stripShebang = {
 
 export default defineConfig({
   plugins: [react(), stripShebang],
+  resolve: {
+    alias: [{ find: '@', replacement: path.resolve(__dirname, 'src') }],
+  },
   test: {
     environment: 'jsdom',
     globals: true,

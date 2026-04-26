@@ -20,29 +20,30 @@ const STATUS_CONFIG = {
   failed: { color: '#fee2e2', textColor: '#7f1d1d' },
 };
 
+// Mirrors the LangGraph topology in
+// VerdictCouncil_Backend/src/pipeline/graph/builder.py:
+// intake → (gate1) → 4 parallel research subagents → (gate2)
+//        → synthesis → (gate3) → audit → (gate4) → END.
 const AGENT_POSITIONS = {
-  'case-processing': { x: 0, y: 0 },
-  'complexity-routing': { x: 0, y: 150 },
-  'evidence-analysis': { x: -200, y: 300 },
-  'fact-reconstruction': { x: 0, y: 300 },
-  'witness-analysis': { x: 200, y: 300 },
-  'legal-knowledge': { x: -200, y: 450 },
-  'argument-construction': { x: 100, y: 450 },
-  'hearing-analysis': { x: -100, y: 600 },
-  'hearing-governance': { x: 100, y: 600 },
+  intake:               { x: 0,    y: 0 },
+  'research-evidence':  { x: -360, y: 180 },
+  'research-facts':     { x: -120, y: 180 },
+  'research-witnesses': { x: 120,  y: 180 },
+  'research-law':       { x: 360,  y: 180 },
+  synthesis:            { x: 0,    y: 360 },
+  audit:                { x: 0,    y: 540 },
 };
 
 const AGENT_EDGES = [
-  { source: 'case-processing', target: 'complexity-routing' },
-  { source: 'complexity-routing', target: 'evidence-analysis' },
-  { source: 'complexity-routing', target: 'fact-reconstruction' },
-  { source: 'complexity-routing', target: 'witness-analysis' },
-  { source: 'evidence-analysis', target: 'legal-knowledge' },
-  { source: 'fact-reconstruction', target: 'argument-construction' },
-  { source: 'witness-analysis', target: 'argument-construction' },
-  { source: 'legal-knowledge', target: 'hearing-analysis' },
-  { source: 'argument-construction', target: 'hearing-analysis' },
-  { source: 'hearing-analysis', target: 'hearing-governance' },
+  { source: 'intake', target: 'research-evidence' },
+  { source: 'intake', target: 'research-facts' },
+  { source: 'intake', target: 'research-witnesses' },
+  { source: 'intake', target: 'research-law' },
+  { source: 'research-evidence', target: 'synthesis' },
+  { source: 'research-facts', target: 'synthesis' },
+  { source: 'research-witnesses', target: 'synthesis' },
+  { source: 'research-law', target: 'synthesis' },
+  { source: 'synthesis', target: 'audit' },
 ];
 
 export default function GraphMesh() {

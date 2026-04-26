@@ -104,6 +104,12 @@ export function useAgentStream(caseId, options = {}) {
 
   const esRef = useRef(null);
   const pollRef = useRef(null);
+  const reconnectRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
+  // Self-ref so the cold-start retry's setTimeout can re-enter `connect`
+  // without referring to it before its useCallback declaration completes
+  // (see effect below that keeps the ref in sync with each render).
+  const connectRef = useRef(null);
   const terminalRef = useRef(false);
   const mountedRef = useRef(true);
   const onTerminalRef = useRef(onTerminal);
@@ -114,6 +120,13 @@ export function useAgentStream(caseId, options = {}) {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
+    }
+  }, []);
+
+  const cancelReconnect = useCallback(() => {
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
     }
   }, []);
 
@@ -128,6 +141,8 @@ export function useAgentStream(caseId, options = {}) {
       if (!mountedRef.current) return;
       setStatus('connected');
       setLastError(null);
+      reconnectAttemptRef.current = 0;
+      cancelReconnect();
       stopPoll();
     };
 
@@ -187,10 +202,30 @@ export function useAgentStream(caseId, options = {}) {
 
     es.onerror = () => {
       if (!mountedRef.current) return;
-      setStatus(terminalRef.current ? 'idle' : 'polling');
       esRef.current?.close();
       esRef.current = null;
-      if (terminalRef.current) return;
+      if (terminalRef.current) {
+        setStatus('idle');
+        return;
+      }
+
+      // Backend cold-start can return a transient 503 on the first SSE
+      // open before Redis is reachable. Retry twice with backoff before
+      // dropping to polling so the UI stays on the live "connected" path
+      // instead of flipping to "polling" on the very first frame.
+      const attempt = reconnectAttemptRef.current;
+      if (attempt < 2) {
+        reconnectAttemptRef.current = attempt + 1;
+        setStatus('connecting');
+        cancelReconnect();
+        reconnectRef.current = setTimeout(() => {
+          reconnectRef.current = null;
+          if (mountedRef.current && !terminalRef.current) connectRef.current?.();
+        }, 500 * (attempt + 1));
+        return;
+      }
+
+      setStatus('polling');
 
       // Polling fallback: synthesise events from /status while SSE is down
       if (!pollRef.current) {
@@ -216,16 +251,23 @@ export function useAgentStream(caseId, options = {}) {
         }, 5000);
       }
     };
-  }, [caseId, stopPoll]);
+  }, [caseId, stopPoll, cancelReconnect]);
+
+  // Keep connectRef pointing at the latest `connect` so the cold-start
+  // retry's setTimeout always invokes the current closure rather than a
+  // stale one captured at the moment the timeout was scheduled.
+  useEffect(() => { connectRef.current = connect; }, [connect]);
 
   const clearInterrupt = useCallback(() => setInterrupt(null), []);
 
   // Manual retry — re-arm SSE regardless of terminal state
   const retry = useCallback(() => {
     terminalRef.current = false;
+    reconnectAttemptRef.current = 0;
+    cancelReconnect();
     stopPoll();
     connect();
-  }, [connect, stopPoll]);
+  }, [connect, stopPoll, cancelReconnect]);
 
   // Main effect: connect on mount / caseId change; re-arm on tab visibility restore.
   // No setState here — all state transitions happen inside SSE event callbacks.
@@ -233,10 +275,14 @@ export function useAgentStream(caseId, options = {}) {
     mountedRef.current = true;
     terminalRef.current = false;
 
+    reconnectAttemptRef.current = 0;
+    cancelReconnect();
+
     if (!caseId) {
       return () => {
         mountedRef.current = false;
         esRef.current?.close();
+        cancelReconnect();
         stopPoll();
         // Drop any tags carried over from a prior caseId — without this,
         // a late frontend error would still attach the previous case's
@@ -257,6 +303,7 @@ export function useAgentStream(caseId, options = {}) {
     return () => {
       mountedRef.current = false;
       esRef.current?.close();
+      cancelReconnect();
       stopPoll();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       // Drop the previous case's backend_trace_id tag so it cannot
@@ -264,7 +311,7 @@ export function useAgentStream(caseId, options = {}) {
       // caseId. The next case's first SSE frame will re-stamp.
       clearSessionTags();
     };
-  }, [caseId, connect, stopPoll]);
+  }, [caseId, connect, stopPoll, cancelReconnect]);
 
   return { events, agentStreams, status, retry, lastError, interrupt, clearInterrupt };
 }

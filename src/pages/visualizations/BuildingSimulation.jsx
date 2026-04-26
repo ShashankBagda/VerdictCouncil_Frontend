@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Activity, AlertCircle, Play, RefreshCw, WifiOff } from 'lucide-react';
+import { Streamdown } from 'streamdown';
+import { code } from '@streamdown/code';
 import { useAPI, useCase, usePipelineStatus } from '../../hooks';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import GateReviewPanel from '../../components/cases/GateReviewPanel';
@@ -17,18 +19,27 @@ import {
   formatNarration,
 } from '../../lib/eventFormatters';
 
-// ── Gate → agent mapping (mirrors backend GATE_AGENTS) ────────────────────
+// Plugin set for Streamdown — only `code` is needed for streamed agent
+// reasoning (syntax-highlighted ``` blocks). Mermaid/math/cjk can be added
+// later if model output starts emitting them.
+const STREAMDOWN_PLUGINS = { code };
+
+// ── Gate → agent mapping (mirrors backend builder.py topology) ────────────
+// Gate 1 follows intake; Gate 2 follows the parallel research fan-in;
+// Gate 3 follows synthesis; Gate 4 follows audit.
 const AGENT_GATE = {
-  'case-processing':    'gate1',
-  'complexity-routing': 'gate1',
-  'evidence-analysis':  'gate2',
-  'fact-reconstruction':'gate2',
-  'witness-analysis':   'gate2',
-  'legal-knowledge':    'gate2',
-  'argument-construction': 'gate3',
-  'hearing-analysis':   'gate3',
-  'hearing-governance': 'gate4',
+  intake:               'gate1',
+  'research-evidence':  'gate2',
+  'research-facts':     'gate2',
+  'research-witnesses': 'gate2',
+  'research-law':       'gate2',
+  synthesis:            'gate3',
+  audit:                'gate4',
 };
+
+// Only gate2 supports per-subagent rerun (one of the 4 research scopes);
+// other gates re-run the whole phase, so we omit agent_name for them.
+const PER_SUBAGENT_RERUN_GATES = new Set(['gate2']);
 
 // Statuses from which the full pipeline can be (re-)started
 const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
@@ -44,23 +55,69 @@ function currentGateFromStatus(overallStatus) {
 
 // ── Agent metadata (layer grouping for the header label) ────────────────────
 const AGENT_LAYER = {
-  'case-processing': 'Intake',
-  'complexity-routing': 'Intake',
-  'evidence-analysis': 'Evidence',
-  'fact-reconstruction': 'Evidence',
-  'witness-analysis': 'Evidence',
-  'legal-knowledge': 'Legal',
-  'argument-construction': 'Legal',
-  'hearing-analysis': 'Decision',
-  'hearing-governance': 'Decision',
+  intake: 'Intake',
+  'research-evidence': 'Research',
+  'research-facts': 'Research',
+  'research-witnesses': 'Research',
+  'research-law': 'Research',
+  synthesis: 'Synthesis',
+  audit: 'Audit',
 };
 
+// Cards use a uniform dark neutral background so streamed agent text always
+// reads with the same contrast. The per-layer colour shows up only as the
+// border, the header accent stripe, the legend dot, and the layer badge —
+// none of which sit behind body text.
 const LAYER_COLORS = {
-  Intake:   { bg: 'bg-violet-900/75', border: 'border-violet-500/60', badge: 'bg-violet-700 text-violet-100', dot: 'bg-violet-400' },
-  Evidence: { bg: 'bg-teal-900/75',   border: 'border-teal-500/60',   badge: 'bg-teal-700 text-teal-100',   dot: 'bg-teal-400' },
-  Legal:    { bg: 'bg-blue-900/75',   border: 'border-blue-500/60',   badge: 'bg-blue-700 text-blue-100',   dot: 'bg-blue-400' },
-  Decision: { bg: 'bg-amber-900/75',  border: 'border-amber-500/60',  badge: 'bg-amber-700 text-amber-100', dot: 'bg-amber-400' },
+  Intake:    { bg: 'bg-slate-900', border: 'border-violet-500/70', stripe: 'bg-violet-500', badge: 'bg-violet-700 text-violet-50', dot: 'bg-violet-400' },
+  Research:  { bg: 'bg-slate-900', border: 'border-teal-500/70',   stripe: 'bg-teal-500',   badge: 'bg-teal-700 text-teal-50',     dot: 'bg-teal-400' },
+  Synthesis: { bg: 'bg-slate-900', border: 'border-sky-500/70',    stripe: 'bg-sky-500',    badge: 'bg-sky-700 text-sky-50',       dot: 'bg-sky-400' },
+  Audit:     { bg: 'bg-slate-900', border: 'border-amber-500/70',  stripe: 'bg-amber-500',  badge: 'bg-amber-700 text-amber-50',   dot: 'bg-amber-400' },
 };
+
+// Tool calls that hit a vector store / external RAG corpus. Surfacing
+// these in the stream makes it obvious when an agent is grounding its
+// answer in retrieved evidence vs. reasoning over what's already in
+// state. Mirrors the backend tools in src/tools/ that take a
+// vector_store_id parameter or call vector_store_search internally.
+const RAG_TOOLS = new Set([
+  'search_precedents',       // PAIR API + OpenAI vector_store fallback
+  'search_domain_guidance',  // OpenAI vector_store query
+  'search_legal_rules',      // alias for search_domain_guidance
+]);
+
+// Backend emits one `llm_chunk` event per model token (factory.py
+// uses `agent.astream(stream_mode="messages")`). At ~30-100 tok/s
+// that's a lot of DOM nodes; coalesce consecutive chunks from the
+// same agent into a single rolling `llm_stream` event so the UI
+// renders them as one growing bubble.
+function coalesceLlmChunks(events) {
+  const out = [];
+  let buffer = null;
+  for (const ev of events) {
+    const phase = ev.phase || ev.event;
+    if (phase === 'llm_chunk') {
+      const delta = ev.delta || ev.content || '';
+      if (buffer) {
+        buffer.delta += delta;
+        buffer.ts = ev.ts || buffer.ts;
+        buffer.streaming = true;
+      } else {
+        buffer = { event: 'llm_stream', delta, ts: ev.ts, streaming: true };
+      }
+    } else {
+      if (buffer) {
+        // A non-chunk event arrived → the streaming response is done.
+        buffer.streaming = false;
+        out.push(buffer);
+        buffer = null;
+      }
+      out.push(ev);
+    }
+  }
+  if (buffer) out.push(buffer);
+  return out;
+}
 
 // ── Status colours ──────────────────────────────────────────────────────────
 function statusStyle(status) {
@@ -90,13 +147,14 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
   const colors = LAYER_COLORS[layer];
   const status = agentStatus?.status || 'pending';
   const isRunning = status === 'running';
+  const renderedEvents = useMemo(() => coalesceLlmChunks(events), [events]);
 
   // Auto-scroll to bottom unless user scrolled up
   useEffect(() => {
     if (!isManualRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events]);
+  }, [renderedEvents]);
 
   return (
     <div
@@ -105,6 +163,10 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
       }`}
       style={{ minHeight: '220px' }}
     >
+      {/* Top accent stripe — keeps the layer colour visible without
+          tinting the body text background. */}
+      <div className={`h-1 ${colors.stripe}`} />
+
       {/* Card header — clicking anywhere except the inner Run button focuses the card */}
       <div
         role="button"
@@ -116,22 +178,19 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
             onFocus?.(agentId);
           }
         }}
-        className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/35 hover:bg-black/45 transition-colors cursor-pointer"
+        className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/10 bg-slate-950/80 hover:bg-slate-950 transition-colors cursor-pointer"
         title={isFocused ? 'Click to close detail view' : 'Click to open detail view'}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusDot(status)}`} />
-          <span className="text-sm font-semibold text-white truncate">{label}</span>
+          <span className="text-sm font-semibold text-white truncate" title={label}>{label}</span>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${colors.badge}`}>
-            {layer}
-          </span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusStyle(status)}`}>
             {status === 'pending' ? 'waiting' : status}
           </span>
           {agentStatus?.elapsed_seconds != null && (
-            <span className="text-[10px] text-gray-500">{agentStatus.elapsed_seconds}s</span>
+            <span className="text-[10px] text-slate-400 tabular-nums">{agentStatus.elapsed_seconds}s</span>
           )}
 
           {/* ── Agent action button (single) ── */}
@@ -168,19 +227,19 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
       {/* Event stream */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-3 py-2 space-y-1 font-mono text-[11px] leading-relaxed"
+        className="flex-1 overflow-y-auto px-3 py-2 space-y-1 font-mono text-[11px] leading-relaxed text-slate-200"
         style={{ maxHeight: '200px' }}
         onScroll={(e) => {
           const el = e.currentTarget;
           isManualRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 24;
         }}
       >
-        {events.length === 0 ? (
-          <span className="text-gray-400 italic">
+        {renderedEvents.length === 0 ? (
+          <span className="text-slate-400 italic">
             {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
           </span>
         ) : (
-          events.map((ev, i) => <EventLine key={i} ev={ev} />)
+          renderedEvents.map((ev, i) => <EventLine key={i} ev={ev} />)
         )}
       </div>
     </div>
@@ -198,6 +257,7 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
   const layer = AGENT_LAYER[agentId] || 'Intake';
   const colors = LAYER_COLORS[layer];
   const status = agentStatus?.status || 'pending';
+  const renderedEvents = useMemo(() => coalesceLlmChunks(events), [events]);
 
   // Auto-scroll the drawer stream to the newest event unless the user
   // scrolled up — same behaviour as the small card pane.
@@ -205,10 +265,12 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
     if (!isManualRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events]);
+  }, [renderedEvents]);
 
   // Count events by type for the header summary — useful at-a-glance context.
-  const counts = events.reduce((acc, ev) => {
+  // Use the coalesced view so a 200-token streaming response counts as one
+  // "llm response", not 200 individual chunks.
+  const counts = renderedEvents.reduce((acc, ev) => {
     const k = ev.event || 'other';
     acc[k] = (acc[k] || 0) + 1;
     return acc;
@@ -219,8 +281,9 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
       className={`rounded-xl border ${colors.border} ${colors.bg} overflow-hidden flex flex-col`}
       style={{ minHeight: '420px' }}
     >
+      <div className={`h-1 ${colors.stripe}`} />
       {/* Drawer header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-slate-950/80">
         <div className="flex items-center gap-3 min-w-0">
           <span className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${statusDot(status)}`} />
           <div className="flex flex-col min-w-0">
@@ -254,19 +317,19 @@ function FocusDrawer({ agentId, agentStatus, events, onClose }) {
       {/* Event stream — larger font, taller pane than the card */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 font-mono text-[13px] leading-relaxed bg-black/20"
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 font-mono text-[13px] leading-relaxed text-slate-200 bg-slate-950/40"
         style={{ maxHeight: '520px' }}
         onScroll={(e) => {
           const el = e.currentTarget;
           isManualRef.current = el.scrollHeight - el.scrollTop - el.clientHeight > 24;
         }}
       >
-        {events.length === 0 ? (
-          <span className="text-gray-400 italic">
+        {renderedEvents.length === 0 ? (
+          <span className="text-slate-400 italic">
             {status === 'running' ? 'Connecting to stream…' : 'Waiting for pipeline to reach this agent…'}
           </span>
         ) : (
-          events.map((ev, i) => (
+          renderedEvents.map((ev, i) => (
             <div key={i} className="py-0.5">
               <EventLine ev={ev} />
             </div>
@@ -337,19 +400,31 @@ function EventLine({ ev }) {
       );
     case 'tool_call': {
       const summary = formatToolCallArgs(ev.tool_name, ev.args);
+      const isRag = RAG_TOOLS.has(ev.tool_name);
       return (
-        <span className="text-cyan-300">
-          ⚙ <span className="font-semibold">{ev.tool_name || 'tool'}</span>
-          {summary ? <span className="text-gray-300 ml-1.5">{summary}</span> : null}
+        <span className={isRag ? 'text-fuchsia-200' : 'text-cyan-300'}>
+          {isRag ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mr-1.5 rounded bg-fuchsia-700/40 border border-fuchsia-500/50 text-fuchsia-100 text-[10px] font-bold uppercase tracking-wider">
+              📚 Vector store
+            </span>
+          ) : '⚙ '}
+          <span className="font-semibold">{ev.tool_name || 'tool'}</span>
+          {summary ? <span className="text-slate-300 ml-1.5">{summary}</span> : null}
         </span>
       );
     }
     case 'tool_result': {
       const summary = formatToolResult(ev.tool_name, ev.result);
+      const isRag = RAG_TOOLS.has(ev.tool_name);
       return (
-        <span className="text-cyan-200">
-          ↩ <span className="font-semibold">{ev.tool_name || 'result'}</span>
-          {summary ? <span className="text-gray-300 ml-1.5">{summary}</span> : null}
+        <span className={isRag ? 'text-fuchsia-100' : 'text-cyan-200'}>
+          {isRag ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mr-1.5 rounded bg-fuchsia-700/40 border border-fuchsia-500/50 text-fuchsia-100 text-[10px] font-bold uppercase tracking-wider">
+              📚 RAG hit
+            </span>
+          ) : '↩ '}
+          <span className="font-semibold">{ev.tool_name || 'result'}</span>
+          {summary ? <span className="text-slate-300 ml-1.5">{summary}</span> : null}
         </span>
       );
     }
@@ -361,22 +436,81 @@ function EventLine({ ev }) {
           {formatNarration(ev.content || '')}
         </span>
       );
+    case 'llm_stream':
+      // Coalesced run of `llm_chunk` events — render the accumulated
+      // delta as live markdown via Streamdown. Streamdown handles
+      // partial fences gracefully, owns the typing-cursor (`caret`),
+      // and disables copy-button controls while `isAnimating` is true
+      // so the user can't grab a half-formed response.
+      return (
+        <div className="flex gap-1.5 text-slate-100 leading-relaxed">
+          <span className="text-teal-400 select-none flex-shrink-0">◆</span>
+          <Streamdown
+            plugins={STREAMDOWN_PLUGINS}
+            isAnimating={!!ev.streaming}
+            caret="block"
+            controls={!ev.streaming}
+            className="prose prose-invert prose-sm max-w-none flex-1 prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800 prose-code:text-teal-200 prose-headings:text-slate-100 prose-strong:text-white prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5"
+          >
+            {ev.delta || ''}
+          </Streamdown>
+        </div>
+      );
     case 'llm_response':
-    case 'response':
+    case 'response': {
+      // Final, non-streaming model response. Render in static mode so
+      // copy buttons + link-safety modals are active.
+      const content = formatLlmResponse(ev.content || ev.message || '');
+      const text = typeof content === 'string' ? content : String(content ?? '');
       return (
-        <span className="text-white">
-          <span className="text-teal-400">◆ </span>
-          {formatLlmResponse(ev.content || ev.message || '')}
-        </span>
+        <div className="flex gap-1.5 text-white leading-relaxed">
+          <span className="text-teal-400 select-none flex-shrink-0">◆</span>
+          <Streamdown
+            mode="static"
+            plugins={STREAMDOWN_PLUGINS}
+            className="prose prose-invert prose-sm max-w-none flex-1 prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800 prose-code:text-teal-200 prose-headings:text-slate-100 prose-strong:text-white prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5"
+          >
+            {text}
+          </Streamdown>
+        </div>
       );
-    default:
+    }
+    case 'token_usage': {
+      const usage = ev.usage || {};
       return (
-        <span className="text-gray-300">
+        <span className="text-slate-500 text-[10px]">
           {tsSpan}
-          {phase ? <span className="text-gray-400">[{phase}] </span> : null}
-          {ev.content || ev.message || (ev.detail ? JSON.stringify(ev.detail).slice(0, 120) : JSON.stringify(ev).slice(0, 120))}
+          <span className="opacity-70">↯ tokens</span>
+          <span className="ml-1 tabular-nums">
+            in {usage.prompt_tokens ?? '?'} · out {usage.completion_tokens ?? '?'}
+            {usage.total_tokens != null ? ` · total ${usage.total_tokens}` : ''}
+          </span>
         </span>
       );
+    }
+    case 'thinking':
+    case 'agent_thinking':
+      return (
+        <span className="text-violet-300 italic">
+          {tsSpan}
+          <span className="text-violet-400 not-italic">… </span>
+          {ev.content || ev.message || ev.detail?.summary || ''}
+        </span>
+      );
+    default: {
+      // Avoid dumping the whole SSE envelope (kind, schema_version,
+      // case_id, agent, …) — it's noisy and exposes internal IDs.
+      // Show just the salient bits in a tag-only line.
+      const summary = ev.content || ev.message
+        || (ev.detail ? JSON.stringify(ev.detail).slice(0, 120) : null);
+      return (
+        <span className="text-slate-400">
+          {tsSpan}
+          {phase ? <span className="text-slate-500">[{phase}] </span> : null}
+          {summary || <span className="opacity-60 italic">no payload</span>}
+        </span>
+      );
+    }
   }
 }
 
@@ -524,7 +658,11 @@ export default function BuildingSimulation() {
     const gate = AGENT_GATE[agentId];
     try {
       setPendingAgents((prev) => ({ ...prev, [agentId]: true }));
-      await api.rerunGate(caseId, gate, { agentName: agentId });
+      await api.rerunGate(
+        caseId,
+        gate,
+        PER_SUBAGENT_RERUN_GATES.has(gate) ? { agentName: agentId } : {},
+      );
       showNotification(`Re-running ${PIPELINE_AGENT_LABELS[agentId] || agentId}…`, 'success');
     } catch (err) {
       showError(err?.detail || err?.message || `Failed to re-run agent`);
@@ -560,7 +698,7 @@ export default function BuildingSimulation() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            9-agent pipeline · case {caseId.slice(0, 8)}…
+            7-agent pipeline · case {caseId.slice(0, 8)}…
           </p>
         </div>
 
@@ -580,7 +718,7 @@ export default function BuildingSimulation() {
             onClick={handleRunPipeline}
             disabled={pipelinePending}
             className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 border border-emerald-700/50 hover:border-emerald-500/60 bg-emerald-900/20 hover:bg-emerald-800/30 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Start the 9-agent pipeline for this case"
+            title="Start the 7-agent pipeline for this case"
           >
             {pipelinePending
               ? <span className="w-3 h-3 rounded-full border border-emerald-400 border-t-transparent animate-spin" />
@@ -634,25 +772,46 @@ export default function BuildingSimulation() {
         />
       )}
 
-      {/* ── Agent grid ── */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        {PIPELINE_AGENT_ORDER.map((agentId) => {
-          const agentStatus = pipelineStatus?.agents?.find((a) => a.agent_id === agentId);
-          const agentEvents = events[agentId] || [];
-          // Agent can be re-run when case is paused at this agent's gate
-          const agentCanRun = currentGate != null && AGENT_GATE[agentId] === currentGate;
+      {/* ── Agent grid (one row per LangGraph layer) ── */}
+      <div className="flex flex-col gap-3">
+        {Object.keys(LAYER_COLORS).map((layer) => {
+          const layerAgents = PIPELINE_AGENT_ORDER.filter((id) => AGENT_LAYER[id] === layer);
+          if (layerAgents.length === 0) return null;
+          // Cap at 2 columns so cards stay wide enough to show the agent
+          // name unclipped — Research has 4 agents, so they stack 2×2.
+          const cols = Math.min(layerAgents.length, 2);
           return (
-            <AgentCard
-              key={agentId}
-              agentId={agentId}
-              agentStatus={agentStatus}
-              events={agentEvents}
-              canRun={agentCanRun}
-              isActionPending={!!pendingAgents[agentId]}
-              onRun={() => handleRunAgent(agentId)}
-              isFocused={focusedAgentId === agentId}
-              onFocus={toggleFocus}
-            />
+            <div key={layer} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 px-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${LAYER_COLORS[layer].dot}`} />
+                <span className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">
+                  {layer}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  · gate {AGENT_GATE[layerAgents[0]]?.replace('gate', '')}
+                </span>
+              </div>
+              <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {layerAgents.map((agentId) => {
+                  const agentStatus = pipelineStatus?.agents?.find((a) => a.agent_id === agentId);
+                  const agentEvents = events[agentId] || [];
+                  const agentCanRun = currentGate != null && AGENT_GATE[agentId] === currentGate;
+                  return (
+                    <AgentCard
+                      key={agentId}
+                      agentId={agentId}
+                      agentStatus={agentStatus}
+                      events={agentEvents}
+                      canRun={agentCanRun}
+                      isActionPending={!!pendingAgents[agentId]}
+                      onRun={() => handleRunAgent(agentId)}
+                      isFocused={focusedAgentId === agentId}
+                      onFocus={toggleFocus}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -668,15 +827,21 @@ export default function BuildingSimulation() {
       )}
 
       {/* ── Layer legend ── */}
-      <div className="flex items-center gap-4 px-1">
-        <span className="text-xs text-gray-600">Layers:</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+        <span className="text-xs font-semibold text-slate-400">Layers:</span>
         {Object.entries(LAYER_COLORS).map(([layer, colors]) => (
           <div key={layer} className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${colors.dot}`} />
-            <span className="text-xs text-gray-500">{layer}</span>
+            <span className="text-xs text-slate-300">{layer}</span>
           </div>
         ))}
-        <span className="ml-auto text-xs text-gray-600">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-fuchsia-700/30 border border-fuchsia-500/40 text-fuchsia-200 text-[10px] font-bold uppercase tracking-wider">
+          📚 RAG
+        </span>
+        <span className="text-[11px] text-slate-400">
+          marks tool calls that fetch from a vector store
+        </span>
+        <span className="ml-auto text-xs text-slate-400">
           All agent streams are live via SSE
         </span>
       </div>

@@ -11,28 +11,28 @@
 
 // ── Agent topology ──────────────────────────────────────────────────────────
 
+// Mirrors the LangGraph node names emitted by the backend SSE bridge
+// (src/pipeline/graph/agents/factory.py sets `agent_name` to one of these
+// values via CaseAwareState; src/pipeline/graph/middleware/sse_bridge.py
+// publishes them on the `/status/stream` channel).
 export const PIPELINE_AGENT_ORDER = [
-  'case-processing',
-  'complexity-routing',
-  'evidence-analysis',
-  'fact-reconstruction',
-  'witness-analysis',
-  'legal-knowledge',
-  'argument-construction',
-  'hearing-analysis',
-  'hearing-governance',
+  'intake',
+  'research-evidence',
+  'research-facts',
+  'research-witnesses',
+  'research-law',
+  'synthesis',
+  'audit',
 ];
 
 export const PIPELINE_AGENT_LABELS = {
-  'case-processing': 'Case Processing',
-  'complexity-routing': 'Complexity Routing',
-  'evidence-analysis': 'Evidence Analysis',
-  'fact-reconstruction': 'Fact Reconstruction',
-  'witness-analysis': 'Witness Analysis',
-  'legal-knowledge': 'Legal Knowledge',
-  'argument-construction': 'Argument Construction',
-  'hearing-analysis': 'Hearing Analysis',
-  'hearing-governance': 'Hearing Governance',
+  intake: 'Intake',
+  'research-evidence': 'Evidence Research',
+  'research-facts': 'Fact Reconstruction',
+  'research-witnesses': 'Witness Analysis',
+  'research-law': 'Legal Research',
+  synthesis: 'Synthesis',
+  audit: 'Auditor',
 };
 
 export const GATE_PAUSE_STATUSES = new Set([
@@ -194,7 +194,6 @@ export function normalizePipelineStatus(payload) {
     .map((agent) => {
       const agentId = agent.agent_id || agent.id || agent.key;
       if (!agentId) return null;
-
       return {
         agent_id: agentId,
         name: agent.name || PIPELINE_AGENT_LABELS[agentId] || agentId,
@@ -268,8 +267,8 @@ const GOVERNANCE_TERMINAL_PHASES = new Set(['completed', 'failed']);
  *
  * The backend emits two kinds of close events on
  * `GET /api/v1/cases/{case_id}/status/stream`:
- *   - `agent="governance-verdict"` + phase `completed`/`failed` — the
- *     happy-path close after the 9th agent resolves.
+ *   - `agent="audit"` + phase `completed`/`failed` — the happy-path close
+ *     after the auditor (final LangGraph node before gate4) resolves.
  *   - `agent="pipeline"` + phase `terminal` — the run-level halt owned by
  *     the orchestrator (L1 complexity escalation, L2 barrier timeout,
  *     governance halt, orchestrator exception, SSE watchdog timeout).
@@ -282,10 +281,7 @@ export function isTerminalPipelineSseEvent(data) {
   if (!data || typeof data !== 'object') return false;
   if (data.agent === 'pipeline' && data.phase === 'terminal') return true;
   if (data.agent === 'pipeline' && data.phase === 'awaiting_review') return true;
-  if (
-    data.agent === 'hearing-governance' &&
-    GOVERNANCE_TERMINAL_PHASES.has(data.phase)
-  ) {
+  if (data.agent === 'audit' && GOVERNANCE_TERMINAL_PHASES.has(data.phase)) {
     return true;
   }
   return false;

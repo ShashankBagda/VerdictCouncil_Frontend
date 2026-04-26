@@ -299,7 +299,7 @@ export default function Dashboard() {
                       : 'n/a',
                 ok: true,
               },
-              { label: 'Agent Pipeline', value: '9 agents ready', ok: true },
+              { label: 'Agent Pipeline', value: '7 LangGraph agents ready', ok: true },
             ].map(({ label, value, ok }, index) => (
               <div key={label}>
                 {index > 0 && <Separator className="mb-3" />}

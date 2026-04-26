@@ -192,16 +192,30 @@ describe('useAgentStream', () => {
     expect(result.current.events['pipeline']).toBeUndefined();
   });
 
-  it('falls back to polling when SSE errors before terminal', async () => {
+  it('retries SSE on transient error before falling back to polling', async () => {
     const { result } = renderHook(() => useAgentStream('case-1'));
-    const es = await waitForConnect();
-    act(() => es.open());
+    const es1 = await waitForConnect();
+    act(() => es1.open());
     await waitFor(() => expect(result.current.status).toBe('connected'));
 
-    act(() => es.fail());
+    // First failure: hook should schedule a reconnect, not fall to polling.
+    act(() => es1.fail());
+    expect(result.current.status).toBe('connecting');
+
+    await act(async () => { vi.advanceTimersByTime(600); });
+    await waitFor(() => expect(MockEventSource.instances.length).toBe(2));
+
+    // Second failure: another retry, still no polling.
+    act(() => latestEs().fail());
+    expect(result.current.status).toBe('connecting');
+
+    await act(async () => { vi.advanceTimersByTime(1100); });
+    await waitFor(() => expect(MockEventSource.instances.length).toBe(3));
+
+    // Third failure: retry budget exhausted, drop to polling.
+    act(() => latestEs().fail());
     await waitFor(() => expect(result.current.status).toBe('polling'));
 
-    // Advance past the 5 s polling interval
     await act(async () => { vi.advanceTimersByTime(5100); });
     expect(mockApi.getPipelineStatus).toHaveBeenCalledWith('case-1');
   });
