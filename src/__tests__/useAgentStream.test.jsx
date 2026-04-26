@@ -297,6 +297,32 @@ describe('useAgentStream', () => {
     expect(window.location.href).toBe('/login');
   });
 
+  it('exposes the latest interrupt frame on the hook return value', async () => {
+    const { result } = renderHook(() => useAgentStream('case-1'));
+    const es = await waitForConnect();
+    act(() => es.open());
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+
+    expect(result.current.interrupt).toBeNull();
+
+    const frame = {
+      kind: 'interrupt',
+      schema_version: 1,
+      case_id: 'case-1',
+      gate: 'gate2',
+      actions: ['advance', 'rerun', 'halt'],
+      phase_output: { research: { citations: [] } },
+      audit_summary: null,
+      ts: '2026-04-26T00:00:00Z',
+    };
+    act(() => es.emit('interrupt', frame));
+
+    await waitFor(() => expect(result.current.interrupt).not.toBeNull());
+    expect(result.current.interrupt.gate).toBe('gate2');
+    expect(result.current.interrupt.actions).toEqual(['advance', 'rerun', 'halt']);
+    expect(result.current.interrupt.phase_output).toEqual({ research: { citations: [] } });
+  });
+
   it('cleanup closes the EventSource on unmount', async () => {
     const { unmount } = renderHook(() => useAgentStream('case-1'));
     const es = await waitForConnect();

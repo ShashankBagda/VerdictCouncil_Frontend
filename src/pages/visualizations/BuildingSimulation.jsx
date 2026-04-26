@@ -35,6 +35,12 @@ const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retry
 // Statuses from which a failed/escalated pipeline can be restarted
 const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
 
+// Polled overall_status values where an SSE-pushed interrupt is allowed to
+// override the (slower) polled gate. Anything else (awaiting_review_*,
+// completed, failed, escalated, ready_for_review) means polled status is
+// either already accurate or has moved past — defer to it.
+const SSE_INTERRUPT_OVERRIDABLE = new Set(['', 'pending', 'processing']);
+
 // Map overall_status → gate name
 function currentGateFromStatus(overallStatus) {
   const m = String(overallStatus || '').match(/^awaiting_review_(gate\d)$/);
@@ -431,7 +437,7 @@ export default function BuildingSimulation() {
   const { showError, showNotification } = useAPI();
   const { updatePipelineStatus } = useCase();
 
-  const { events, status: sseStatus } = useAgentStream(caseId);
+  const { events, status: sseStatus, interrupt, clearInterrupt } = useAgentStream(caseId);
 
   // Which agent card is currently expanded in the detail drawer. Clicking
   // the same card again closes the drawer.
@@ -469,9 +475,29 @@ export default function BuildingSimulation() {
   }, [retry]);
 
   const overallStatus = pipelineStatus?.overall_status || '';
-  const currentGate = currentGateFromStatus(overallStatus);
+  const polledGate = currentGateFromStatus(overallStatus);
+  // Prefer SSE-pushed gate so the panel mounts immediately on pause
+  // (~50ms instead of the next 3 s poll tick); polled status takes over
+  // once it catches up. Gate the SSE override on case_id matching and on
+  // the case not having reached a terminal state, so a stale interrupt
+  // cannot resurrect the panel after the case completes or fails.
+  const ssePushedGate =
+    interrupt?.case_id === caseId && SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)
+      ? interrupt.gate
+      : null;
+  const currentGate = polledGate ?? ssePushedGate;
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
   const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
+
+  // Once polled status confirms the gate (or moves past it), drop the
+  // sticky SSE frame so the panel doesn't linger after resume. The hook
+  // never sees overall_status, so the de-dup lives here at the seam.
+  useEffect(() => {
+    if (!interrupt) return;
+    if (polledGate || !SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)) {
+      clearInterrupt();
+    }
+  }, [interrupt, polledGate, overallStatus, clearInterrupt]);
 
   // Run the full pipeline (when pending/failed)
   const handleRunPipeline = useCallback(async () => {

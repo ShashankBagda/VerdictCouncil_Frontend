@@ -17,11 +17,19 @@ import { clearSessionTags, tagSession } from '../sentry';
  * @param {object} options
  * @param {function} options.onTerminal  – called once with the terminal event data
  *
- * @returns {{ events, status, retry, lastError }}
- *   events    – dict keyed by agent_id, each value is an array of raw SSE event objects
- *   status    – 'connecting' | 'connected' | 'polling' | 'idle'
- *   retry     – function to force a reconnect
- *   lastError – last polling error message, or null
+ * @returns {{ events, status, retry, lastError, interrupt, clearInterrupt }}
+ *   events         – dict keyed by agent_id, each value is an array of raw SSE event objects
+ *   status         – 'connecting' | 'connected' | 'polling' | 'idle'
+ *   retry          – function to force a reconnect
+ *   lastError      – last polling error message, or null
+ *   interrupt      – latest InterruptEvent frame for this caseId (or null).
+ *                    Lets consumers mount <GateReviewPanel> on SSE arrival
+ *                    without waiting for the next /status poll tick. Stays
+ *                    sticky across renders; consumers must call
+ *                    clearInterrupt() once polled overall_status catches up
+ *                    or moves past the gate, otherwise the panel will linger
+ *                    after the judge resumes.
+ *   clearInterrupt – drop the stored interrupt frame.
  */
 export function useAgentStream(caseId, options = {}) {
   const { onTerminal = null } = options;
@@ -29,6 +37,17 @@ export function useAgentStream(caseId, options = {}) {
   const [events, setEvents] = useState({});
   const [status, setStatus] = useState('connecting');
   const [lastError, setLastError] = useState(null);
+  const [interrupt, setInterrupt] = useState(null);
+
+  // Drop any interrupt carried over from a prior caseId — using React's
+  // recommended "store-previous-prop-in-state and reset during render"
+  // pattern so the panel never renders the previous case's gate while
+  // the new caseId is still loading.
+  const [prevCaseId, setPrevCaseId] = useState(caseId);
+  if (prevCaseId !== caseId) {
+    setPrevCaseId(caseId);
+    if (interrupt !== null) setInterrupt(null);
+  }
 
   const esRef = useRef(null);
   const pollRef = useRef(null);
@@ -90,9 +109,23 @@ export function useAgentStream(caseId, options = {}) {
       }
     };
 
+    const handleInterrupt = (raw) => {
+      if (!mountedRef.current) return;
+      let data;
+      try { data = JSON.parse(raw.data); } catch { return; }
+      // Drop frames for any other case (defensive against reconnect replay
+      // landing after caseId changed). The consumer still gates the panel
+      // mount on polled overall_status, so a stale frame is harmless if it
+      // sneaks through, but filtering at the seam keeps state honest.
+      if (data?.case_id && caseId && String(data.case_id) !== String(caseId)) return;
+      if (data?.trace_id) tagSession(data.trace_id);
+      setInterrupt(data);
+    };
+
     es.addEventListener('progress', handleSseEvent);
     es.addEventListener('agent', handleSseEvent);
     es.addEventListener('narration', handleSseEvent);
+    es.addEventListener('interrupt', handleInterrupt);
     es.addEventListener('heartbeat', () => {});
     es.addEventListener('auth_expiring', () => {
       window.location.href = '/login';
@@ -130,6 +163,8 @@ export function useAgentStream(caseId, options = {}) {
       }
     };
   }, [caseId, stopPoll]);
+
+  const clearInterrupt = useCallback(() => setInterrupt(null), []);
 
   // Manual retry — re-arm SSE regardless of terminal state
   const retry = useCallback(() => {
@@ -177,7 +212,7 @@ export function useAgentStream(caseId, options = {}) {
     };
   }, [caseId, connect, stopPoll]);
 
-  return { events, status, retry, lastError };
+  return { events, status, retry, lastError, interrupt, clearInterrupt };
 }
 
 export default useAgentStream;

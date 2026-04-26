@@ -12,6 +12,11 @@ import { OfficeScene } from '../../game/OfficeScene';
 
 const STARTABLE_STATUSES = new Set(['pending', 'ready_for_review', 'failed_retryable']);
 const RESTARTABLE_STATUSES = new Set(['failed', 'failed_retryable', 'escalated']);
+// Polled overall_status values where an SSE-pushed interrupt can win the
+// race against the next /status poll tick. See BuildingSimulation for the
+// full reasoning; the two screens render the same panel from the same
+// inputs, so the rule is shared.
+const SSE_INTERRUPT_OVERRIDABLE = new Set(['', 'pending', 'processing']);
 
 function currentGateFromStatus(overallStatus) {
   const m = String(overallStatus || '').match(/^awaiting_review_(gate\d)$/);
@@ -77,7 +82,7 @@ export default function OfficeSimulation() {
   const processedRef = useRef({});
   const [gameReady, setGameReady] = useState(false);
 
-  const { events, status: sseStatus } = useAgentStream(caseId);
+  const { events, status: sseStatus, interrupt, clearInterrupt } = useAgentStream(caseId);
 
   const [focusedAgentId, setFocusedAgentId] = useState(null);
   const [pipelinePending, setPipelinePending] = useState(false);
@@ -181,9 +186,21 @@ export default function OfficeSimulation() {
 
   // ── Pipeline actions ────────────────────────────────────────────────────────
   const overallStatus = pipelineStatus?.overall_status || '';
-  const currentGate = currentGateFromStatus(overallStatus);
+  const polledGate = currentGateFromStatus(overallStatus);
+  const ssePushedGate =
+    interrupt?.case_id === caseId && SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)
+      ? interrupt.gate
+      : null;
+  const currentGate = polledGate ?? ssePushedGate;
   const isStartable = STARTABLE_STATUSES.has(overallStatus);
   const isRestartable = RESTARTABLE_STATUSES.has(overallStatus);
+
+  useEffect(() => {
+    if (!interrupt) return;
+    if (polledGate || !SSE_INTERRUPT_OVERRIDABLE.has(overallStatus)) {
+      clearInterrupt();
+    }
+  }, [interrupt, polledGate, overallStatus, clearInterrupt]);
 
   const handleRunPipeline = useCallback(async () => {
     if (pipelinePending) return;
