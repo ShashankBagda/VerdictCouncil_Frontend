@@ -1,0 +1,129 @@
+name: Deploy
+
+# Build the frontend Docker image, push to DigitalOcean Container Registry,
+# Trivy-scan, then ensure the matching App Platform app exists with the
+# pinned image and trigger a deployment.
+#
+# Branch determines the target environment:
+#   development → staging   (App Platform: verdictcouncil-frontend-staging)
+#   main        → production (App Platform: verdictcouncil-frontend-production)
+#
+# Image tagging:
+#   staging:    rc-<short-sha>      (rolling tag: staging-latest)
+#   production: <git-describe tag>  (rolling tag: latest)
+#
+# DOCR registry is shared with the backend repo and looked up at runtime —
+# no DOCR_REGISTRY secret is needed in this repo. The registry must already
+# exist; if it doesn't, run the backend's Infra Bootstrap workflow first.
+#
+# Required GitHub Action secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN  — doctl token with apps + registry write access
+
+on:
+  push:
+    branches: [development, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    env:
+      IS_PROD:        ${{ github.ref_name == 'main' }}
+      ENV_NAME:       ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      ROLLING_TAG:    ${{ github.ref_name == 'main' && 'latest' || 'staging-latest' }}
+      TRIVY_CATEGORY: ${{ github.ref_name == 'main' && 'trivy-image-production' || 'trivy-image-staging' }}
+      TRIVY_ARTIFACT: ${{ github.ref_name == 'main' && 'trivy-image-sarif-production' || 'trivy-image-sarif-staging' }}
+      APP_NAME:       ${{ github.ref_name == 'main' && 'verdictcouncil-frontend-production' || 'verdictcouncil-frontend-staging' }}
+      SPEC_FILE:      ${{ github.ref_name == 'main' && '.do/app.production.yaml' || '.do/app.staging.yaml' }}
+      VITE_API_URL:   ${{ github.ref_name == 'main' && 'https://api.verdictcouncil.sg' || 'https://staging-api.verdictcouncil.sg' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git describe` on production needs full history.
+          fetch-depth: 0
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Login to DOCR
+        run: doctl registry login
+
+      - name: Resolve DOCR registry
+        id: docr
+        run: |
+          REG_NAME=$(doctl registry get -o json | jq -r '.[0].name')
+          if [ -z "$REG_NAME" ] || [ "$REG_NAME" = "null" ]; then
+            echo "::error::No DigitalOcean Container Registry found. Run the backend Infra Bootstrap workflow first."
+            exit 1
+          fi
+          echo "registry=registry.digitalocean.com/${REG_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        run: |
+          if [ "$IS_PROD" = "true" ]; then
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
+          else
+            TAG="rc-${{ github.sha }}"
+          fi
+          IMAGE="${{ steps.docr.outputs.registry }}/verdictcouncil-frontend:${TAG}"
+          ROLLING="${{ steps.docr.outputs.registry }}/verdictcouncil-frontend:${ROLLING_TAG}"
+          docker build \
+            --build-arg VITE_API_URL="${VITE_API_URL}" \
+            -t "${IMAGE}" \
+            -t "${ROLLING}" \
+            .
+          docker push "${IMAGE}"
+          docker push "${ROLLING}"
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: sarif
+          output: trivy-image.sarif
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: ${{ env.TRIVY_CATEGORY }}
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.TRIVY_ARTIFACT }}
+          path: trivy-image.sarif
+
+      - name: Ensure App Platform app exists
+        id: app
+        run: |
+          APP_ID=$(doctl apps list -o json | jq -r --arg n "$APP_NAME" '.[] | select(.spec.name == $n) | .id' | head -n1)
+          if [ -z "$APP_ID" ]; then
+            echo "Creating App Platform app $APP_NAME..."
+            APP_ID=$(doctl apps create --spec "$SPEC_FILE" --format ID --no-header --wait)
+          else
+            echo "App $APP_NAME already exists ($APP_ID); updating spec..."
+            doctl apps update "$APP_ID" --spec "$SPEC_FILE" --wait
+          fi
+          echo "id=$APP_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger deployment
+        # `update` and `create` already deploy when the spec changes, but a
+        # bare image-tag push doesn't change the spec — force a fresh pull
+        # so the new digest is rolled out either way.
+        run: doctl apps create-deployment "${{ steps.app.outputs.id }}" --force-rebuild --wait
