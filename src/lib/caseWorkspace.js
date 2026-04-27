@@ -208,41 +208,73 @@ export function normalizeArgumentsResource(payload) {
   return grouped;
 }
 
-const stringListFromUnknown = (value) => {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => {
-        if (typeof entry === 'string') return entry;
-        if (typeof entry === 'object' && entry) {
-          return entry.title || entry.description || entry.summary || JSON.stringify(entry);
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }
-  if (typeof value === 'object') {
-    return Object.entries(value).map(([key, entry]) =>
-      typeof entry === 'string' ? `${key}: ${entry}` : `${key}: ${JSON.stringify(entry)}`,
-    );
-  }
-  return [String(value)];
+const normalizeReasoningSteps = (chain) => {
+  if (!chain) return [];
+  const list = Array.isArray(chain)
+    ? chain
+    : Array.isArray(chain.steps)
+      ? chain.steps
+      : Array.isArray(chain.key_points)
+        ? chain.key_points
+        : [];
+  return list
+    .map((step, index) => {
+      if (!step) return null;
+      if (typeof step === 'string') {
+        return { step_no: index + 1, description: step, supports: [] };
+      }
+      if (typeof step !== 'object') return null;
+      const description =
+        step.description || step.text || step.summary || step.finding || step.findings || '';
+      if (!description) return null;
+      const supports = Array.isArray(step.supports)
+        ? step.supports.filter(Boolean)
+        : Array.isArray(step.source_agents)
+          ? step.source_agents.filter(Boolean)
+          : [];
+      return {
+        step_no: step.step_no ?? step.step_id ?? index + 1,
+        description: String(description),
+        supports,
+      };
+    })
+    .filter(Boolean);
+};
+
+const normalizeUncertaintyFlags = (flags) => {
+  if (!flags) return [];
+  const list = Array.isArray(flags) ? flags : [flags];
+  return list
+    .map((flag) => {
+      if (!flag) return null;
+      if (typeof flag === 'string') {
+        return { topic: null, rationale: flag, severity: null };
+      }
+      if (typeof flag !== 'object') return null;
+      const rationale =
+        flag.rationale || flag.description || flag.detail || flag.summary || flag.text || null;
+      const topic = flag.topic || flag.label || flag.name || flag.area || null;
+      const severity = flag.severity || flag.level || flag.confidence || null;
+      if (!rationale && !topic) return null;
+      return { topic, rationale, severity };
+    })
+    .filter(Boolean);
 };
 
 export function normalizeHearingAnalysis(payload) {
   const items = asArray(getRoot(payload));
   const deliberation = items[items.length - 1] || getRoot(payload);
-  const reasoningChain = deliberation.reasoning_chain || {};
+  const reasoningChain = deliberation.reasoning_chain;
+
+  const reasoningSteps = normalizeReasoningSteps(reasoningChain);
+  const risks = normalizeUncertaintyFlags(deliberation.uncertainty_flags);
 
   return {
     id: deliberation.id || 'deliberation',
-    reasoning:
-      typeof reasoningChain === 'string'
-        ? reasoningChain
-        : JSON.stringify(reasoningChain, null, 2),
-    key_points:
-      stringListFromUnknown(reasoningChain.key_points || reasoningChain.steps).slice(0, 10),
-    risks: stringListFromUnknown(deliberation.uncertainty_flags),
+    reasoning_steps: reasoningSteps,
+    reasoning_text: typeof reasoningChain === 'string' ? reasoningChain : null,
+    key_points: reasoningSteps.map((s) => s.description).slice(0, 10),
+    risks,
     confidence_score: deliberation.confidence_score ?? null,
     preliminary_conclusion: deliberation.preliminary_conclusion || null,
   };

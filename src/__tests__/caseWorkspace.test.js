@@ -137,14 +137,25 @@ describe('caseWorkspace normalizers', () => {
     const hearingAnalysis = normalizeHearingAnalysis([
       {
         id: 'd-1',
-        reasoning_chain: { key_points: ['Latent defect remains the pivot issue.'] },
-        uncertainty_flags: ['Whether the defect was patent.'],
+        reasoning_chain: [
+          {
+            step_no: 1,
+            description: 'Latent defect remains the pivot issue.',
+            supports: ['evidence-analysis'],
+          },
+        ],
+        uncertainty_flags: [
+          { topic: 'Defect classification', rationale: 'Whether the defect was patent.', severity: 'medium' },
+        ],
         preliminary_conclusion: 'Claim likely succeeds.',
       },
     ]);
 
+    expect(hearingAnalysis.reasoning_steps[0].description).toContain('Latent defect');
+    expect(hearingAnalysis.reasoning_steps[0].supports).toContain('evidence-analysis');
     expect(hearingAnalysis.key_points[0]).toContain('Latent defect');
-    expect(hearingAnalysis.risks[0]).toContain('patent');
+    expect(hearingAnalysis.risks[0].rationale).toContain('patent');
+    expect(hearingAnalysis.risks[0].severity).toBe('medium');
   });
 
   it('normalizes knowledge-base status payloads', () => {

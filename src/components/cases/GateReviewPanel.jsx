@@ -438,10 +438,18 @@ function Gate4Data({ fairnessAudit, hearingAnalysis }) {
             )}
             {hearingAnalysis.risks?.length > 0 && (
               <div>
-                <p className="text-xs text-gray-400 mb-0.5">Risk flags</p>
-                <ul className="list-disc list-inside space-y-0.5">
+                <p className="text-xs text-gray-400 mb-1">Risk flags</p>
+                <ul className="space-y-1">
                   {hearingAnalysis.risks.slice(0, 5).map((r, i) => (
-                    <li key={i} className="text-xs text-amber-700">{r}</li>
+                    <li key={i} className="text-xs text-amber-700 leading-snug">
+                      {r.topic && <span className="font-semibold">{r.topic}: </span>}
+                      {r.rationale || r.topic}
+                      {r.severity && (
+                        <span className="ml-1 text-[10px] uppercase text-amber-600">
+                          ({r.severity})
+                        </span>
+                      )}
+                    </li>
                   ))}
                 </ul>
               </div>
