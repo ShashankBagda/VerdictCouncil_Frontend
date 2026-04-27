@@ -54,7 +54,12 @@ jobs:
       IS_PROD:      ${{ github.ref_name == 'main' }}
       ENV_NAME:     ${{ github.ref_name == 'main' && 'production' || 'staging' }}
       ROLLING_TAG:  ${{ github.ref_name == 'main' && 'latest' || 'staging-latest' }}
-      VITE_API_URL: ${{ github.ref_name == 'main' && 'https://api.verdictcouncil.sg' || 'https://staging-api.verdictcouncil.sg' }}
+      # nip.io wildcard DNS resolves <ip>.nip.io to <ip>, so the DOKS LB
+      # IP needs no domain registration. Update the production IP once the
+      # production cluster has been bootstrapped (see infra-bootstrap.yml).
+      # TODO: replace with a real domain (e.g. *.verdictcouncil.sg) when one
+      # is registered.
+      VITE_API_URL: ${{ github.ref_name == 'main' && 'https://165.245.144.28.nip.io' || 'https://165.245.144.28.nip.io' }}
     outputs:
       image:    ${{ steps.image.outputs.image }}
       rolling:  ${{ steps.image.outputs.rolling }}
