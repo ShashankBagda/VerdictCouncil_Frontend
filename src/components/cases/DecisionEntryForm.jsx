@@ -29,8 +29,13 @@ export default function DecisionEntryForm({ caseId, hearingAnalysis, onDecisionR
       setError('Verdict text is required.');
       return;
     }
-    const invalid = engagements.find(e => e.agreed === false && !e.reasoning.trim());
-    if (invalid) {
+    const undecided = engagements.findIndex(e => e.agreed !== true && e.agreed !== false);
+    if (undecided !== -1) {
+      setError(`Agree or disagree with conclusion #${undecided + 1} before recording.`);
+      return;
+    }
+    const missingReasoning = engagements.find(e => e.agreed === false && !e.reasoning.trim());
+    if (missingReasoning) {
       setError('Provide reasoning for every conclusion you disagree with.');
       return;
     }
@@ -44,6 +49,19 @@ export default function DecisionEntryForm({ caseId, hearingAnalysis, onDecisionR
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function describeEngagement(idx) {
+    if (idx === 0 && hearingAnalysis?.preliminary_conclusion) {
+      return hearingAnalysis.preliminary_conclusion;
+    }
+    const risk = hearingAnalysis?.risks?.[idx - 1];
+    if (!risk) return 'AI flag';
+    if (typeof risk === 'string') return risk;
+    const parts = [];
+    if (risk.topic) parts.push(risk.topic);
+    if (risk.rationale) parts.push(risk.rationale);
+    return parts.join(' — ') || 'AI flag';
   }
 
   return (
@@ -72,9 +90,7 @@ export default function DecisionEntryForm({ caseId, hearingAnalysis, onDecisionR
                     {eng.conclusion_type.replace(/_/g, ' ')}
                   </span>
                   <p className="text-sm text-gray-800 mt-0.5">
-                    {idx === 0 && hearingAnalysis?.preliminary_conclusion
-                      ? hearingAnalysis.preliminary_conclusion
-                      : hearingAnalysis?.risks?.[idx - 1] || 'AI flag'}
+                    {describeEngagement(idx)}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">

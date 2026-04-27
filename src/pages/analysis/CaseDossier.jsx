@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   AlertCircle,
+  BadgeCheck,
   BookOpen,
   ChevronDown,
   ChevronUp,
@@ -139,8 +140,27 @@ const extractDisputedFacts = (payload) =>
     (fact) => String(fact?.status || '').toLowerCase() === 'disputed',
   );
 
-const extractFairnessChecks = (payload) =>
-  extractItems(payload, ['governance_checks', 'checks', 'items', 'audit_checks']).map(
+const extractFairnessChecks = (payload) => {
+  const root = payload?.data || payload || {};
+  // Prefer the new-topology `checks` (FairnessAuditCheck { label, passed, severity })
+  // sourced from the gate-4 audit_summary. Fall back to legacy `governance_checks`
+  // (per-AuditLog rows from the retired hearing-governance agent).
+  const newChecks = Array.isArray(root.checks) ? root.checks : [];
+  if (newChecks.length > 0) {
+    return newChecks.map((check, index) => ({
+      id: `fairness-${index}`,
+      title: check.passed
+        ? 'Audit passed'
+        : check.severity
+          ? `${check.severity} fairness issue`
+          : 'Fairness issue',
+      description: check.label || 'No additional context provided.',
+      status: check.passed ? 'passed' : 'review',
+      severity: check.severity || null,
+      recommendation: null,
+    }));
+  }
+  return extractItems(payload, ['governance_checks', 'items', 'audit_checks']).map(
     (check, index) => ({
       id: check.id || check.audit_log_id || `fairness-${index}`,
       title: check.title || check.action || `Governance Check ${index + 1}`,
@@ -160,6 +180,7 @@ const extractFairnessChecks = (payload) =>
         null,
     }),
   );
+};
 
 const extractPrecedentItems = (payload) =>
   extractItems(payload, ['results', 'precedents', 'items']).map((item) => ({
@@ -174,26 +195,64 @@ const extractPrecedentItems = (payload) =>
 const getFairnessSummary = (payload, checks) => {
   const root = payload?.data || payload || {};
   const fairnessReport = root.verdict_fairness_report || {};
+  const sendBack = root.recommend_send_back;
+  const fairnessCheck = root.fairness_check || null;
+  const recommendations = Array.isArray(fairnessCheck?.recommendations)
+    ? fairnessCheck.recommendations
+    : [];
+  const summaryText =
+    fairnessReport.summary ||
+    root.verdict ||
+    (sendBack?.reason
+      ? `Send back to ${sendBack.to_phase || 'previous phase'}: ${sendBack.reason}`
+      : null) ||
+    root.summary ||
+    root.assessment ||
+    root.notes ||
+    null;
+  const severityCounts = checks.reduce(
+    (acc, check) => {
+      if (check.status === 'passed') return acc;
+      const bucket = (check.severity || '').toUpperCase();
+      if (bucket === 'CRITICAL') acc.critical += 1;
+      else if (bucket === 'MAJOR') acc.major += 1;
+      else if (bucket === 'MINOR') acc.minor += 1;
+      else acc.other += 1;
+      return acc;
+    },
+    { critical: 0, major: 0, minor: 0, other: 0 },
+  );
+  // The auditor reports pass/fail + critical_issues_found; treat absence as
+  // "audit not yet run". Score is intentionally null when the auditor has not
+  // produced a fairness_check — the panel renders a status badge rather than a
+  // misleading 0% gauge.
+  const auditPassed =
+    typeof fairnessCheck?.audit_passed === 'boolean' ? fairnessCheck.audit_passed : null;
+  const criticalIssuesFound =
+    typeof fairnessCheck?.critical_issues_found === 'boolean'
+      ? fairnessCheck.critical_issues_found
+      : null;
   return {
     score:
       fairnessReport.score ??
       fairnessReport.overall_score ??
+      root.overall_score ??
       root.score ??
       root.fairness_score ??
-      root.overall_score ??
       null,
-    summary:
-      fairnessReport.summary ||
-      root.summary ||
-      root.assessment ||
-      root.notes ||
-      null,
+    summary: summaryText,
     flagged:
       fairnessReport.flagged_issues ??
       fairnessReport.issue_count ??
       root.flagged_issues ??
       root.issue_count ??
       checks.filter((check) => !isCheckPassing(check)).length,
+    recommend_send_back: sendBack || null,
+    audit_passed: auditPassed,
+    critical_issues_found: criticalIssuesFound,
+    severity_counts: severityCounts,
+    recommendations,
+    has_data: Boolean(fairnessCheck) || checks.length > 0,
   };
 };
 
@@ -220,6 +279,70 @@ function MetaBadge({ children, tone = 'gray' }) {
     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${tones[tone] || tones.gray}`}>
       {children}
     </span>
+  );
+}
+
+function RecordedDecisionPanel({ decision }) {
+  const recordedAt = decision?.recorded_at ? new Date(decision.recorded_at) : null;
+  const recordedAtLabel =
+    recordedAt && !Number.isNaN(recordedAt.getTime()) ? recordedAt.toLocaleString() : null;
+  const engagements = Array.isArray(decision?.ai_engagements) ? decision.ai_engagements : [];
+  const agreedCount = engagements.filter((e) => e?.agreed === true).length;
+  const disagreedCount = engagements.filter((e) => e?.agreed === false).length;
+  const disagreed = engagements.filter((e) => e?.agreed === false);
+
+  return (
+    <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/60 p-5">
+      <div className="flex items-start gap-3">
+        <BadgeCheck className="w-6 h-6 text-emerald-700 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <h3 className="text-lg font-bold text-emerald-900">Decision Recorded</h3>
+          {recordedAtLabel && (
+            <p className="text-xs text-emerald-700 mt-0.5">Recorded {recordedAtLabel}</p>
+          )}
+        </div>
+      </div>
+
+      {decision?.verdict_text && (
+        <div className="mt-4 rounded-lg bg-white border border-emerald-200 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 mb-1">
+            Verdict
+          </p>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+            {decision.verdict_text}
+          </p>
+        </div>
+      )}
+
+      {engagements.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+            Agreed: {agreedCount}
+          </span>
+          <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-semibold">
+            Disagreed: {disagreedCount}
+          </span>
+        </div>
+      )}
+
+      {disagreed.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {disagreed.map((eng, idx) => (
+            <div
+              key={idx}
+              className="rounded-lg bg-white border border-rose-200 p-3"
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 mb-1">
+                Disagreed — {(eng.conclusion_type || '').replace(/_/g, ' ')}
+              </p>
+              {eng.reasoning && (
+                <p className="text-sm text-gray-800 leading-relaxed">{eng.reasoning}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1283,51 +1406,117 @@ export default function CaseDossier() {
                 </div>
               )}
 
-              {hearingAnalysis.reasoning && (
+              {hearingAnalysis.reasoning_steps && hearingAnalysis.reasoning_steps.length > 0 ? (
+                <div>
+                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Reasoning Chain</h3>
+                  <ol className="space-y-3">
+                    {hearingAnalysis.reasoning_steps.map((step, idx) => (
+                      <li
+                        key={`${step.step_no}-${idx}`}
+                        className="bg-cyan-50 border border-cyan-200 rounded-lg p-4"
+                      >
+                        <div className="flex items-baseline gap-3">
+                          <span className="text-cyan-700 font-semibold text-sm shrink-0">
+                            Step {step.step_no}
+                          </span>
+                          <p className="text-sm text-gray-800 leading-relaxed">
+                            {step.description}
+                          </p>
+                        </div>
+                        {step.supports.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5 pl-[4.25rem]">
+                            {step.supports.map((src, i) => (
+                              <span
+                                key={i}
+                                className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-cyan-300 text-cyan-700"
+                              >
+                                {src}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : hearingAnalysis.reasoning_text ? (
                 <div>
                   <h3 className="text-lg font-semibold text-navy-900 mb-3">Reasoning Chain</h3>
                   <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-800 max-h-96 overflow-y-auto">
-                    {hearingAnalysis.reasoning}
+                    {hearingAnalysis.reasoning_text}
                   </div>
                 </div>
-              )}
-
-              {hearingAnalysis.key_points && hearingAnalysis.key_points.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Key Points</h3>
-                  <ul className="space-y-2">
-                    {hearingAnalysis.key_points.map((point, idx) => (
-                      <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                        <span className="text-cyan-600 font-bold text-lg mt-0.5">{idx + 1}.</span>
-                        <span className="text-gray-700">{point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              ) : null}
 
               {hearingAnalysis.risks && hearingAnalysis.risks.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-navy-900 mb-3">Potential Risks</h3>
+                  <h3 className="text-lg font-semibold text-navy-900 mb-3">
+                    Uncertainty Flags
+                  </h3>
                   <div className="space-y-2">
-                    {hearingAnalysis.risks.map((risk, idx) => (
-                      <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                        <span className="text-amber-900">{risk}</span>
-                      </div>
-                    ))}
+                    {hearingAnalysis.risks.map((risk, idx) => {
+                      const sev = (risk.severity || '').toLowerCase();
+                      const sevStyle =
+                        sev === 'high' || sev === 'critical'
+                          ? 'bg-rose-100 text-rose-700 border-rose-200'
+                          : sev === 'medium'
+                            ? 'bg-amber-100 text-amber-700 border-amber-200'
+                            : sev === 'low'
+                              ? 'bg-sky-100 text-sky-700 border-sky-200'
+                              : 'bg-gray-100 text-gray-700 border-gray-200';
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg"
+                        >
+                          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              {risk.topic && (
+                                <span className="font-semibold text-amber-900 text-sm">
+                                  {risk.topic}
+                                </span>
+                              )}
+                              {risk.severity && (
+                                <span
+                                  className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border font-semibold ${sevStyle}`}
+                                >
+                                  {risk.severity}
+                                </span>
+                              )}
+                            </div>
+                            {risk.rationale && (
+                              <p className="text-sm text-amber-900/90 leading-relaxed">
+                                {risk.rationale}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               <div className="border-t border-gray-200 pt-6">
-                {showDecisionForm ? (
+                {caseDetail?.judicial_decision ? (
+                  <RecordedDecisionPanel
+                    decision={caseDetail.judicial_decision}
+                  />
+                ) : showDecisionForm ? (
                   <DecisionEntryForm
                     caseId={caseId}
                     hearingAnalysis={hearingAnalysis}
-                    onDecisionRecorded={() => {
+                    onDecisionRecorded={async () => {
                       setShowDecisionForm(false);
                       showNotification('Judicial decision recorded.', 'success');
+                      try {
+                        const refreshed = await api.getCaseDetail(caseId);
+                        updateDossierCache({ caseDetail: refreshed });
+                      } catch (err) {
+                        // Notification already shown; surface refresh failure quietly.
+                        showError(getErrorMessage(err, 'Decision saved, but reload failed.'));
+                      }
                     }}
                     onCancel={() => setShowDecisionForm(false)}
                   />

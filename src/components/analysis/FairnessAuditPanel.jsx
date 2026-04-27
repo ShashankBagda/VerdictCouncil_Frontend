@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 
 function MetaBadge({ children, tone = 'gray' }) {
   const tones = {
@@ -25,7 +25,72 @@ const isCheckPassing = (check) => {
   return ['pass', 'passed', 'ok', 'clear', 'compliant', 'complete'].includes(value);
 };
 
+function StatusBanner({ summary, checksCount }) {
+  const auditRan = summary?.has_data ?? checksCount > 0;
+  const auditPassed = summary?.audit_passed;
+  const critical = summary?.severity_counts?.critical ?? 0;
+  const major = summary?.severity_counts?.major ?? 0;
+  const minor = summary?.severity_counts?.minor ?? 0;
+
+  let tone, label, sublabel, Icon;
+  if (!auditRan) {
+    tone = 'border-gray-200 bg-gray-50/60 text-gray-700';
+    label = 'Audit Pending';
+    sublabel = 'The auditor has not produced a fairness check for this case yet.';
+    Icon = ShieldQuestion;
+  } else if (auditPassed === true && critical === 0) {
+    tone = 'border-emerald-300 bg-emerald-50/70 text-emerald-900';
+    label = 'Audit Passed';
+    sublabel = 'No critical fairness issues identified.';
+    Icon = ShieldCheck;
+  } else {
+    tone = 'border-rose-300 bg-rose-50/70 text-rose-900';
+    label = 'Audit Failed — Review Required';
+    sublabel = critical > 0
+      ? `${critical} critical${major ? `, ${major} major` : ''}${minor ? `, ${minor} minor` : ''} issue${critical + major + minor === 1 ? '' : 's'} flagged.`
+      : 'Auditor flagged issues before verdict can be recorded.';
+    Icon = ShieldAlert;
+  }
+
+  return (
+    <div className={`rounded-xl border-2 p-5 shadow-sm ${tone}`}>
+      <div className="flex items-start gap-4">
+        <Icon className="w-10 h-10 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-2xl font-extrabold leading-tight">{label}</p>
+          <p className="text-sm mt-1 opacity-90">{sublabel}</p>
+          {auditRan && (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+              <span className="px-2.5 py-1 rounded-full bg-white/70 border border-current/20">
+                Total checks: {checksCount}
+              </span>
+              {critical > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-rose-200 text-rose-900">
+                  Critical: {critical}
+                </span>
+              )}
+              {major > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-amber-200 text-amber-900">
+                  Major: {major}
+                </span>
+              )}
+              {minor > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-sky-200 text-sky-900">
+                  Minor: {minor}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FairnessAuditPanel({ summary, checks = [] }) {
+  const recommendations = Array.isArray(summary?.recommendations) ? summary.recommendations : [];
+  const sendBack = summary?.recommend_send_back;
+
   return (
     <div className="space-y-4">
       <div className="card-lg">
@@ -37,59 +102,38 @@ export default function FairnessAuditPanel({ summary, checks = [] }) {
           Review parity, procedural fairness, and any automated concerns before the final judicial action.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-5 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-widest text-violet-700 mb-2">Fairness Score</p>
-            <div className="flex items-baseline gap-1">
-              <p className="text-4xl font-extrabold text-violet-900">
-                {summary?.score ?? '--'}
-              </p>
-              {summary?.score !== null && summary?.score !== undefined && (
-                <p className="text-xl font-bold text-violet-700">%</p>
-              )}
-            </div>
-            {summary?.score !== null && (
-              <div className="mt-4 w-full bg-violet-200 rounded-full h-1.5 overflow-hidden">
-                <div 
-                  className="bg-violet-600 h-full transition-all duration-1000" 
-                  style={{ width: `${summary.score}%` }} 
-                />
-              </div>
-            )}
-          </div>
-          
-          <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-5 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Total Checks</p>
-            <p className="text-4xl font-extrabold text-navy-900">{checks.length}</p>
-            <p className="text-xs text-gray-500 mt-4 leading-tight">Automated audits performed across evidence and reasoning.</p>
-          </div>
+        <StatusBanner summary={summary} checksCount={checks.length} />
 
-          <div className={`rounded-xl border p-5 shadow-sm ${
-            (summary?.flagged ?? 0) > 0 ? 'border-rose-200 bg-rose-50/50' : 'border-emerald-100 bg-emerald-50/50'
-          }`}>
-            <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${
-              (summary?.flagged ?? 0) > 0 ? 'text-rose-700' : 'text-emerald-700'
-            }`}>Issues Flagged</p>
-            <p className={`text-4xl font-extrabold ${
-              (summary?.flagged ?? 0) > 0 ? 'text-rose-900' : 'text-emerald-900'
-            }`}>{summary?.flagged ?? 0}</p>
-            <p className={`text-xs mt-4 leading-tight ${
-              (summary?.flagged ?? 0) > 0 ? 'text-rose-700' : 'text-emerald-700'
-            }`}>
-              {(summary?.flagged ?? 0) > 0 
-                ? 'Review warnings before proceeding to verdict.' 
-                : 'No critical fairness violations detected.'}
+        {sendBack?.reason && (
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold mb-1">
+              Auditor recommends sending back to{' '}
+              <span className="capitalize">{sendBack.to_phase || 'a prior phase'}</span>
             </p>
+            <p className="leading-relaxed">{sendBack.reason}</p>
           </div>
-        </div>
+        )}
 
         {summary?.summary && (
-          <div className="mt-6 rounded-lg border border-violet-100 bg-white p-4 text-sm text-gray-700 leading-relaxed shadow-inner">
+          <div className="mt-4 rounded-lg border border-violet-100 bg-white p-4 text-sm text-gray-700 leading-relaxed shadow-inner">
             <div className="font-semibold text-violet-900 mb-1 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4" />
-              Audit Summary
+              Auditor Verdict
             </div>
             {summary.summary}
+          </div>
+        )}
+
+        {recommendations.length > 0 && (
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-violet-800 mb-2">
+              Recommendations ({recommendations.length})
+            </p>
+            <ul className="space-y-2 list-decimal list-inside text-sm text-gray-800">
+              {recommendations.map((rec, idx) => (
+                <li key={idx} className="leading-relaxed">{rec}</li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
