@@ -16,5 +16,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/__tests__/setup.js',
+    // Keep Playwright specs out of vitest's discovery — they import from
+    // `@playwright/test` and would crash vitest with "did not expect
+    // test.describe() to be called here".
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
   },
 })

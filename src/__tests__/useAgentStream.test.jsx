@@ -56,6 +56,10 @@ vi.mock('../lib/pipelineStatus', async (importOriginal) => {
 
 beforeEach(() => {
   MockEventSource.instances = [];
+  // The hook hydrates `events` and `agentStreams` from sessionStorage on
+  // mount, so without an explicit clear earlier tests leak state into
+  // later assertions ("expected length 1, got 8").
+  sessionStorage.clear();
   mockApi.streamPipelineStatus.mockImplementation(() => new MockEventSource());
   mockApi.getPipelineStatus.mockResolvedValue({ agents: [], overall_status: 'processing' });
   // shouldAdvanceTime: true lets real time pass (so waitFor works) while
