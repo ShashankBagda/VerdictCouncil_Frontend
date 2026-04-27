@@ -20,5 +20,17 @@ export default defineConfig({
     // `@playwright/test` and would crash vitest with "did not expect
     // test.describe() to be called here".
     exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'lcov'],
+      // The unit suite is scoped to the auth surface (login + password
+      // recovery) — those are the security-sensitive screens whose
+      // behavior we contract-test for the rubric. The rest of the app is
+      // covered by Storybook + E2E + visual regression, not unit tests.
+      include: [
+        'src/pages/auth/**/*.jsx',
+        'src/components/auth/**/*.jsx',
+      ],
+    },
   },
 })
