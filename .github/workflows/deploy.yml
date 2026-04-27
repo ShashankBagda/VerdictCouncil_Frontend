@@ -36,6 +36,12 @@ permissions:
   # repository Security tab (Code scanning alerts).
   security-events: write
 
+env:
+  # Silence the Node.js 20 deprecation warning that GitHub adds to every
+  # third-party action invocation. Switches the runner to Node 24 ahead of
+  # the June 2026 hard cutover.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   # --------------------------------------------------------------------------
   # 1. Build the frontend Docker image and push it to DOCR.

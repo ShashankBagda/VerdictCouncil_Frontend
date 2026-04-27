@@ -18,7 +18,9 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# nginx:1.29-alpine ships on alpine 3.22, which patches the CVE batch
+# Trivy reported on alpine 3.21.3 (libcrypto3/libssl3/libxml2/libpng/etc.).
+FROM nginx:1.29-alpine
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
