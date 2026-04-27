@@ -467,6 +467,10 @@ export const api = {
 
   generateHearingPack: (caseId) =>
     request('POST', `/api/v1/cases/${caseId}/hearing-pack`),
+  hearingPackMarkdownUrl: (caseId) =>
+    `${API_BASE_URL}/api/v1/cases/${caseId}/hearing-pack.md`,
+  getHearingPackMarkdown: (caseId) =>
+    request('GET', `/api/v1/cases/${caseId}/hearing-pack.md`),
   createHearingNote: (caseId, body) =>
     request('POST', `/api/v1/cases/${caseId}/hearing-notes`, { body }),
   listHearingNotes: (caseId) =>

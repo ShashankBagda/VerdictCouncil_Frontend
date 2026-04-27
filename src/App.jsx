@@ -19,13 +19,11 @@ import CaseDetail from './pages/cases/CaseDetail';
 // Pages - Visualizations
 import BuildingSimulation from './pages/visualizations/BuildingSimulation';
 import GraphMesh from './pages/visualizations/GraphMesh';
-import OrchestratorView from './pages/visualizations/OrchestratorView';
 
 // Pages - Analysis
 import CaseDossier from './pages/analysis/CaseDossier';
 
-// Pages - What-If & Judge
-import WhatIfMode from './pages/whatif/WhatIfMode';
+// Pages - Judge
 import HearingPack from './pages/judge/HearingPack';
 import KnowledgeBase from './pages/judge/KnowledgeBase';
 
@@ -91,9 +89,7 @@ export default function App() {
                     <Route path="building" element={<BuildingSimulation />} />
                     <Route path="graph" element={<GraphMesh />} />
                     <Route path="dossier" element={<CaseDossier />} />
-                    <Route path="what-if" element={<WhatIfMode />} />
                     <Route path="hearing-pack" element={<HearingPack />} />
-                    <Route path="orchestrator" element={<OrchestratorView />} />
                     <Route index element={<Navigate to="building" replace />} />
                   </Route>
 

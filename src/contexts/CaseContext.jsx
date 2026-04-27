@@ -12,6 +12,7 @@ const EMPTY_DOSSIER = {
   timeline: null,
   witnesses: null,
   statutes: null,
+  precedents: null,
   arguments_: null,
   hearingAnalysis: null,
   fairnessAudit: null,
@@ -29,7 +30,6 @@ export function CaseProvider({ children }) {
   const [caseList, setCaseList] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('evidence'); // For dossier tabs
-  const [whatIfMode, setWhatIfMode] = useState(false);
 
   // ── Dossier analysis cache (survives tab navigation) ────────────────────
   const [dossierCache, setDossierCache] = useState(EMPTY_DOSSIER);
@@ -63,7 +63,6 @@ export function CaseProvider({ children }) {
     setCaseDetail(null);
     setPipelineStatus(null);
     setActiveTab('evidence');
-    setWhatIfMode(false);
     setDossierCache(EMPTY_DOSSIER);
   }, []);
 
@@ -86,8 +85,6 @@ export function CaseProvider({ children }) {
     isPipelineTerminal,
     activeTab,
     setActiveTab,
-    whatIfMode,
-    setWhatIfMode,
     dossierCache,
     updateDossierCache,
     clearDossierCache,

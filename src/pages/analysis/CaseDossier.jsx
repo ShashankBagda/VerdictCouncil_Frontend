@@ -223,6 +223,7 @@ export default function CaseDossier() {
   const timeline = dossierCache.timeline;
   const witnesses = dossierCache.witnesses;
   const statutes = dossierCache.statutes;
+  const precedents = dossierCache.precedents;
   const arguments_ = dossierCache.arguments_;
   const hearingAnalysis = dossierCache.hearingAnalysis;
   const fairnessAudit = dossierCache.fairnessAudit;
@@ -257,6 +258,7 @@ export default function CaseDossier() {
         timelineRes,
         witnessesRes,
         statutesRes,
+        precedentsRes,
         argumentsRes,
         deliberationRes,
         fairnessRes,
@@ -269,6 +271,7 @@ export default function CaseDossier() {
         api.getTimeline(caseId),
         api.getWitnesses(caseId),
         api.getStatutes(caseId),
+        api.getPrecedents(caseId),
         api.getArguments(caseId),
         api.getHearingAnalysis(caseId),
         api.getFairnessAudit(caseId),
@@ -294,6 +297,9 @@ export default function CaseDossier() {
         statutes: statutesRes.status === 'fulfilled'
           ? normalizeStatutesResource(statutesRes.value)
           : dossierCache.statutes,
+        precedents: precedentsRes.status === 'fulfilled'
+          ? precedentsRes.value
+          : dossierCache.precedents,
         arguments_: argumentsRes.status === 'fulfilled'
           ? normalizeArgumentsResource(argumentsRes.value)
           : dossierCache.arguments_,
@@ -353,6 +359,7 @@ export default function CaseDossier() {
 
   const evidenceGapItems = useMemo(() => extractEvidenceGapItems(evidenceGaps), [evidenceGaps]);
   const disputedFacts = useMemo(() => extractDisputedFacts(timeline), [timeline]);
+  const dossierPrecedents = useMemo(() => extractPrecedentItems(precedents), [precedents]);
   const fairnessChecks = useMemo(() => extractFairnessChecks(fairnessAudit), [fairnessAudit]);
   const fairnessSummary = useMemo(
     () => getFairnessSummary(fairnessAudit, fairnessChecks),
@@ -947,17 +954,77 @@ export default function CaseDossier() {
       )}
 
       {activeTab === 'precedents' && (
-        <PrecedentSearchPanel
-          query={precedentQuery}
-          onQueryChange={setPrecedentQuery}
-          domain={precedentDomain}
-          onDomainChange={setPrecedentDomain}
-          onSearch={handlePrecedentSearch}
-          results={precedentResults}
-          searching={searchingPrecedents}
-          searched={precedentSearched}
-          searchedAt={precedentSearchedAt}
-        />
+        <div className="space-y-4">
+          <div className="card-lg">
+            <h2 className="text-2xl font-bold text-navy-900 mb-2 flex items-center gap-2">
+              <FileSearch className="w-6 h-6" />
+              Dossier Precedents
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Precedents the research-law agent retrieved from the live PAIR Search
+              API and persisted to this case.
+            </p>
+            {dossierPrecedents.length > 0 ? (
+              <ul className="space-y-3">
+                {dossierPrecedents.map((p, idx) => (
+                  <li key={p.id || `${p.citation || 'precedent'}-${idx}`} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="font-semibold text-navy-900">
+                          {p.title || p.citation || 'Untitled precedent'}
+                        </p>
+                        {p.court && (
+                          <p className="text-xs text-gray-500 mt-0.5">{p.court}</p>
+                        )}
+                        {p.summary && (
+                          <p className="text-sm text-gray-700 mt-2">{p.summary}</p>
+                        )}
+                        {p.distinguishing_factors && (
+                          <p className="text-xs text-amber-700 mt-2">
+                            <span className="font-semibold">Distinguishing factors:</span>{' '}
+                            {p.distinguishing_factors}
+                          </p>
+                        )}
+                      </div>
+                      {p.score != null && (
+                        <span className="text-xs font-semibold text-cyan-700 whitespace-nowrap">
+                          {Math.round(Number(p.score) * 100)}% match
+                        </span>
+                      )}
+                    </div>
+                    {p.url && (
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 mt-2 inline-block"
+                      >
+                        Open source →
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600 text-sm py-4">
+                No precedents on the dossier yet. Run a live search below to validate
+                the current legal theory before issuing a decision.
+              </p>
+            )}
+          </div>
+
+          <PrecedentSearchPanel
+            query={precedentQuery}
+            onQueryChange={setPrecedentQuery}
+            domain={precedentDomain}
+            onDomainChange={setPrecedentDomain}
+            onSearch={handlePrecedentSearch}
+            results={precedentResults}
+            searching={searchingPrecedents}
+            searched={precedentSearched}
+            searchedAt={precedentSearchedAt}
+          />
+        </div>
       )}
 
       {activeTab === 'arguments' && (

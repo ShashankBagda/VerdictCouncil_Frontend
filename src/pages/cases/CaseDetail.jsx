@@ -48,9 +48,7 @@ const WORKSPACE_TABS = [
   ['building', 'Building'],
   ['graph', 'Graph Mesh'],
   ['dossier', 'Dossier'],
-  ['what-if', 'What-If'],
   ['hearing-pack', 'Hearing Pack'],
-  ['orchestrator', 'Orchestrator'],
 ];
 
 export default function CaseDetail() {
