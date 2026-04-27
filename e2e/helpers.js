@@ -7,8 +7,6 @@
  *   - withAxe(page) — run axe accessibility scan and return results
  */
 
-import { expect } from '@playwright/test';
-
 const TEST_EMAIL = process.env.VC_TEST_EMAIL || 'judge@example.com';
 const TEST_PASSWORD = process.env.VC_TEST_PASSWORD || 'TestPassword123!';
 
@@ -45,7 +43,7 @@ export async function createCase(page, title = 'E2E Test Case') {
  * Returns the axe results object.
  * Requires @axe-core/playwright to be installed.
  */
-export async function runAxe(page, options = {}) {
+export async function runAxe(page, _options = {}) {
   const { AxeBuilder } = await import('@axe-core/playwright');
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])

@@ -85,14 +85,8 @@ test.describe('HITL Gate Review', () => {
     await page.goto(`/cases/${CASE_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Inject the gate review component via test-id or navigation
-    // The gate panel mounts when status=awaiting_review_gate1
-    // Check for domain field
-    const domainText = page.getByText('traffic_violation').or(
-      page.getByText(/traffic violation/i)
-    );
-    // If the page renders the gate review panel, this should be visible
-    // Otherwise, we just verify the case loaded
+    // The gate panel mounts when status=awaiting_review_gate1.
+    // We don't assert on the domain text here — just verify the case page rendered.
     await expect(page.getByText(/Gate Review Test Case|gate|review/i).first()).toBeVisible({ timeout: 10_000 });
   });
 

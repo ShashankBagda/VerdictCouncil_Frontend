@@ -37,6 +37,8 @@ export default function KnowledgeBaseCard({ domain, loading }) {
   const [pulse, setPulse] = useState(false);
   useEffect(() => {
     if (ready) {
+      // Intentional one-shot flash on ready transition; the timeout clears it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPulse(true);
       const t = setTimeout(() => setPulse(false), 1400);
       return () => clearTimeout(t);

@@ -6,7 +6,14 @@ import reactPlugin from 'eslint-plugin-react'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    '.vite',
+    'coverage',
+    'storybook-static',
+    'playwright-report',
+    'test-results',
+  ]),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -37,9 +44,23 @@ export default defineConfig([
     },
   },
   {
-    files: ['vite.config.js', 'vitest.config.js', 'postcss.config.js', 'scripts/**/*.{js,mjs}'],
+    files: [
+      'vite.config.js',
+      'vitest.config.js',
+      'postcss.config.js',
+      'playwright.config.js',
+      'stryker.config.js',
+      'e2e/**/*.{js,jsx}',
+      'scripts/**/*.{js,mjs}',
+    ],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    files: ['src/__tests__/**/*.{js,jsx}', 'src/**/*.test.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.jest, vi: 'readonly' },
     },
   },
   {
