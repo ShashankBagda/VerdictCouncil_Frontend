@@ -27,6 +27,11 @@ export default function DisputedFactsPanel({
   onDispute,
   submitting = {},
 }) {
+  const disputedCount = facts.filter(
+    (f) => Boolean(f?.disputed) || String(f?.status || '').toLowerCase() === 'disputed',
+  ).length;
+  const hasDisputed = disputedCount > 0;
+
   return (
     <div className="card-lg">
       <div className="flex items-center justify-between mb-2">
@@ -34,13 +39,24 @@ export default function DisputedFactsPanel({
           <ShieldAlert className="w-6 h-6 text-rose-600" />
           Disputed Facts
         </h2>
-        <div className="flex items-center gap-2">
-          <span className="flex h-3 w-3 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-          </span>
-          <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Review Required</span>
-        </div>
+        {hasDisputed ? (
+          <div className="flex items-center gap-2">
+            <span className="flex h-3 w-3 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+            </span>
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">
+              {disputedCount} Review Required
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">
+              No Disputes
+            </span>
+          </div>
+        )}
       </div>
       <p className="text-sm text-gray-600 mb-6">
         Mark contested facts directly in the dossier so the backend can track judicial disputes and adjust the reasoning chain.

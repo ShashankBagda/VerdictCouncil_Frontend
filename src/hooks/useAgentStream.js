@@ -89,14 +89,48 @@ function accumulateAgentStream(setter, frame) {
  *                    after the judge resumes.
  *   clearInterrupt – drop the stored interrupt frame.
  */
+// sessionStorage persistence — survives any component remount caused by
+// SPA tab switches under the case workspace. Without this, the hook's
+// React state resets whenever its hosting subtree unmounts, and we lose
+// every accumulated agent frame mid-pipeline.
+const SS_PREFIX = 'vc.stream.';
+const ssKey = (caseId, slot) => `${SS_PREFIX}${slot}.${caseId}`;
+function ssRead(caseId, slot, fallback) {
+  if (typeof window === 'undefined' || !caseId) return fallback;
+  try {
+    const raw = window.sessionStorage.getItem(ssKey(caseId, slot));
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function ssWrite(caseId, slot, value) {
+  if (typeof window === 'undefined' || !caseId) return;
+  try {
+    window.sessionStorage.setItem(ssKey(caseId, slot), JSON.stringify(value));
+  } catch {
+    // Quota exceeded or serialization failure — drop the stash; live
+    // state still works, only cross-mount persistence is lost.
+  }
+}
+
 export function useAgentStream(caseId, options = {}) {
   const { onTerminal = null } = options;
 
-  const [events, setEvents] = useState({});
-  const [agentStreams, setAgentStreams] = useState({});
+  // Hydrate from sessionStorage so navigating away and back doesn't wipe
+  // accumulated agent activity. Lazy initialiser runs once per mount.
+  const [events, setEvents] = useState(() => ssRead(caseId, 'events', {}));
+  const [agentStreams, setAgentStreams] = useState(() => ssRead(caseId, 'agents', {}));
   const [status, setStatus] = useState('connecting');
   const [lastError, setLastError] = useState(null);
-  const [interrupt, setInterrupt] = useState(null);
+  const [interrupt, setInterrupt] = useState(() => ssRead(caseId, 'interrupt', null));
+
+  // Mirror state to sessionStorage on every change so a subsequent
+  // remount finds the latest snapshot. Cheap — these dicts are small
+  // (per-agent, per-message). Skip when caseId is empty.
+  useEffect(() => { ssWrite(caseId, 'events', events); }, [caseId, events]);
+  useEffect(() => { ssWrite(caseId, 'agents', agentStreams); }, [caseId, agentStreams]);
+  useEffect(() => { ssWrite(caseId, 'interrupt', interrupt); }, [caseId, interrupt]);
 
   // Drop any interrupt carried over from a prior caseId — using React's
   // recommended "store-previous-prop-in-state and reset during render"
@@ -105,8 +139,11 @@ export function useAgentStream(caseId, options = {}) {
   const [prevCaseId, setPrevCaseId] = useState(caseId);
   if (prevCaseId !== caseId) {
     setPrevCaseId(caseId);
-    if (interrupt !== null) setInterrupt(null);
-    setAgentStreams({});
+    // Hydrate the new case's state from its own sessionStorage slots;
+    // stale data from the previous case must not leak into the new one.
+    setEvents(ssRead(caseId, 'events', {}));
+    setAgentStreams(ssRead(caseId, 'agents', {}));
+    setInterrupt(ssRead(caseId, 'interrupt', null));
   }
 
   const esRef = useRef(null);

@@ -282,6 +282,12 @@ export default function CaseDetail() {
           caseId={caseId}
           gateName={currentGate}
           onAdvanced={async () => {
+            // Clear the stale gate-N interrupt frame so the panel
+            // unmounts immediately. Without this, pickCurrentGate keeps
+            // returning the just-resolved gate while overall_status
+            // sits in `processing`, and the user sees no UI change for
+            // the full research window between gates.
+            clearInterrupt();
             const payload = await api.getCaseDetail(caseId);
             updateCaseDetail(normalizeCaseDetail(payload, caseId));
           }}
