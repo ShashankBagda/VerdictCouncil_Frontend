@@ -1,23 +1,29 @@
 name: Deploy
 
-# Build the frontend Docker image, push to DigitalOcean Container Registry,
-# Trivy-scan, then ensure the matching App Platform app exists with the
-# pinned image and trigger a deployment.
+# CI/CD pipeline for the VerdictCouncil frontend.
 #
-# Branch determines the target environment:
-#   development → staging   (App Platform: verdictcouncil-frontend-staging)
+# Three sequential jobs so each stage is visible as its own node in the
+# GitHub Actions graph:
+#
+#   build-and-push  →  trivy-scan  →  deploy
+#       │                 │              │
+#       │                 │              └─ App Platform create/update + roll
+#       │                 └─ Trivy SARIF (Security tab) + table summary
+#       └─ multi-stage Docker build, push to DOCR
+#
+# Branch routing:
+#   development → staging  (App Platform: verdictcouncil-frontend-staging)
 #   main        → production (App Platform: verdictcouncil-frontend-production)
 #
-# Image tagging:
-#   staging:    rc-<short-sha>      (rolling tag: staging-latest)
-#   production: <git-describe tag>  (rolling tag: latest)
+# Image tags:
+#   staging:    rc-<sha>      (rolling: staging-latest)
+#   production: <git-describe> (rolling: latest)
 #
-# DOCR registry is shared with the backend repo and looked up at runtime —
-# no DOCR_REGISTRY secret is needed in this repo. The registry must already
-# exist; if it doesn't, run the backend's Infra Bootstrap workflow first.
+# DOCR is shared with the backend repo and looked up at runtime — no
+# DOCR_REGISTRY secret needed in this repo.
 #
 # Required GitHub Action secrets:
-#   DIGITALOCEAN_ACCESS_TOKEN  — doctl token with apps + registry write access
+#   DIGITALOCEAN_ACCESS_TOKEN — doctl token with apps + registry write access
 
 on:
   push:
@@ -26,21 +32,28 @@ on:
 
 permissions:
   contents: read
+  # Required so the Trivy SARIF upload can post findings to the
+  # repository Security tab (Code scanning alerts).
+  security-events: write
 
 jobs:
-  deploy:
+  # --------------------------------------------------------------------------
+  # 1. Build the frontend Docker image and push it to DOCR.
+  # --------------------------------------------------------------------------
+  build-and-push:
+    name: Build & push image
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     env:
-      IS_PROD:        ${{ github.ref_name == 'main' }}
-      ENV_NAME:       ${{ github.ref_name == 'main' && 'production' || 'staging' }}
-      ROLLING_TAG:    ${{ github.ref_name == 'main' && 'latest' || 'staging-latest' }}
-      TRIVY_CATEGORY: ${{ github.ref_name == 'main' && 'trivy-image-production' || 'trivy-image-staging' }}
-      TRIVY_ARTIFACT: ${{ github.ref_name == 'main' && 'trivy-image-sarif-production' || 'trivy-image-sarif-staging' }}
-      APP_NAME:       ${{ github.ref_name == 'main' && 'verdictcouncil-frontend-production' || 'verdictcouncil-frontend-staging' }}
-      SPEC_FILE:      ${{ github.ref_name == 'main' && '.do/app.production.yaml' || '.do/app.staging.yaml' }}
-      VITE_API_URL:   ${{ github.ref_name == 'main' && 'https://api.verdictcouncil.sg' || 'https://staging-api.verdictcouncil.sg' }}
-
+      IS_PROD:      ${{ github.ref_name == 'main' }}
+      ENV_NAME:     ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      ROLLING_TAG:  ${{ github.ref_name == 'main' && 'latest' || 'staging-latest' }}
+      VITE_API_URL: ${{ github.ref_name == 'main' && 'https://api.verdictcouncil.sg' || 'https://staging-api.verdictcouncil.sg' }}
+    outputs:
+      image:    ${{ steps.image.outputs.image }}
+      rolling:  ${{ steps.image.outputs.rolling }}
+      registry: ${{ steps.docr.outputs.registry }}
+      env_name: ${{ env.ENV_NAME }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,7 +78,8 @@ jobs:
           fi
           echo "registry=registry.digitalocean.com/${REG_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image
+      - name: Build Docker image
+        id: image
         run: |
           if [ "$IS_PROD" = "true" ]; then
             TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
@@ -79,35 +93,123 @@ jobs:
             -t "${IMAGE}" \
             -t "${ROLLING}" \
             .
-          docker push "${IMAGE}"
-          docker push "${ROLLING}"
-          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+          echo "image=${IMAGE}"     >> "$GITHUB_OUTPUT"
+          echo "rolling=${ROLLING}" >> "$GITHUB_OUTPUT"
 
-      - name: Trivy image scan
+      - name: Push image to DOCR
+        run: |
+          docker push "${{ steps.image.outputs.image }}"
+          docker push "${{ steps.image.outputs.rolling }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Build & push"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | \`${{ env.ENV_NAME }}\` |"
+            echo "| Immutable tag | \`${{ steps.image.outputs.image }}\` |"
+            echo "| Rolling tag   | \`${{ steps.image.outputs.rolling }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --------------------------------------------------------------------------
+  # 2. Scan the freshly-pushed image with Trivy.
+  #    Uploads SARIF to the Security tab, archives the SARIF as an artifact,
+  #    and renders a human-readable table into the run summary so reviewers
+  #    can see findings without leaving GitHub.
+  # --------------------------------------------------------------------------
+  trivy-scan:
+    name: Trivy scan
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      ENV_NAME:       ${{ needs.build-and-push.outputs.env_name }}
+      TRIVY_CATEGORY: ${{ github.ref_name == 'main' && 'trivy-image-production' || 'trivy-image-staging' }}
+      TRIVY_ARTIFACT: ${{ github.ref_name == 'main' && 'trivy-image-sarif-production' || 'trivy-image-sarif-staging' }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Login to DOCR
+        run: doctl registry login
+
+      - name: Trivy scan (SARIF for Security tab)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.IMAGE }}
+          image-ref: ${{ needs.build-and-push.outputs.image }}
           format: sarif
           output: trivy-image.sarif
           ignore-unfixed: true
           vuln-type: os,library
           severity: HIGH,CRITICAL
+
+      - name: Trivy scan (table for run summary)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-and-push.outputs.image }}
+          format: table
+          output: trivy-image.txt
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
         continue-on-error: true
 
-      - name: Upload Trivy SARIF to GitHub Security tab
+      - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-image.sarif
           category: ${{ env.TRIVY_CATEGORY }}
-        continue-on-error: true
 
-      - name: Upload Trivy SARIF artifact
+      - name: Upload SARIF as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ env.TRIVY_ARTIFACT }}
           path: trivy-image.sarif
+
+      - name: Render Trivy table into run summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy image scan"
+            echo
+            echo "Image: \`${{ needs.build-and-push.outputs.image }}\`"
+            echo
+            echo "Severity filter: HIGH, CRITICAL · Unfixed ignored · Scope: os,library"
+            echo
+            echo '```'
+            if [ -s trivy-image.txt ]; then
+              cat trivy-image.txt
+            else
+              echo "(no findings — image is clean)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --------------------------------------------------------------------------
+  # 3. Ensure the App Platform app exists with the matching spec, then
+  #    trigger a deployment that pulls the freshly-scanned image.
+  # --------------------------------------------------------------------------
+  deploy:
+    name: Deploy to App Platform
+    needs: [build-and-push, trivy-scan]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    env:
+      APP_NAME:  ${{ github.ref_name == 'main' && 'verdictcouncil-frontend-production' || 'verdictcouncil-frontend-staging' }}
+      SPEC_FILE: ${{ github.ref_name == 'main' && '.do/app.production.yaml' || '.do/app.staging.yaml' }}
+      ENV_NAME:  ${{ needs.build-and-push.outputs.env_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Ensure App Platform app exists
         id: app
@@ -122,8 +224,28 @@ jobs:
           fi
           echo "id=$APP_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Trigger deployment
-        # `update` and `create` already deploy when the spec changes, but a
-        # bare image-tag push doesn't change the spec — force a fresh pull
-        # so the new digest is rolled out either way.
+      - name: Trigger rolling deployment
+        # `update`/`create` deploy when the spec changes, but a bare image-tag
+        # push doesn't change the spec — force a fresh pull so the new digest
+        # rolls out either way.
         run: doctl apps create-deployment "${{ steps.app.outputs.id }}" --force-rebuild --wait
+
+      - name: Capture App URL
+        id: url
+        run: |
+          LIVE_URL=$(doctl apps get "${{ steps.app.outputs.id }}" -o json | jq -r '.[0].live_url')
+          echo "live_url=$LIVE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Deploy"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | \`${{ env.ENV_NAME }}\` |"
+            echo "| App | \`${{ env.APP_NAME }}\` |"
+            echo "| App UUID | \`${{ steps.app.outputs.id }}\` |"
+            echo "| Image | \`${{ needs.build-and-push.outputs.image }}\` |"
+            echo "| Live URL | ${{ steps.url.outputs.live_url }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
