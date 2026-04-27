@@ -527,14 +527,6 @@ export const api = {
   recordDecision: (caseId, body) =>
     request('POST', `/api/v1/cases/${caseId}/decision`, { body }),
 
-  // Q1.11 chat-steering — judge replies to an agent-initiated `human_input`
-  // pause. Reuses the unified /respond endpoint (action="message"); the
-  // backend matches `interruptId` against the pending interrupt and 409s
-  // on stale double-sends.
-  sendJudgeMessage: (caseId, { text, interruptId }) =>
-    request('POST', `/api/v1/cases/${caseId}/respond`, {
-      body: { action: 'message', text, interrupt_id: interruptId },
-    }),
   getDocumentExcerpt: (documentId, page) =>
     request('GET', `/api/v1/documents/${documentId}/excerpt?page=${page}`),
   updateSuggestedQuestions: (caseId, body) =>

@@ -5,7 +5,6 @@ import { Streamdown } from 'streamdown';
 import { code } from '@streamdown/code';
 import { useAPI } from '../../hooks';
 import api from '../../lib/api';
-import AgentChatPanel from '../../components/AgentChatPanel';
 import {
   pickCurrentGate,
   PIPELINE_AGENT_LABELS,
@@ -289,7 +288,7 @@ function AgentCard({ agentId, agentStatus, events, canRun, isActionPending, onRu
 // Expanded detail view for a single agent. Renders beneath the grid when a
 // card is clicked. Gives each event far more room than the 200px card pane —
 // larger font, no height cap on the pane (scroll inside the drawer instead).
-function FocusDrawer({ agentId, agentStatus, events, onClose, caseId, interrupt, onChatError }) {
+function FocusDrawer({ agentId, agentStatus, events, onClose }) {
   const scrollRef = useRef(null);
   const isManualRef = useRef(false);
   const label = PIPELINE_AGENT_LABELS[agentId] || agentId;
@@ -376,20 +375,6 @@ function FocusDrawer({ agentId, agentStatus, events, onClose, caseId, interrupt,
         )}
       </div>
 
-      {/* Q1.11 chat-steering — only synthesis is wired with the
-          `human_input` tool today (PHASE_TOOL_NAMES["synthesis"]). Other
-          agents render the panel in idle state if mounted, which is just
-          noise — gate by agentId here. */}
-      {agentId === 'synthesis' && (
-        <div className="border-t border-white/10 px-4 py-3 bg-slate-950/40">
-          <AgentChatPanel
-            caseId={caseId}
-            agentId={agentId}
-            interrupt={interrupt}
-            onError={onChatError}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -640,31 +625,6 @@ export default function BuildingSimulation() {
     setFocusedAgentId((prev) => (prev === agentId ? null : agentId));
   }, []);
 
-  // Auto-open the FocusDrawer for the agent that's pending a chat-steering
-  // reply (`ask_judge` interrupt). Without this the chat panel only mounts
-  // when the judge manually clicks the card — which is a discoverability
-  // trap when synthesis pauses. Tracks the interrupt id so a subsequent
-  // unrelated interrupt cycle re-fires the focus, and so a manual close
-  // mid-question doesn't get stomped on every re-render.
-  const autoFocusedInterruptRef = useRef(null);
-  useEffect(() => {
-    const id = interrupt?.interrupt_id;
-    if (
-      interrupt
-      && interrupt.kind === 'interrupt'
-      && interrupt.case_id === caseId
-      && typeof interrupt.agent === 'string'
-      && typeof interrupt.question === 'string'
-      && id
-      && autoFocusedInterruptRef.current !== id
-    ) {
-      autoFocusedInterruptRef.current = id;
-      setFocusedAgentId(interrupt.agent);
-    } else if (!id) {
-      autoFocusedInterruptRef.current = null;
-    }
-  }, [interrupt, caseId]);
-
   // Per-agent action pending state (run button spinner)
   const [pendingAgents, setPendingAgents] = useState({});
 
@@ -891,9 +851,6 @@ export default function BuildingSimulation() {
           agentStatus={pipelineStatus?.agents?.find((a) => a.agent_id === focusedAgentId)}
           events={events[focusedAgentId] || []}
           onClose={() => setFocusedAgentId(null)}
-          caseId={caseId}
-          interrupt={interrupt}
-          onChatError={showError}
         />
       )}
 
