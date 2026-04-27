@@ -1,5 +1,12 @@
 import React from 'react';
-import { UploadCloud, X, FileText, CheckCircle2, History, AlertCircle } from 'lucide-react';
+import { UploadCloud, X, FileText, Files, AlertCircle } from 'lucide-react';
+
+const AUTHORITATIVE_KINDS = new Set(['notice_of_traffic_offence', 'charge_sheet']);
+
+function formatKindLabel(kind) {
+  if (!kind || kind === 'other') return 'EVIDENCE';
+  return kind.replace(/_/g, ' ').toUpperCase();
+}
 
 export default function DocumentUploadList({
   selectedFiles = [],
@@ -99,46 +106,38 @@ export default function DocumentUploadList({
         </div>
       )}
 
-      {/* Version History List */}
+      {/* Uploaded Documents List */}
       <div className="card-lg bg-white">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-navy-900 flex items-center gap-2">
-            <History className="w-4 h-4 text-navy-400" />
-            Analysis Version History
+            <Files className="w-4 h-4 text-navy-400" />
+            Uploaded Documents
           </h2>
           <div className="px-1.5 py-0.5 rounded-sm bg-gray-100 text-[10px] font-bold text-gray-500">
-            {documents.length} REVISIONS
+            {documents.length} {documents.length === 1 ? 'FILE' : 'FILES'}
           </div>
         </div>
 
         {documents.length > 0 ? (
-          <div className="space-y-4">
-            {documents.map((doc, idx) => (
-              <div key={doc.id || idx} className="group relative">
-                {idx < documents.length - 1 && (
-                  <div className="absolute left-[17px] top-8 bottom-[-16px] w-px bg-gray-100" />
-                )}
-                <div className="flex items-start gap-4">
-                  <div className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center border-2 bg-white transition-colors ${
-                    idx === 0 ? 'border-emerald-500 shadow-sm shadow-emerald-500/20' : 'border-gray-200'
-                  }`}>
-                    {idx === 0 ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    ) : (
-                      <FileText className="w-5 h-5 text-gray-400" />
-                    )}
+          <div className="space-y-3">
+            {documents.map((doc, idx) => {
+              const isAuthoritative = AUTHORITATIVE_KINDS.has(doc.kind);
+              return (
+                <div key={doc.id || idx} className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center border-2 border-gray-200 bg-white shrink-0">
+                    <FileText className="w-5 h-5 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0 pt-0.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs font-bold truncate ${idx === 0 ? 'text-navy-900' : 'text-gray-600'}`}>
+                      <p className="text-xs font-bold text-navy-900 truncate">
                         {doc.filename}
                       </p>
-                      <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                        doc.status === 'completed' || doc.status === 'success'
-                          ? 'bg-emerald-50 text-emerald-600'
-                          : 'bg-blue-50 text-blue-600'
+                      <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                        isAuthoritative
+                          ? 'bg-teal-50 text-teal-700'
+                          : 'bg-gray-100 text-gray-600'
                       }`}>
-                        V{doc.version || documents.length - idx}
+                        {formatKindLabel(doc.kind)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -153,7 +152,7 @@ export default function DocumentUploadList({
                         </p>
                       )}
                     </div>
-                    
+
                     {doc.affected_stages?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {doc.affected_stages.map((stage) => (
@@ -165,12 +164,12 @@ export default function DocumentUploadList({
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="py-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-            <p className="text-xs text-gray-500 italic">No document history for this case.</p>
+            <p className="text-xs text-gray-500 italic">No documents uploaded for this case yet.</p>
           </div>
         )}
       </div>

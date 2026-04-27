@@ -640,6 +640,31 @@ export default function BuildingSimulation() {
     setFocusedAgentId((prev) => (prev === agentId ? null : agentId));
   }, []);
 
+  // Auto-open the FocusDrawer for the agent that's pending a chat-steering
+  // reply (`ask_judge` interrupt). Without this the chat panel only mounts
+  // when the judge manually clicks the card — which is a discoverability
+  // trap when synthesis pauses. Tracks the interrupt id so a subsequent
+  // unrelated interrupt cycle re-fires the focus, and so a manual close
+  // mid-question doesn't get stomped on every re-render.
+  const autoFocusedInterruptRef = useRef(null);
+  useEffect(() => {
+    const id = interrupt?.interrupt_id;
+    if (
+      interrupt
+      && interrupt.kind === 'interrupt'
+      && interrupt.case_id === caseId
+      && typeof interrupt.agent === 'string'
+      && typeof interrupt.question === 'string'
+      && id
+      && autoFocusedInterruptRef.current !== id
+    ) {
+      autoFocusedInterruptRef.current = id;
+      setFocusedAgentId(interrupt.agent);
+    } else if (!id) {
+      autoFocusedInterruptRef.current = null;
+    }
+  }, [interrupt, caseId]);
+
   // Per-agent action pending state (run button spinner)
   const [pendingAgents, setPendingAgents] = useState({});
 
