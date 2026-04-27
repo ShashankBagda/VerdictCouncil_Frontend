@@ -71,7 +71,7 @@ function fileTypeIcon(fileType) {
   if (t.includes('audio')) return '🎵';
   return '📄';
 }
-const extractEvidenceGapItems = (payload) => {
+const extractEvidenceGapItems = (payload, argumentsPayload) => {
   const root = payload?.data || payload || {};
   const weakEvidence = extractItems(root, ['weak_evidence']).map((item, index) => ({
     id: item.id || `weak-evidence-${index}`,
@@ -92,7 +92,46 @@ const extractEvidenceGapItems = (payload) => {
     status: item.status || 'uncorroborated',
     next_step: 'Seek corroborating testimony or source material.',
   }));
-  return [...weakEvidence, ...uncorroboratedFacts];
+  // Synthesis-derived gaps: argument weaknesses + suggested questions
+  // tagged `evidence_gap` are ALSO evidence gaps. The legacy
+  // /evidence-gaps endpoint only reads Evidence/Fact rows; without
+  // surfacing these, weaknesses populate the Suggested Questions tab
+  // but the Evidence Gaps tab stays empty.
+  const argumentGaps = [];
+  for (const side of ['claimant', 'respondent']) {
+    const args = argumentsPayload?.[side]?.arguments || [];
+    args.forEach((arg, argIdx) => {
+      const weaknesses = Array.isArray(arg.weaknesses)
+        ? arg.weaknesses
+        : typeof arg.weaknesses === 'string' && arg.weaknesses.trim()
+          ? arg.weaknesses.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+          : [];
+      weaknesses.forEach((w, wIdx) => {
+        argumentGaps.push({
+          id: `arg-weakness-${side}-${argIdx}-${wIdx}`,
+          title: `${side === 'claimant' ? 'Claimant' : 'Respondent'} weakness — ${arg.title || `Argument ${argIdx + 1}`}`,
+          description: w,
+          severity: 'medium',
+          status: 'argument weakness',
+          next_step: 'Probe at hearing; cross-check the supporting evidence chain.',
+        });
+      });
+      const questions = arg.suggested_questions || [];
+      questions
+        .filter((q) => q?.question_type === 'evidence_gap')
+        .forEach((q, qIdx) => {
+          argumentGaps.push({
+            id: `arg-evgap-${side}-${argIdx}-${qIdx}`,
+            title: `Evidence gap — ${arg.title || `Argument ${argIdx + 1}`}`,
+            description: q.question,
+            severity: 'medium',
+            status: 'evidence gap',
+            next_step: q.targets_weakness || q.rationale || 'Address at hearing.',
+          });
+        });
+    });
+  }
+  return [...weakEvidence, ...uncorroboratedFacts, ...argumentGaps];
 };
 
 const extractDisputedFacts = (payload) =>
@@ -357,7 +396,10 @@ export default function CaseDossier() {
     }
   }, [pipelineOverallStatus, fetchAllData]);
 
-  const evidenceGapItems = useMemo(() => extractEvidenceGapItems(evidenceGaps), [evidenceGaps]);
+  const evidenceGapItems = useMemo(
+    () => extractEvidenceGapItems(evidenceGaps, arguments_),
+    [evidenceGaps, arguments_],
+  );
   const disputedFacts = useMemo(() => extractDisputedFacts(timeline), [timeline]);
   const dossierPrecedents = useMemo(() => extractPrecedentItems(precedents), [precedents]);
   const fairnessChecks = useMemo(() => extractFairnessChecks(fairnessAudit), [fairnessAudit]);
