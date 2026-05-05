@@ -54,7 +54,14 @@ jobs:
         # security-sensitive screens. Achievable coverage today is
         # 99/99/93 (lines/statements/functions); thresholds set just
         # below to leave a small margin for incremental edits.
-        run: npm run test -- --run --coverage --coverage.thresholds.lines=95 --coverage.thresholds.statements=95 --coverage.thresholds.functions=90
+        run: npm run test -- --run --coverage --coverage.thresholds.lines=95 --coverage.thresholds.statements=95 --coverage.thresholds.functions=90 --reporter=verbose --reporter=junit --outputFile.junit=junit-frontend.xml
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-unit-test-report
+          path: junit-frontend.xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
