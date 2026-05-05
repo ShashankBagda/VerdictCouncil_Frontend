@@ -121,40 +121,38 @@ export default function HearingPack() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
-        <div className="space-y-4">
-          <div className="card-lg">
-            <div className="flex items-center gap-2 mb-4">
-              <FileText className="w-5 h-5 text-teal-600" />
-              <h2 className="text-lg font-bold text-navy-900">Pack Preview</h2>
-            </div>
-            {packStatus === 'loading' && (
-              <p className="text-sm text-gray-600">Assembling the hearing pack…</p>
-            )}
-            {packStatus === 'error' && (
-              <p className="text-sm text-rose-700">
-                Hearing pack could not be loaded. Try again or download the .md.
-              </p>
-            )}
-            {packStatus === 'ready' && markdown && (
-              <div className="prose prose-sm max-w-none">
-                <Streamdown>{markdown}</Streamdown>
-              </div>
-            )}
-            {packStatus === 'ready' && !markdown && (
-              <p className="text-sm text-gray-600">The hearing pack is empty.</p>
-            )}
+      <div className="space-y-4">
+        <div className="card-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5 text-teal-600" />
+            <h2 className="text-lg font-bold text-navy-900">Pack Preview</h2>
           </div>
-
-          <HearingNotesForm
-            notes={notes}
-            locked={locked}
-            saving={savingNote}
-            onCreate={handleCreateNote}
-            onDelete={handleDeleteNote}
-            onLock={handleLock}
-          />
+          {packStatus === 'loading' && (
+            <p className="text-sm text-gray-600">Assembling the hearing pack…</p>
+          )}
+          {packStatus === 'error' && (
+            <p className="text-sm text-rose-700">
+              Hearing pack could not be loaded. Try again or download the .md.
+            </p>
+          )}
+          {packStatus === 'ready' && markdown && (
+            <div className="prose prose-sm max-w-none">
+              <Streamdown>{markdown}</Streamdown>
+            </div>
+          )}
+          {packStatus === 'ready' && !markdown && (
+            <p className="text-sm text-gray-600">The hearing pack is empty.</p>
+          )}
         </div>
+
+        <HearingNotesForm
+          notes={notes}
+          locked={locked}
+          saving={savingNote}
+          onCreate={handleCreateNote}
+          onDelete={handleDeleteNote}
+          onLock={handleLock}
+        />
       </div>
     </div>
   );
